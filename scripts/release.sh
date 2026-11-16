@@ -12,10 +12,11 @@ for component in opsview executor plugin-worker pack; do
 done
 cp deploy/*.service deploy/*.sh "$release_dir/deploy/"
 cp -R packages/catalog packages/plugins "$release_dir/packages/"
-cp README.md "$release_dir/README.md"
+cp README.md 安装教程.md "$release_dir/"
 cp -R docs "$release_dir/"
 cp packages/README.md "$release_dir/packages/README.md"
 cp -R packages/examples "$release_dir/packages/"
+cp install.sh "$release_dir/bin/opsview-install.sh"
 cp install.sh dist/install.sh
 tar -C dist -czf dist/opsview-linux-amd64.tar.gz opsview-linux-amd64
 (cd dist && if command -v sha256sum >/dev/null; then sha256sum opsview-linux-amd64.tar.gz install.sh > SHA256SUMS; else shasum -a 256 opsview-linux-amd64.tar.gz install.sh > SHA256SUMS; fi)

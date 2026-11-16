@@ -2,7 +2,7 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.0 开发测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.1 开发测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
 ## 本地启动
 
@@ -12,7 +12,7 @@
 make dev
 ```
 
-浏览器打开终端显示的 Vite 地址，通常为 `http://127.0.0.1:5173`。后端默认监听 `127.0.0.1:18790`。第一次登录需要 `.opsview/setup.token` 中的本机初始化令牌，然后创建唯一管理员。没有默认账号或密码。
+浏览器打开终端显示的 Vite 地址，通常为 `http://127.0.0.1:5173`。后端默认监听 `127.0.0.1:18790`。第一次登录需要 `.opsview/setup.token` 中的本机初始化令牌，然后创建唯一管理员。开发模式没有预设账号；Linux 新安装自动生成随机账号。
 
 macOS 开发模式提供真实本机监控、认证、资源配置、SQLite、任务及审计。systemd、软件安装、Docker、防火墙、服务器文件等功能通过 Linux 执行器运行；执行器缺失时任务会明确失败。
 
@@ -25,6 +25,8 @@ make build
 
 ## Linux 部署
 
+完整操作步骤见 [安装教程](安装教程.md)，包含首次登录、端口放行、更新和常见问题。
+
 目标系统为全新 Ubuntu 22.04/24.04、Debian 12/13，发布架构为 Linux amd64。现有服务只检测，不自动覆盖或导入其数据。
 
 在服务器使用 **root** 执行以下命令，自动下载 GitHub 最新正式 Release、校验发布包、安装依赖并启动服务，无需安装 Go、Node.js 或 Git：
@@ -33,14 +35,14 @@ make build
 if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/latest/download/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/latest/download/install.sh; fi && bash install_opsview.sh
 ```
 
-成功后终端显示访问地址、首次初始化令牌及端口放行提示；在浏览器使用令牌创建管理员。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
+成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
 
 固定版本、更新已有安装：
 
 ```bash
-bash install_opsview.sh --version v0.1.0
+bash install_opsview.sh --version v0.1.1
 bash install_opsview.sh --update                   # 更新至最新正式 Release
-bash install_opsview.sh --update --version v0.1.0  # 指定目标版本，先备份后更新
+bash install_opsview.sh --update --version v0.1.1  # 指定目标版本，先备份后更新
 ```
 
 重复安装会被拒绝。更新前会备份面板数据、二进制及 systemd 单元；更新失败尝试恢复旧版本。自定义 systemd 配置请使用 drop-in 文件。版本降级不保证数据格式兼容，不应绕过健康检查或手动覆盖数据目录。
@@ -54,7 +56,7 @@ make release
 sudo bash opsview-linux-amd64/deploy/install.sh
 ```
 
-面板使用独立 HTTPS 端口 **18790**，首次生成自签名证书。需要时放行此端口并配置云厂商安全组，然后使用终端显示的令牌或读取 `/var/lib/opsview/panel/setup.token` 完成初始化。可以在“面板设置”上传受信任的面板证书。
+面板使用独立 HTTPS 端口 **18790**，首次生成自签名证书。需要时放行此端口并配置云厂商安全组，然后使用终端显示的随机账号直接登录。`ov info` 查看地址和用户名，`ov info --public-host panel.example.com` 修正访问地址，`ov port` 修改端口。可以在“面板设置”上传受信任的面板证书。
 
 安装过程创建 `opsview-panel.service` 与 `opsview-executor.service`。面板以 `opsview` 用户运行，执行器以 root 运行，二者仅通过 `/run/opsview/executor.sock` 通信。完整目录、升级、备份和故障恢复步骤见 [运维手册](docs/operations.md)。
 

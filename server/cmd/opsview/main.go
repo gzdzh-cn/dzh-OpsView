@@ -8,24 +8,30 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/gogf/gf/v2/net/ghttp"
-	"golang.org/x/crypto/bcrypt"
+	"io"
 	"io/fs"
 	"log"
 	"math/big"
 	"net"
+	"opsview/internal/account"
 	"opsview/internal/catalog"
 	"opsview/internal/controller"
 	"opsview/internal/dao"
 	"opsview/internal/executor"
 	"opsview/internal/logic"
+	"opsview/internal/maintenance"
 	"opsview/internal/model"
+	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
+	"opsview/internal/version"
 	"opsview/public"
 	"os"
 	"os/exec"
@@ -37,6 +43,26 @@ import (
 )
 
 func main() {
+	if filepath.Base(os.Args[0]) == "ov" {
+		if err := maintenance.Run(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "OpsView:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "--version") {
+		fmt.Println(version.Current)
+		return
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "runtime-config" {
+		if err := maintenance.Runtime(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "OpsView:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	command := "serve"
 	args := os.Args[1:]
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -48,6 +74,7 @@ func main() {
 	addr := flags.String("listen", "127.0.0.1:18790", "面板监听地址")
 	defaultData := ".opsview"
 	executable, _ := os.Executable()
+	executable, _ = filepath.EvalSymlinks(executable)
 	installed := filepath.Dir(executable) == "/opt/opsview/bin"
 	if installed {
 		defaultData = "/var/lib/opsview/panel"
@@ -60,7 +87,28 @@ func main() {
 	trustID := flags.String("id", "", "签名者标识")
 	file := flags.String("file", "", "公钥文件")
 	trustDir := flags.String("trust-dir", "/etc/opsview/trust.d", "信任公钥目录")
+	configPath := flags.String("config", "", "运行配置文件（root 管理）")
 	_ = flags.Parse(args)
+	explicitListen := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "listen" {
+			explicitListen = true
+		}
+	})
+	if installed && command == "serve" && !*dev && *configPath == "" && !explicitListen {
+		*configPath = runtimeconfig.Path
+	}
+	if *configPath != "" {
+		cfg, err := runtimeconfig.Load(*configPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if explicitListen {
+			log.Fatal("--config 与 --listen 不能同时使用")
+		}
+		*addr = cfg.Address()
+	}
+
 	var err error
 	*data, err = filepath.Abs(*data)
 	if err != nil {
@@ -108,29 +156,57 @@ func main() {
 		log.Fatal(err)
 	}
 	defer store.DB.Close()
-	if command == "reset-admin" {
-		var a map[string]any
-		if err = store.Setting("admin", &a); err != nil {
-			log.Fatal("尚未创建管理员")
+	if command == "admin-init" {
+		username, password, e := account.RandomCredentials()
+		if e != nil {
+			log.Fatal(e)
 		}
+		if e = account.Initialize(store, username, password, "local"); e != nil {
+			log.Fatal(e)
+		}
+		_ = os.Remove(filepath.Join(*data, "setup.token"))
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"username": username, "password": password})
+		return
+	}
+	if command == "admin-info" {
+		var a account.Admin
+		if err = store.Setting("admin", &a); errors.Is(err, sql.ErrNoRows) {
+			fmt.Println("尚未初始化管理员；可用 ov init 生成随机账号。")
+			return
+		} else if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("用户名：" + a.Username)
+		return
+	}
+	if command == "admin-change" {
+		var request struct {
+			Username  string `json:"username"`
+			Password  string `json:"password"`
+			ResetTOTP bool   `json:"resetTOTP"`
+		}
+		if err = json.NewDecoder(io.LimitReader(os.Stdin, 4096)).Decode(&request); err != nil {
+			log.Fatal("无法读取维护请求")
+		}
+		if request.Username == "" && request.Password == "" && !request.ResetTOTP {
+			log.Fatal("空的账号变更")
+		}
+		if err = account.Change(store, request.Username, request.Password, request.ResetTOTP, nil, "local"); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if command == "reset-admin" {
 		password := os.Getenv("OPSVIEW_NEW_PASSWORD")
 		if password == "" {
-			password = security.ID()
+			_, password, err = account.RandomCredentials()
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-		if len(password) < 12 || len(password) > 72 {
-			log.Fatal("密码须为 12–72 字节")
-		}
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
+		if err = account.Change(store, "", password, true, nil, "local"); err != nil {
 			log.Fatal(err)
 		}
-		a["passwordHash"] = string(hash)
-		a["totp"] = ""
-		a["pendingTotp"] = ""
-		if err = store.Set("admin", a); err != nil {
-			log.Fatal(err)
-		}
-		_, _ = store.DB.Exec(`DELETE FROM sessions`)
 		fmt.Printf("管理员密码已重置，双因素认证已关闭。新密码：%s\n", password)
 		return
 	}
@@ -162,7 +238,7 @@ func main() {
 	if command == "diagnose" {
 		tasks, _ := store.Tasks()
 		rs, _ := store.Resources("")
-		output := map[string]any{"version": "0.1.0", "resources": len(rs), "tasks": tasks, "executorSocket": *socket}
+		output := map[string]any{"version": version.Current, "resources": len(rs), "tasks": tasks, "executorSocket": *socket}
 		b, _ := json.MarshalIndent(output, "", "  ")
 		fmt.Println(string(b))
 		return
@@ -177,7 +253,7 @@ func main() {
 		}
 	}
 	var initial map[string]any
-	if err = store.Setting("admin", &initial); err != nil {
+	if err = store.Setting("admin", &initial); errors.Is(err, sql.ErrNoRows) {
 		tokenPath := filepath.Join(*data, "setup.token")
 		token, e := os.ReadFile(tokenPath)
 		if os.IsNotExist(e) {
@@ -188,7 +264,10 @@ func main() {
 		} else if e != nil {
 			log.Fatal(e)
 		}
-		log.Printf("首次初始化令牌：%s （仅本机可读取 %s）", string(token), tokenPath)
+		log.Printf("尚未初始化管理员，请读取本机令牌文件 %s 或运行 ov init", tokenPath)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Fatal(err)
 	}
 	var imported []catalog.Entry
 	if store.Setting("catalog-imports", &imported) == nil {
@@ -196,7 +275,7 @@ func main() {
 			_ = catalog.Register(entry)
 		}
 	}
-	app := &logic.App{Store: store, Executor: executor.NewClient(*socket), Root: *root, Development: *dev}
+	app := &logic.App{Store: store, Executor: executor.NewClient(*socket), Root: *root, Development: *dev, PanelConfigPath: *configPath}
 	app.Start()
 	defer app.Stop()
 	var assets fs.FS = public.Files()

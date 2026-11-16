@@ -8,6 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"net"
 	"net/http"
+	"opsview/internal/account"
 	"opsview/internal/security"
 	"os"
 	"path/filepath"
@@ -16,12 +17,7 @@ import (
 	"time"
 )
 
-type admin struct {
-	Username     string `json:"username"`
-	PasswordHash string `json:"passwordHash"`
-	TOTP         string `json:"totp"`
-	PendingTOTP  string `json:"pendingTotp"`
-}
+type admin = account.Admin
 type attempt struct {
 	Count int
 	Until time.Time
@@ -69,38 +65,22 @@ func (c *Controller) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	token, e := os.ReadFile(filepath.Join(c.DataDir, "setup.token"))
 	if e != nil || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(string(token))), []byte(body.Token)) != 1 {
-		fail(w, 403, "初始化令牌无效，请查看服务启动输出或本机 setup.token")
+		fail(w, 403, "初始化令牌无效，请读取服务器本机 setup.token")
 		return
 	}
 	if !validPassword(body.Password) || !regexpUsername(body.Username) {
 		fail(w, 400, "用户名格式无效，或密码不足 12 位（最多 72 字节）")
 		return
 	}
-	hash, e := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
-	if e != nil {
-		fail(w, 500, "密码处理失败")
-		return
-	}
-	if e = c.App.Store.Set("admin", admin{Username: body.Username, PasswordHash: string(hash)}); e != nil {
-		fail(w, 500, "初始化失败")
+	if e = account.Initialize(c.App.Store, body.Username, body.Password, clientIP(r)); e != nil {
+		fail(w, 409, "初始化失败或管理员已创建")
 		return
 	}
 	_ = os.Remove(filepath.Join(c.DataDir, "setup.token"))
-	c.App.Store.Audit("admin.setup", "", clientIP(r))
 	send(w, 201, map[string]any{"ok": true})
 }
-func regexpUsername(s string) bool {
-	if len(s) < 2 || len(s) > 40 {
-		return false
-	}
-	for _, ch := range s {
-		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '_' || ch == '-') {
-			return false
-		}
-	}
-	return true
-}
-func validPassword(s string) bool { return len(s) >= 12 && len(s) <= 72 }
+func regexpUsername(s string) bool { return account.ValidUsername(s) }
+func validPassword(s string) bool  { return account.ValidPassword(s) }
 func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username string `json:"username"`
@@ -146,7 +126,7 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 	token := security.ID() + security.ID()
 	csrf := security.ID()
 	expires := now.Add(8 * time.Hour)
-	_, e = c.App.Store.DB.Exec(`INSERT INTO sessions VALUES(?,?,?)`, security.Hash(token), csrf, expires.Unix())
+	e = c.App.Store.AddSession(a, security.Hash(token), csrf, expires.Unix())
 	if e != nil {
 		fail(w, 500, "创建会话失败")
 		return
@@ -220,6 +200,8 @@ func (c *Controller) twoFactor(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "当前密码错误")
 		return
 	}
+	aOriginal := a
+	previous := a
 	switch b.Action {
 	case "prepare":
 		if a.TOTP != "" {
@@ -227,7 +209,13 @@ func (c *Controller) twoFactor(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.PendingTOTP = security.NewTOTP()
-		if e = c.App.Store.Set("admin", a); e != nil {
+		if e = c.App.Store.PrepareSetting("admin", &previous, "admin.2fa."+b.Action, clientIP(r), func() error {
+			if previous != aOriginal {
+				return fmt.Errorf("账号已变更，请重新验证")
+			}
+			previous = a
+			return nil
+		}); e != nil {
 			fail(w, 500, "保存失败")
 			return
 		}
@@ -251,12 +239,16 @@ func (c *Controller) twoFactor(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "无效操作")
 		return
 	}
-	if e = c.App.Store.Set("admin", a); e != nil {
+	if e = c.App.Store.MutateSetting("admin", &previous, false, "admin.2fa."+b.Action, clientIP(r), func() error {
+		if previous != aOriginal {
+			return fmt.Errorf("账号已变更，请重新验证")
+		}
+		previous = a
+		return nil
+	}); e != nil {
 		fail(w, 500, "保存失败")
 		return
 	}
-	_, _ = c.App.Store.DB.Exec(`DELETE FROM sessions`)
-	c.App.Store.Audit("admin.2fa."+b.Action, "", clientIP(r))
 	send(w, 200, map[string]any{"ok": true, "reauthenticate": true})
 }
 func (c *Controller) password(w http.ResponseWriter, r *http.Request) {
@@ -277,17 +269,9 @@ func (c *Controller) password(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "密码须为 12–72 字节")
 		return
 	}
-	h, e := bcrypt.GenerateFromPassword([]byte(b.Password), bcrypt.DefaultCost)
-	if e != nil {
-		fail(w, 500, "密码处理失败")
+	if e = account.Change(c.App.Store, "", b.Password, false, &a, clientIP(r)); e != nil {
+		fail(w, 409, "修改失败，请重新验证")
 		return
 	}
-	a.PasswordHash = string(h)
-	if e = c.App.Store.Set("admin", a); e != nil {
-		fail(w, 500, "保存失败")
-		return
-	}
-	_, _ = c.App.Store.DB.Exec(`DELETE FROM sessions`)
-	c.App.Store.Audit("admin.password", "", clientIP(r))
 	send(w, 200, map[string]any{"ok": true})
 }

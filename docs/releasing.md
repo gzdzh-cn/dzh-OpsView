@@ -10,15 +10,15 @@
 make check
 ./scripts/test-installer.sh
 git push github main
-git tag -a v0.1.0 -m 'OpsView 0.1.0 development release'
-git push github v0.1.0
+git tag -a v0.1.1 -m 'OpsView 0.1.1 development release'
+git push github v0.1.1
 ```
 
 GitHub Actions 的 `Publish Linux release` 工作流会执行 Go race 测试与 vet、前端测试与构建、安装器检查和 Playwright，再构建四个 Linux 二进制，并在临时 Ubuntu 24.04 主机以真实 systemd 验证首次安装、正常更新和失败回退。`scripts/test-deployment.sh` 仅允许在隔离 CI 主机执行。构建 Job 只有读权限，发布 Job 使用仓库自动提供的 `GITHUB_TOKEN` 写 Release，无需额外保存个人 Token。需要仓库启用 Actions，且组织策略允许工作流写 Release。
 
 构建成功后才创建草稿、上传完整产物、发布 Release。工作流失败时可修复后发布新标签；若失败发生在草稿上传中，可重跑同一工作流。已经公开的版本不被工作流覆盖。业务软件版本与面板版本独立，发布面板不会自动更新 Nginx 或数据库。
 
-版本名为 `vX.Y.Z` 或 `vX.Y.Z-rc.1` 等形式。带后缀标签自动标记为 prerelease，默认下载地址只使用正式 Release。正式在此表示 GitHub Release 类型；当前 `v0.1.0` 仍是开发测试版本，生产验收状态以 `acceptance.md` 为准。
+版本名为 `vX.Y.Z` 或 `vX.Y.Z-rc.1` 等形式。带后缀标签自动标记为 prerelease，默认下载地址只使用正式 Release。正式在此表示 GitHub Release 类型；当前 `v0.1.1` 仍是开发测试版本，生产验收状态以 `acceptance.md` 为准。
 
 每次发布包含：
 
@@ -33,7 +33,7 @@ GitHub Actions 的 `Publish Linux release` 工作流会执行 Go race 测试与 
 3. 使用 HTTPS 下载到私有临时目录；HTTP 错误、网络失败、缺失或重复摘要、校验失败、归档路径或文件类型不合法时停止。
 4. 校验通过后解压，执行包内安装或更新程序，退出时清理临时目录。
 5. 安装系统基础依赖，检查面板端口，建立专用用户和目录，启动 systemd 服务，检查两个服务及 HTTPS 本机健康接口。
-6. 输出访问地址和初始化令牌；不会自动更改防火墙和云安全组。远程访问需要放行 TCP 18790。
+6. 输出实际访问地址及一次性随机账号密码；不会自动更改防火墙和云安全组。远程访问需要放行 TCP 18790。
 
 SHA-256 检查用于验证发布包传输完整性；信任来源仍是 GitHub 仓库、Release 和 HTTPS。未启用第三方镜像或自由下载地址覆盖。
 

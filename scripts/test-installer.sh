@@ -86,6 +86,7 @@ expect_failure 'reject failed release download' failed_latest
 echo 'PASS: curl fails HTTP errors and enforces HTTPS'
 (
   # shellcheck disable=SC2317 # Invoked indirectly by download().
+  # shellcheck disable=SC2329 # download() invokes this command lookup override.
   command() { if [ "${1:-}" = -v ] && [ "${2:-}" = curl ]; then return 1; fi; builtin command "$@"; }
   wget() { printf '%s\n' "$@" > "$fixture/wget.args"; }
   download 'https://example.invalid/asset' "$fixture/asset"

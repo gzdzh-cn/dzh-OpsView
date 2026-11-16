@@ -13,6 +13,7 @@ import (
 	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/security"
+	"opsview/internal/version"
 	"strconv"
 	"strings"
 	"time"
@@ -52,7 +53,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 func (c *Controller) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		send(w, 200, map[string]any{"status": "ok", "version": "0.1.0"})
+		send(w, 200, map[string]any{"status": "ok", "version": version.Current})
 	})
 	mux.HandleFunc("GET /api/v1/auth", c.authStatus)
 	mux.HandleFunc("POST /api/v1/auth/setup", c.setup)

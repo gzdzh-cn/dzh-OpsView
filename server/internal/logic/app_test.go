@@ -5,6 +5,7 @@ import (
 	"errors"
 	"opsview/internal/dao"
 	"opsview/internal/model"
+	"opsview/internal/runtimeconfig"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,7 +104,14 @@ func TestPanelBackupRestoreIntoNewDirectory(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(source, "panel.pem"), []byte("certificate-fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	app := &App{Store: store, PanelDir: source}
+	configPath := filepath.Join(dir, "runtime.json")
+	cfg := runtimeconfig.Default()
+	cfg.Port = 18881
+	cfg.PublicHost = "panel.example.com"
+	if err = runtimeconfig.Save(configPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, PanelDir: source, PanelConfigPath: configPath}
 	result, err := app.BackupPanel(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +133,14 @@ func TestPanelBackupRestoreIntoNewDirectory(t *testing.T) {
 	var admin model.Config
 	if err = restored.Setting("admin", &admin); err != nil || admin.String("username") != "test-admin" {
 		t.Fatal(admin, err)
+	}
+	snapshot, e := runtimeconfig.Load(filepath.Join(destination, "panel.json"))
+	if e != nil || snapshot != cfg {
+		t.Fatal("runtime snapshot lost", snapshot, e)
+	}
+	original, e := runtimeconfig.Load(configPath)
+	if e != nil || original != cfg {
+		t.Fatal("restore changed runtime config")
 	}
 	cert, _ := os.ReadFile(filepath.Join(destination, "panel.pem"))
 	if string(cert) != "certificate-fixture" {

@@ -211,7 +211,7 @@ onUnmounted(() => {
           <span>
             GoFrame + Vue 3
             <span class="muted">·</span>
-            v0.1.0
+            v0.1.1
           </span>
         </footer>
       </main>

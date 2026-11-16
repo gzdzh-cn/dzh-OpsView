@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared only by packaged Linux deployment scripts.
-deploy_error() { printf 'OpsView: %s\n' "$*" >&2; exit 1; }
+deploy_error() { printf 'OpsView: %s\n失败阶段：%s\n安装日志：%s\n' "$*" "${OPSVIEW_STAGE:-环境检查}" "${OPSVIEW_INSTALL_LOG:-未创建}" >&2; exit 1; }
 
 deploy_preflight() {
   if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then deploy_error '仅支持 Linux amd64。'; fi
@@ -30,16 +30,45 @@ ensure_dependencies() {
 }
 
 wait_for_panel() {
-  local _attempt response
+  local _attempt response url
+  url=$(/opt/opsview/bin/opsview runtime-config health-url) || return 1
   for _attempt in {1..30}; do
     if systemctl is-active --quiet opsview-panel.service && systemctl is-active --quiet opsview-executor.service; then
       # Only loopback health checks accept the initial self-signed certificate.
-      if response=$(curl --noproxy '*' --silent --fail --insecure --connect-timeout 1 --max-time 2 https://127.0.0.1:18790/api/v1/health) &&
+      if response=$(curl --noproxy '*' --silent --fail --insecure --connect-timeout 1 --max-time 2 "$url") &&
         [[ "$response" =~ \"status\"[[:space:]]*:[[:space:]]*\"ok\" ]]; then
         return 0
       fi
     fi
+    printf '等待服务健康检查：%s/30\n' "$_attempt"
     sleep 1
   done
   return 1
+}
+
+# stdout/stderr carry diagnostics only. FD 3 bypasses the log for one-time credentials.
+setup_install_log() {
+  [ -z "${OPSVIEW_INSTALL_LOG:-}" ] || return 0
+  install -d -o root -g root -m 0700 /var/log/opsview
+  OPSVIEW_INSTALL_LOG="/var/log/opsview/install-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
+  export OPSVIEW_INSTALL_LOG
+  (umask 077; : > "$OPSVIEW_INSTALL_LOG")
+  chmod 0600 "$OPSVIEW_INSTALL_LOG"
+  exec 3>&1
+  exec > >(tee -a "$OPSVIEW_INSTALL_LOG") 2>&1
+}
+stage_start() { OPSVIEW_STAGE="$1/8 $2"; printf '\n[%s] %s 开始\n' "$OPSVIEW_STAGE" "$(date '+%F %T %z')"; }
+stage_done() { printf '[%s] %s 完成\n' "$OPSVIEW_STAGE" "$(date '+%F %T %z')"; }
+install_failure() { local code=$?; printf '\n失败阶段：%s，退出码：%s\n安装日志：%s\n' "${OPSVIEW_STAGE:-环境检查}" "$code" "${OPSVIEW_INSTALL_LOG:-未创建}" >&2; exit "$code"; }
+
+check_ov_conflict() {
+  local candidate target
+  candidate=$(command -v ov || true)
+  for candidate in "$candidate" /usr/local/bin/ov; do
+    [ -n "$candidate" ] || continue
+    if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+      target=$(readlink -f "$candidate" || true)
+      [ "$target" = /opt/opsview/bin/opsview ] || deploy_error "已有非 OpsView 的 ov 命令：$candidate，请先解决命令冲突。"
+    fi
+  done
 }

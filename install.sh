@@ -1,15 +1,30 @@
 #!/usr/bin/env bash
 # Public GitHub bootstrap. The target machine does not need Go, Node.js or Git.
-set -euo pipefail
+set +x
+set -Eeuo pipefail
 umask 077
 
 OPSVIEW_REPOSITORY=gzdzh-cn/dzh-OpsView
 OPSVIEW_ASSET=opsview-linux-amd64.tar.gz
 
-die() { printf 'OpsView: %s\n' "$*" >&2; exit 1; }
+setup_install_log() {
+  [ -z "${OPSVIEW_INSTALL_LOG:-}" ] || return 0
+  install -d -o root -g root -m 0700 /var/log/opsview
+  OPSVIEW_INSTALL_LOG="/var/log/opsview/install-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
+  export OPSVIEW_INSTALL_LOG
+  (umask 077; : > "$OPSVIEW_INSTALL_LOG")
+  chmod 0600 "$OPSVIEW_INSTALL_LOG"
+  exec 3>&1
+  exec > >(tee -a "$OPSVIEW_INSTALL_LOG") 2>&1
+}
+stage_start() { OPSVIEW_STAGE="$1/8 $2"; printf '\n[%s] %s 开始\n' "$OPSVIEW_STAGE" "$(date '+%F %T %z')"; }
+stage_done() { printf '[%s] %s 完成\n' "$OPSVIEW_STAGE" "$(date '+%F %T %z')"; }
+install_failure() { local code=$?; printf '\n失败阶段：%s，退出码：%s\n安装日志：%s\n' "${OPSVIEW_STAGE:-环境检查}" "$code" "${OPSVIEW_INSTALL_LOG:-未创建}" >&2; exit "$code"; }
+
+die() { printf 'OpsView: %s\n失败阶段：%s\n安装日志：%s\n' "$*" "${OPSVIEW_STAGE:-环境检查}" "${OPSVIEW_INSTALL_LOG:-未创建}" >&2; exit 1; }
 
 usage() {
-  echo '用法：bash install.sh [--version v0.1.0] [--update]'
+  echo '用法：bash install.sh [--version v0.1.1] [--public-host 域名或IPv4] [--update]'
   echo '默认安装 GitHub 最新正式 Release；--update 更新已有安装并在失败时回退。'
 }
 
@@ -36,10 +51,10 @@ check_host() {
 download() {
   local url=$1 destination=$2
   if command -v curl >/dev/null 2>&1; then
-    curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 600 \
+    curl --fail --location --progress-bar --show-error --retry 3 --connect-timeout 15 --max-time 600 \
       --proto '=https' --proto-redir '=https' --output "$destination" "$url"
   elif command -v wget >/dev/null 2>&1; then
-    wget --https-only --quiet --tries=3 --timeout=60 --output-document="$destination" "$url"
+    wget --https-only --progress=bar:force --tries=3 --timeout=60 --output-document="$destination" "$url"
   else
     die '需要 curl 或 wget，请先安装其中之一。'
   fi
@@ -78,15 +93,19 @@ verify_package() {
 }
 
 bootstrap_main() {
-  local version='' mode=install directory base tool
+  local version='' mode=install directory base tool public_host=''
+  local deploy_args=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --version) [ "$#" -ge 2 ] || die '--version 缺少版本号。'; version=$2; validate_version "$version" || die '版本号应为 v0.1.0 或 v0.1.0-rc.1。'; shift 2 ;;
+      --version) [ "$#" -ge 2 ] || die '--version 缺少版本号。'; version=$2; validate_version "$version" || die '版本号应为 v0.1.1 或 v0.1.1-rc.1。'; shift 2 ;;
       --update) mode=update; shift ;;
+      --public-host) [ "$#" -ge 2 ] || die '--public-host 缺少地址。'; public_host=$2; shift 2 ;;
       -h|--help) usage; return ;;
       *) usage >&2; die "未知参数：$1" ;;
     esac
   done
+  if [ "$(uname -s)" = Linux ] && [ "$(id -u)" -eq 0 ]; then setup_install_log; trap install_failure ERR; fi
+  stage_start 1 环境检查
   check_host
   for tool in tar gzip sha256sum mktemp awk sed flock; do
     command -v "$tool" >/dev/null || die "缺少基础命令 $tool，请安装 tar gzip coreutils util-linux。"
@@ -102,17 +121,30 @@ bootstrap_main() {
   else
     [ -x /opt/opsview/bin/opsview ] || die '未检测到已有安装，请移除 --update。'
   fi
+  stage_done
+  stage_start 2 解析版本
   directory=$(mktemp -d /tmp/opsview-install.XXXXXXXX)
   # shellcheck disable=SC2064 # Freeze the local temp path before this function returns.
   trap "rm -rf -- $(printf '%q' "$directory")" EXIT
   [ -n "$version" ] || version=$(resolve_version "$directory")
+  if [ "$mode" = update ] && [ -f /etc/opsview/panel.json ] && [[ "$version" =~ ^v0\.(0\.[0-9]+|1\.0)(-|$) ]]; then
+    die '目标旧版本不支持运行配置及 ov，请使用 v0.1.1 或更新版本。'
+  fi
+  stage_done
+  stage_start 3 下载
   base="https://github.com/$OPSVIEW_REPOSITORY/releases/download/$version"
   printf '正在下载 OpsView %s（%s）…\n' "$version" "$mode"
   download "$base/SHA256SUMS" "$directory/SHA256SUMS" || die '无法下载 SHA256SUMS；请确认版本已发布且仓库公开。'
   download "$base/$OPSVIEW_ASSET" "$directory/$OPSVIEW_ASSET" || die '发布包下载失败。'
+  stage_done
+  stage_start 4 校验解压
   verify_package "$directory"
   tar --extract --gzip --no-same-owner --no-same-permissions --file "$directory/$OPSVIEW_ASSET" --directory "$directory"
-  bash "$directory/opsview-linux-amd64/deploy/$mode.sh"
+  stage_done
+  export OPSVIEW_BOOTSTRAP=1
+  [ -z "$public_host" ] || deploy_args+=(--public-host "$public_host")
+  OPSVIEW_STAGE="5–8/8 安装服务"
+  bash "$directory/opsview-linux-amd64/deploy/$mode.sh" "${deploy_args[@]}"
 }
 
 if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then

@@ -32,7 +32,7 @@ sudo opsview trust-key --id team --file /path/to/team.key.pub
 
 ## 插件清单
 
-参考 `examples/operations-plugin.json` 和内置插件清单。字段包含 id、name、version、type、description、minPanelVersion、platforms、permissions、dependencies、form；第三方 builtin 必须为 false。当前兼容版本是 0.1.0。
+参考 `examples/operations-plugin.json` 和内置插件清单。字段包含 id、name、version、type、description、minPanelVersion、platforms、permissions、dependencies、form；第三方 builtin 必须为 false。面板 0.1.1 继续接受 minPanelVersion 为 0.1.0 的现有清单。
 
 | 类型 | 内容 |
 | --- | --- |

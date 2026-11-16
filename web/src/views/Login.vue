@@ -5,7 +5,7 @@ import { post, errorText, setCSRF } from '../lib/api'
 defineProps<{ connectionError: string }>()
 const emit = defineEmits(['ready'])
 const panel = usePanel(),
-  username = ref('admin'),
+  username = ref(''),
   password = ref(''),
   token = ref(''),
   code = ref(''),

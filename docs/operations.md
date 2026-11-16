@@ -4,12 +4,14 @@
 
 | 路径 | 内容与权限 |
 | --- | --- |
-| `/opt/opsview/bin` | root 安装的四个二进制 |
-| `/var/lib/opsview/panel` | opsview 用户 0700，SQLite、初始化令牌、面板证书、配置备份 |
+| `/opt/opsview/bin` | root 安装的四个二进制及受控更新脚本 |
+| `/var/lib/opsview/panel` | opsview 用户 0700，SQLite、面板证书、配置备份（未初始化的旧安装还包含令牌） |
 | `/var/lib/opsview/panel/master.key` | 面板凭据与配置备份主密钥，单独离线保存 |
 | `/var/lib/opsview/managed` | root 管理的业务目录，实例、站点、应用、备份、状态 |
 | `/var/lib/opsview/managed/executor.key` | 执行器状态密钥，单独离线保存 |
 | `/var/lib/opsview/managed/backup.key` | 业务备份密钥，单独离线保存 |
+| `/etc/opsview/panel.json` | root:root 0644，监听 IP、端口、对外主机，无密码 |
+| `/var/log/opsview` | root 0700，安装日志 0600，不含一次性密码 |
 | `/etc/opsview/trust.d` | root 管理的 Ed25519 公钥 |
 | `/run/opsview/executor.sock` | root:opsview，0660 |
 
@@ -52,7 +54,7 @@ sudo opsview backup-config
 sudo opsview restore-config --file /var/lib/opsview/panel/backups/EXAMPLE.ovp --output /var/lib/opsview/panel-restored
 ```
 
-`restore-config` 读取当前数据目录中的 `master.key`，认证解密后恢复 SQLite 和面板证书到新目录，检查 SQLite 完整性，并使旧会话失效。新目录必须尚不存在。默认不会切换正在运行的面板。
+`restore-config` 读取当前数据目录中的 `master.key`，认证解密后恢复 SQLite、面板证书和运行配置快照到新目录，检查 SQLite 完整性，并使旧会话失效。新目录必须尚不存在。默认不会切换正在运行的面板。`panel.json` 快照不会自动覆盖 `/etc/opsview/panel.json`，需人工核对后切换。
 
 验证新目录后停止面板，保留旧目录，将新目录切换为 `/var/lib/opsview/panel`，确保 owner 为 opsview、目录 0700，再启动面板。不要在运行中替换 SQLite 数据库，也不要遗漏 WAL 文件。恢复后重启的任务标为中断，核对执行器现场后再重试。
 
@@ -61,8 +63,8 @@ sudo opsview restore-config --file /var/lib/opsview/panel/backups/EXAMPLE.ovp --
 已按 README 下载 bootstrap 时，可以直接更新：
 
 ```bash
-sudo bash install_opsview.sh --update
-sudo bash install_opsview.sh --update --version v0.1.0
+sudo ov update
+sudo ov update --version v0.1.1
 ```
 
 也可以解压新包后，在服务器执行：
@@ -71,20 +73,29 @@ sudo bash install_opsview.sh --update --version v0.1.0
 sudo bash opsview-linux-amd64/deploy/update.sh
 ```
 
-更新脚本停止面板及执行器，完整备份面板目录、旧二进制与 systemd 单元；替换后检查两个服务及 HTTPS 健康接口，失败时把失败数据目录移出并恢复完整旧目录、二进制和单元。备份保存于 `/var/lib/opsview/updates/`，含主密钥，须限制访问并按需离线保存。自定义 systemd 配置使用 `systemctl edit` 的 drop-in，主单元随发布包更新。版本 0.1.0 的 schema 为 1；数据库来自较新 schema 时拒绝打开。
+更新脚本停止面板及执行器，完整备份面板目录、旧二进制、受控更新脚本、运行配置、ov 入口与 systemd 单元；替换后检查两个服务及 HTTPS 健康接口，失败时把失败数据目录移出并恢复完整旧目录、二进制和单元。备份保存于 `/var/lib/opsview/updates/`，含主密钥，须限制访问并按需离线保存。自定义 systemd 配置使用 `systemctl edit` 的 drop-in，主单元随发布包更新。与端口管理冲突的 ExecStart 覆盖会拒绝更新。版本 0.1.x 的 schema 为 1；数据库来自较新 schema 时拒绝打开。
 
 已安装的 `opsview` 命令默认使用 `/var/lib/opsview/panel`。root 执行维护命令时，会转为 opsview 用户，避免创建 root 所属 WAL；信任公钥命令保留 root 权限。开发二进制默认使用当前目录的 `.opsview`，可用 `--data` 指定。
 
 ```bash
-sudo opsview reset-admin          # 打印随机新密码，关闭 TOTP，并使旧会话失效
-sudo opsview recover-access       # 清空面板 IP 限制，并使旧会话失效
-sudo opsview diagnose             # 输出脱敏任务状态与资源数量
-sudo journalctl -u opsview-panel -u opsview-executor -n 200 --no-pager
+sudo ov                          # 中文编号菜单，非交互环境显示帮助
+sudo ov info                     # 实际地址、用户名；密码不保存
+sudo ov password                 # 隐藏输入，留空生成随机密码；保留 TOTP
+sudo ov username new-user        # 更改用户名，旧会话失效；保留 TOTP
+sudo ov reset-2fa                # 单独确认后关闭 TOTP
+sudo ov recover-access          # 清空面板 IP 限制，旧会话失效
+sudo ov diagnose                # 脱敏诊断输出
+sudo ov port                    # 来源受限的 UFW 放行、重启及本机健康检查，失败回退
+sudo ov info --public-host panel.example.com
 ```
+
+`ov start` 确保执行器运行；`ov stop`、`ov restart` 只操作面板。`ov status`、`ov logs` 同时查看两个服务。密码只在生成时显示，不写入安装日志、journal、命令参数或环境变量。自动化可通过 `ov password --stdin` 传入密码。已有管理员不会被安装或更新覆盖；未初始化的旧版本可执行 `ov init`。
+
+保留旧维护命令：`opsview reset-admin` 会同时关闭 TOTP，`opsview recover-access`、`opsview backup-config`、`opsview diagnose` 仍可使用。完整菜单和安装进度说明见 [安装教程](../安装教程.md)。
 
 ## 防火墙
 
-面板不自动启用或重置已有 UFW，不接管未知 nftables 策略。主机管理员应先核对实际 SSH 端口、放行 SSH 和面板，再启用 UFW。面板拒绝覆盖保留端口和 sshd 配置端口的 deny 规则。
+面板不自动启用或重置已有 UFW，不接管未知 nftables 策略。主机管理员应先核对实际 SSH 端口、放行 SSH 和面板，再启用 UFW。面板从运行配置读取实际面板端口，拒绝覆盖保留端口和 sshd 配置端口的 deny 规则。
 
 宿主机规则使用 UFW；Docker bridge 的 DNAT 发布端口使用 DOCKER-USER，要求兼容 iptables 后端；不接管 Docker routed/direct-routing 模式。ALLOW 规则只放行其匹配来源，不会自动拒绝所有其他来源；要实现白名单，应先为对应端口添加 deny any 并确认，再添加指定来源 allow。规则插入链头，后添加的规则先匹配。务必从独立机器验证实际可达性，IPv4 和 IPv6 分别检查。核心数据库使用 host 网络，受宿主机规则管理。
 

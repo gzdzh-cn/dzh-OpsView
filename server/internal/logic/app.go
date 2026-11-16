@@ -18,14 +18,15 @@ import (
 )
 
 type App struct {
-	Store       *dao.Store
-	Executor    service.Executor
-	PanelDir    string
-	Root        string
-	Development bool
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
-	schedule    *cron.Cron
+	Store           *dao.Store
+	Executor        service.Executor
+	PanelDir        string
+	PanelConfigPath string
+	Root            string
+	Development     bool
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	schedule        *cron.Cron
 }
 
 func (a *App) Start() {

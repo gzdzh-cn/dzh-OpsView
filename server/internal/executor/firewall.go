@@ -7,6 +7,7 @@ import (
 	"net"
 	"opsview/internal/logic"
 	"opsview/internal/model"
+	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
 	"os"
 	"os/exec"
@@ -85,7 +86,11 @@ func (e *Engine) firewall(ctx context.Context, op model.Operation, log func(stri
 		return nil, err
 	}
 	if r.Config.String("action") == "deny" {
-		protected := []string{"22", "18790", "18791"}
+		cfg, configErr := runtimeconfig.Load(runtimeconfig.Path)
+		if configErr != nil {
+			return nil, configErr
+		}
+		protected := []string{"22", strconv.Itoa(cfg.Port), "18791"}
 		if config, err := output(ctx, "sshd", "-T"); err == nil {
 			for _, line := range strings.Split(config, "\n") {
 				fields := strings.Fields(line)

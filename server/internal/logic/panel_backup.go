@@ -8,6 +8,7 @@ import (
 	"io"
 	"opsview/internal/dao"
 	"opsview/internal/model"
+	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
 	"os"
 	"path/filepath"
@@ -56,6 +57,17 @@ func (a *App) BackupPanel(ctx context.Context) (model.Config, error) {
 	if err == nil {
 		if _, statErr := os.Stat(filepath.Join(a.PanelDir, "panel.pem")); statErr == nil {
 			err = add("panel.pem", filepath.Join(a.PanelDir, "panel.pem"))
+		}
+	}
+	if err == nil {
+		configPath := a.PanelConfigPath
+		if configPath == "" {
+			configPath = runtimeconfig.Path
+		}
+		if _, statErr := os.Stat(configPath); statErr == nil {
+			err = add("panel.json", configPath)
+		} else if !os.IsNotExist(statErr) {
+			err = statErr
 		}
 	}
 	if closeErr := tw.Close(); err == nil {
@@ -126,7 +138,7 @@ func RestorePanel(data, artifact, destination string) error {
 		if err != nil {
 			return err
 		}
-		if (header.Name != "opsview.db" && header.Name != "panel.pem") || header.Typeflag != tar.TypeReg || header.Size > 1<<30 {
+		if (header.Name != "opsview.db" && header.Name != "panel.pem" && header.Name != "panel.json") || header.Typeflag != tar.TypeReg || header.Size > 1<<30 {
 			return errors.New("面板备份包含不允许的条目")
 		}
 		out, err := os.OpenFile(filepath.Join(stage, header.Name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -151,6 +163,11 @@ func RestorePanel(data, artifact, destination string) error {
 	_ = os.Remove(archive)
 	if err = security.WriteAtomic(filepath.Join(stage, "master.key"), key, 0600); err != nil {
 		return err
+	}
+	if _, e := os.Stat(filepath.Join(stage, "panel.json")); e == nil {
+		if _, e = runtimeconfig.Load(filepath.Join(stage, "panel.json")); e != nil {
+			return e
+		}
 	}
 	store, err := dao.Open(stage)
 	if err != nil {
