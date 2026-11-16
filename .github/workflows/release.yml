@@ -1,0 +1,87 @@
+name: Publish Linux release
+
+on:
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Verify release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash -c 'source ./install.sh; validate_version "$RELEASE_TAG"'
+      - run: npm ci
+        working-directory: web
+      - run: make api check
+      - run: ./scripts/test-installer.sh
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npm run test:e2e
+        working-directory: web
+      - run: make release
+      - name: Verify release checksums
+        run: sha256sum --check SHA256SUMS
+        working-directory: dist
+      - name: Exercise real systemd installation and rollback
+        run: sudo env GITHUB_ACTIONS=true bash scripts/test-deployment.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opsview-release
+          path: |
+            dist/opsview-linux-amd64.tar.gz
+            dist/SHA256SUMS
+            dist/install.sh
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: opsview-release
+          path: dist
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check SHA256SUMS
+          if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > draft-state; then
+            [ "$(cat draft-state)" = true ] || { echo 'Published releases are immutable in this workflow; use a new tag.' >&2; exit 1; }
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "OpsView $RELEASE_TAG" --notes 'Linux amd64 开发测试版本。包含独立 HTTPS 面板、特权执行器及安装/更新程序；生产验收状态见仓库 docs/acceptance.md。'
+          fi
+          gh release upload "$RELEASE_TAG" opsview-linux-amd64.tar.gz SHA256SUMS install.sh --clobber
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --prerelease --draft=false --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi

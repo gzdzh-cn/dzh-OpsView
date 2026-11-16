@@ -1,0 +1,1 @@
+{"id":"nginx-custom-example","software":"nginx","version":"1.28.0","source":"https://nginx.org/download/nginx-1.28.0.tar.gz","sha256":"REPLACE_WITH_VERIFIED_SHA256","platforms":["linux/amd64"],"description":"示例：替换摘要并预先验证平台后签名导入"}

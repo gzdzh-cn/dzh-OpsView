@@ -1,0 +1,47 @@
+import type { components } from './api.generated'
+export type Resource = Omit<components['schemas']['Resource'], 'config'> & { config: Config }
+export type Task = components['schemas']['Task']
+export type Config = Record<string, any>
+let csrf = ''
+export function setCSRF(token: string) {
+  csrf = token
+}
+export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch('/api/v1' + path, {
+    ...options,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, ...options.headers },
+  })
+  const data = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+  if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event('opsview:unauthorized'))
+    throw new Error(data.error || '请求失败')
+  }
+  return data as T
+}
+export const post = <T = any>(path: string, body: unknown = {}) =>
+  api<T>(path, { method: 'POST', body: JSON.stringify(body) })
+export const put = <T = any>(path: string, body: unknown) =>
+  api<T>(path, { method: 'PUT', body: JSON.stringify(body) })
+export const action = (id: string, operation: string, params: unknown = {}) =>
+  post<Task>(`/resources/${id}/actions/${operation}`, params)
+export function errorText(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+export function size(bytes: number = 0) {
+  if (!bytes) return '0 B'
+  const i = Math.min(4, Math.floor(Math.log(bytes) / Math.log(1024)))
+  return `${(bytes / 1024 ** i).toFixed(i > 0 ? 1 : 0)} ${['B', 'KB', 'MB', 'GB', 'TB'][i]}`
+}
+export function date(value?: string) {
+  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
+}
+export function toBase64(text: string) {
+  const bytes = new TextEncoder().encode(text)
+  let s = ''
+  for (const v of bytes) s += String.fromCharCode(v)
+  return btoa(s)
+}
+export function fromBase64(text: string) {
+  return new TextDecoder().decode(Uint8Array.from(atob(text), (c) => c.charCodeAt(0)))
+}

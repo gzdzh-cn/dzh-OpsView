@@ -1,0 +1,17 @@
+[Unit]
+Description=OpsView local privileged executor
+After=network.target docker.service
+[Service]
+Type=simple
+User=root
+Group=opsview
+RuntimeDirectory=opsview
+RuntimeDirectoryMode=0750
+ExecStart=/opt/opsview/bin/opsview-executor --root /var/lib/opsview/managed --socket /run/opsview/executor.sock --group opsview
+Restart=on-failure
+RestartSec=3
+UMask=0027
+ProtectHome=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target

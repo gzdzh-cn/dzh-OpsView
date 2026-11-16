@@ -1,0 +1,252 @@
+package dao
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	_ "modernc.org/sqlite"
+	"opsview/internal/model"
+	"opsview/internal/security"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+type Store struct {
+	DB    *sql.DB
+	Vault *security.Vault
+}
+
+func Open(dir string) (*Store, error) {
+	if e := os.MkdirAll(dir, 0700); e != nil {
+		return nil, e
+	}
+	v, e := security.OpenVault(filepath.Join(dir, "master.key"))
+	if e != nil {
+		return nil, e
+	}
+	db, e := sql.Open("sqlite", filepath.Join(dir, "opsview.db"))
+	if e != nil {
+		return nil, e
+	}
+	db.SetMaxOpenConns(1)
+	var schemaVersion int
+	if e = db.QueryRow("PRAGMA user_version").Scan(&schemaVersion); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if schemaVersion > 1 {
+		db.Close()
+		return nil, errors.New("面板数据库来自较新版本，禁止降级打开")
+	}
+
+	s := &Store{db, v}
+	_, e = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+ CREATE TABLE IF NOT EXISTS resources (id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, config TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(kind,name));
+ CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, resource_id TEXT NOT NULL, operation TEXT NOT NULL, state TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS events_task ON events(task_id,sequence);
+ CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, resource_id TEXT NOT NULL, ip TEXT NOT NULL, created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires INTEGER NOT NULL);
+ PRAGMA user_version=1;`)
+	if e != nil {
+		db.Close()
+		return nil, e
+	}
+	return s, nil
+}
+func Now() string                    { return time.Now().UTC().Format(time.RFC3339) }
+func (s *Store) encode(v any) string { b, _ := json.Marshal(v); return s.Vault.Encrypt(b) }
+func (s *Store) decode(v string, out any) error {
+	b, e := s.Vault.Decrypt(v)
+	if e != nil {
+		return e
+	}
+	return json.Unmarshal(b, out)
+}
+func (s *Store) Setting(k string, out any) error {
+	var v string
+	if e := s.DB.QueryRow(`SELECT value FROM settings WHERE key=?`, k).Scan(&v); e != nil {
+		return e
+	}
+	return s.decode(v, out)
+}
+func (s *Store) Set(k string, v any) error {
+	_, e := s.DB.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, s.encode(v))
+	return e
+}
+func (s *Store) Resources(kind string) ([]model.Resource, error) {
+	q := `SELECT id,kind,name,status,config,revision,created_at,updated_at FROM resources`
+	args := []any{}
+	if kind != "" {
+		q += ` WHERE kind=?`
+		args = append(args, kind)
+	}
+	q += ` ORDER BY created_at DESC`
+	rows, e := s.DB.Query(q, args...)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []model.Resource{}
+	for rows.Next() {
+		var r model.Resource
+		var c string
+		if e = rows.Scan(&r.ID, &r.Kind, &r.Name, &r.Status, &c, &r.Revision, &r.CreatedAt, &r.UpdatedAt); e != nil {
+			return nil, e
+		}
+		if e = s.decode(c, &r.Config); e != nil {
+			return nil, e
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+func (s *Store) Resource(id string) (model.Resource, error) {
+	var r model.Resource
+	var c string
+	e := s.DB.QueryRow(`SELECT id,kind,name,status,config,revision,created_at,updated_at FROM resources WHERE id=?`, id).Scan(&r.ID, &r.Kind, &r.Name, &r.Status, &c, &r.Revision, &r.CreatedAt, &r.UpdatedAt)
+	if e == nil {
+		e = s.decode(c, &r.Config)
+	}
+	return r, e
+}
+func (s *Store) Create(r *model.Resource) error {
+	if r.ID == "" {
+		r.ID = security.ID()
+	}
+	r.CreatedAt = Now()
+	r.UpdatedAt = r.CreatedAt
+	r.Revision = 1
+	if r.Status == "" {
+		r.Status = "pending"
+	}
+	_, e := s.DB.Exec(`INSERT INTO resources VALUES(?,?,?,?,?,?,?,?)`, r.ID, r.Kind, r.Name, r.Status, s.encode(r.Config), r.Revision, r.CreatedAt, r.UpdatedAt)
+	return e
+}
+func (s *Store) Update(r *model.Resource) error {
+	res, e := s.DB.Exec(`UPDATE resources SET name=?,status=?,config=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, r.Name, r.Status, s.encode(r.Config), Now(), r.ID, r.Revision)
+	if e != nil {
+		return e
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return errors.New("资源已被修改，请刷新后重试")
+	}
+	r.Revision++
+	return nil
+}
+func (s *Store) Delete(id string) error {
+	_, e := s.DB.Exec(`DELETE FROM resources WHERE id=?`, id)
+	return e
+}
+func (s *Store) Audit(action, id, ip string) {
+	_, _ = s.DB.Exec(`INSERT INTO audit(action,resource_id,ip,created_at) VALUES(?,?,?,?)`, action, id, ip, Now())
+}
+func (s *Store) Audits() ([]model.Audit, error) {
+	rows, e := s.DB.Query(`SELECT id,action,resource_id,ip,created_at FROM audit ORDER BY id DESC LIMIT 300`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []model.Audit{}
+	for rows.Next() {
+		var a model.Audit
+		if e = rows.Scan(&a.ID, &a.Action, &a.ResourceID, &a.IP, &a.CreatedAt); e != nil {
+			return nil, e
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+func (s *Store) Enqueue(op model.Operation) (model.Task, error) {
+	t := model.Task{ID: security.ID(), ResourceID: op.Resource.ID, Operation: op.Name, State: "queued", CreatedAt: Now(), UpdatedAt: Now()}
+	tx, e := s.DB.Begin()
+	if e != nil {
+		return t, e
+	}
+	defer tx.Rollback()
+	var n int
+	if e = tx.QueryRow(`SELECT count(*) FROM tasks WHERE resource_id=? AND state IN ('queued','running')`, t.ResourceID).Scan(&n); e != nil {
+		return t, e
+	}
+	if n > 0 {
+		return t, errors.New("该资源已有待执行或运行中的任务")
+	}
+	_, e = tx.Exec(`INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?)`, t.ID, t.ResourceID, t.Operation, t.State, "", s.encode(op), t.CreatedAt, t.UpdatedAt)
+	if e != nil {
+		return t, e
+	}
+	return t, tx.Commit()
+}
+func (s *Store) Tasks() ([]model.Task, error) {
+	rows, e := s.DB.Query(`SELECT id,resource_id,operation,state,error,created_at,updated_at FROM tasks ORDER BY created_at DESC LIMIT 200`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []model.Task{}
+	for rows.Next() {
+		var t model.Task
+		if e = rows.Scan(&t.ID, &t.ResourceID, &t.Operation, &t.State, &t.Error, &t.CreatedAt, &t.UpdatedAt); e != nil {
+			return nil, e
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+func (s *Store) Claim() (model.Task, model.Operation, error) {
+	var t model.Task
+	var op model.Operation
+	var p string
+	tx, e := s.DB.Begin()
+	if e != nil {
+		return t, op, e
+	}
+	defer tx.Rollback()
+	e = tx.QueryRow(`SELECT id,resource_id,operation,state,error,created_at,updated_at,payload FROM tasks WHERE state='queued' ORDER BY rowid LIMIT 1`).Scan(&t.ID, &t.ResourceID, &t.Operation, &t.State, &t.Error, &t.CreatedAt, &t.UpdatedAt, &p)
+	if e != nil {
+		return t, op, e
+	}
+	if e = s.decode(p, &op); e != nil {
+		return t, op, e
+	}
+	_, e = tx.Exec(`UPDATE tasks SET state='running',updated_at=? WHERE id=? AND state='queued'`, Now(), t.ID)
+	if e != nil {
+		return t, op, e
+	}
+	return t, op, tx.Commit()
+}
+func (s *Store) Finish(id, state, msg string) error {
+	_, e := s.DB.Exec(`UPDATE tasks SET state=?,error=?,updated_at=? WHERE id=?`, state, msg, Now(), id)
+	return e
+}
+func (s *Store) Event(id, msg string) {
+	_, _ = s.DB.Exec(`INSERT INTO events(task_id,message,created_at) VALUES(?,?,?)`, id, msg, Now())
+}
+func (s *Store) Events(id string, after int64) ([]model.Event, error) {
+	rows, e := s.DB.Query(`SELECT sequence,task_id,message,created_at FROM events WHERE task_id=? AND sequence>? ORDER BY sequence LIMIT 500`, id, after)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []model.Event{}
+	for rows.Next() {
+		var v model.Event
+		if e = rows.Scan(&v.Sequence, &v.TaskID, &v.Message, &v.CreatedAt); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+func (s *Store) Snapshot(ctx context.Context, path string) error {
+	if _, e := os.Stat(path); !os.IsNotExist(e) {
+		return fmt.Errorf("目标文件已存在")
+	}
+	_, e := s.DB.ExecContext(ctx, `VACUUM INTO ?`, path)
+	return e
+}

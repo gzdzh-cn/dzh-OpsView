@@ -1,0 +1,9 @@
+node_modules/
+web/dist/
+dist/
+.opsview/
+*.db*
+*.log
+playwright-report/
+test-results/
+.DS_Store

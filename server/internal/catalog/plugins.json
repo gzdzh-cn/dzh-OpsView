@@ -1,0 +1,105 @@
+[
+  {
+    "id": "redis",
+    "name": "Redis",
+    "version": "7.4.12",
+    "description": "轻量的内存数据服务。默认仅本机发布端口，使用持久化卷保存数据。",
+    "type": "application",
+    "permissions": [
+      "docker.compose"
+    ],
+    "dependencies": [
+      "docker"
+    ],
+    "form": [
+      {
+        "key": "port",
+        "label": "本机端口",
+        "type": "port",
+        "default": 6379
+      }
+    ],
+    "compose": "services:\n  redis:\n    image: redis@sha256:b6b6e3dc0c0952737748e55d5d885272840c7e42ba41ab1d5489f693419882f5\n    command: [\"redis-server\", \"--appendonly\", \"yes\"]\n    ports: [\"127.0.0.1:{{port}}:6379\"]\n    volumes: [\"data:/data\"]\n    restart: unless-stopped\nvolumes:\n  data: {}\n",
+    "minPanelVersion": "0.1.0",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "builtin": true
+  },
+  {
+    "id": "adminer",
+    "name": "Adminer",
+    "version": "5.4.1",
+    "description": "独立数据库管理工具。安装后通过站点反向代理访问，数据库密码由使用者自行输入。",
+    "type": "application",
+    "permissions": [
+      "docker.compose"
+    ],
+    "dependencies": [
+      "docker"
+    ],
+    "form": [
+      {
+        "key": "port",
+        "label": "本机端口",
+        "type": "port",
+        "default": 8081
+      }
+    ],
+    "compose": "services:\n  adminer:\n    image: adminer@sha256:a3167350c4eb9ae4473b8ea0f49c8e5ae74c87b240ee2f6086521dba2a6bf243\n    ports: [\"127.0.0.1:{{port}}:8080\"]\n    restart: unless-stopped\n",
+    "minPanelVersion": "0.1.0",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "builtin": true
+  },
+  {
+    "id": "s3-backup",
+    "name": "S3 兼容存储",
+    "version": "1.0.0",
+    "description": "将加密备份写入 S3 兼容对象存储，支持自定义端点、保留策略与完整性校验。",
+    "type": "backup",
+    "permissions": [
+      "backup.s3",
+      "network.outbound"
+    ],
+    "dependencies": [],
+    "form": [
+      {
+        "key": "endpoint",
+        "label": "HTTPS Endpoint",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "bucket",
+        "label": "Bucket",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "region",
+        "label": "Region",
+        "type": "text",
+        "default": "us-east-1"
+      },
+      {
+        "key": "accessKey",
+        "label": "Access Key",
+        "type": "password",
+        "default": ""
+      },
+      {
+        "key": "secretKey",
+        "label": "Secret Key",
+        "type": "password",
+        "default": ""
+      }
+    ],
+    "minPanelVersion": "0.1.0",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "builtin": true
+  }
+]

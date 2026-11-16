@@ -1,0 +1,1 @@
+{"id":"custom-check","name":"自定义检查","version":"1.0.0","description":"示例：替换为真实 worker 工件和摘要","type":"operations","minPanelVersion":"0.1.0","platforms":["linux/amd64"],"permissions":["metrics.read"],"dependencies":[],"form":[],"workerUrl":"https://example.com/worker-linux-amd64","sha256":"REPLACE_WITH_VERIFIED_SHA256","builtin":false}
