@@ -181,8 +181,10 @@ async function load() {
       editable.value
     )
       await readDocument()
-    if (page.value === 'session')
+    if (page.value === 'session') {
       session.value = await api(url('session') + '?siteId=' + scopeSite.value)
+      sessionRedis.value = session.value.instanceId || ''
+    }
     if (page.value === 'metrics') metrics.value = await api(url('metrics'))
     if (page.value === 'performance' && sw.value === 'mysql') await estimateMemory()
     if (['error', 'slow'].includes(page.value)) {

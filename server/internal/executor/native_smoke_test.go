@@ -125,6 +125,9 @@ func TestNativePackageSmoke(t *testing.T) {
 				t.Fatalf("missing built-in extension %s", module)
 			}
 		}
+		if realSystemd {
+			testPHPIndependentSites(t, e, r)
+		}
 	case "nginx":
 		probe := r
 		probe.Config = cloneConfig(r.Config)

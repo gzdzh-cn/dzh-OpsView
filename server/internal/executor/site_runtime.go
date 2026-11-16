@@ -43,6 +43,12 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 			return err
 		}
 	}
+	if _, err = safePath(base, "sessions"); err != nil {
+		return err
+	}
+	if err = os.Chmod(base+"/sessions", 0700); err != nil {
+		return err
+	}
 	if err = run(ctx, log, "", nil, nil, "chown", "-R", user+":"+user, base+"/logs", base+"/sessions"); err != nil {
 		return err
 	}
@@ -50,6 +56,9 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 	ini, err := os.ReadFile(base + "/conf/php.ini")
 	if os.IsNotExist(err) {
 		ini, err = os.ReadFile(filepath.Join(e.Root, "instances", php.ID, "conf", "php.ini"))
+		if err == nil && phpIniValue(string(ini), "session.save_handler", "files") == "redis" {
+			r.Config["sessionRedisInstanceId"] = php.Config.String("sessionRedisInstanceId")
+		}
 	}
 	if err != nil {
 		return err
@@ -66,9 +75,7 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 		}
 		ini = []byte(text)
 	}
-	if !strings.Contains(string(ini), "session.save_path") {
-		ini = append(ini, []byte("\n[Session]\nsession.save_path = "+base+"/sessions\n")...)
-	}
+	ini = []byte(sitePHPIni(string(ini), base))
 	if st, er := os.Stat(base + "/conf/php.ini"); er == nil {
 		err = writeOwnedAtomic(base+"/conf/php.ini", ini, st.Mode().Perm())
 	} else if os.IsNotExist(er) {

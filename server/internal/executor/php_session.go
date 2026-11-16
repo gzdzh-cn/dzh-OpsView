@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -48,37 +49,18 @@ func (e *Engine) phpSession(ctx context.Context, r model.Resource, p model.Confi
 	sessions := base + "/sessions"
 	switch p.String("operation") {
 	case "", "inspect":
-		handler := "files"
-		re := regexp.MustCompile(`(?m)^session\.save_handler\s*=\s*([a-z]+)`)
-		if m := re.FindSubmatch(old); len(m) > 1 {
-			handler = string(m[1])
+		expired, er := phpSessionFiles(base, false)
+		if er != nil {
+			return nil, er
 		}
-		entries, _ := os.ReadDir(sessions)
-		expired := 0
-		for _, item := range entries {
-			if st, er := item.Info(); er == nil && st.Mode().IsRegular() && strings.HasPrefix(item.Name(), "sess_") && time.Since(st.ModTime()) > 24*time.Hour {
-				expired++
-			}
-		}
-		return model.Config{"handler": handler, "revision": revision, "expiredFiles": expired, "directory": sessions}, nil
+		return model.Config{"handler": phpIniValue(string(old), "session.save_handler", "files"), "revision": revision, "expiredFiles": expired, "directory": sessions, "instanceId": subject.Config.String("sessionRedisInstanceId")}, nil
 	case "clean":
 		if !p.Bool("confirmed") {
 			return nil, errors.New("清理过期会话需要确认")
 		}
-		entries, er := os.ReadDir(sessions)
-		if os.IsNotExist(er) {
-			return model.Config{"removed": 0}, nil
-		}
+		count, er := phpSessionFiles(base, true)
 		if er != nil {
 			return nil, er
-		}
-		count := 0
-		for _, item := range entries {
-			if st, er := item.Info(); er == nil && st.Mode().IsRegular() && strings.HasPrefix(item.Name(), "sess_") && time.Since(st.ModTime()) > 24*time.Hour {
-				if os.Remove(filepath.Join(sessions, item.Name())) == nil {
-					count++
-				}
-			}
 		}
 		return model.Config{"removed": count}, nil
 	case "save":
@@ -95,6 +77,9 @@ func (e *Engine) phpSession(ctx context.Context, r model.Resource, p model.Confi
 	savePath := sessions
 	switch handler {
 	case "files":
+		if _, err = safePath(base, "sessions"); err != nil {
+			return nil, err
+		}
 		if err = os.MkdirAll(sessions, 0700); err != nil {
 			return nil, err
 		}
@@ -152,4 +137,77 @@ func (e *Engine) phpSession(ctx context.Context, r model.Resource, p model.Confi
 		return nil, errors.New("会话依赖登记失败，已恢复原配置")
 	}
 	return model.Config{"handler": handler, "configurationRevision": security.Hash(next), "linkedResources": []model.Resource{subject}}, nil
+}
+
+// Parse only scalar managed ini values; commented assignments do not affect the result.
+func phpIniValue(text, key, fallback string) string {
+	re := regexp.MustCompile(`(?m)^[\t ]*` + regexp.QuoteMeta(key) + `[\t ]*=[\t ]*([^\r\n]*)`)
+	for _, m := range re.FindAllStringSubmatch(text, -1) {
+		value := strings.TrimSpace(m[1])
+		if strings.HasPrefix(value, `"`) || strings.HasPrefix(value, `'`) {
+			if end := strings.IndexByte(value[1:], value[0]); end >= 0 {
+				fallback = value[1 : end+1]
+			}
+		} else {
+			value, _, _ = strings.Cut(value, ";")
+			fallback = strings.TrimSpace(value)
+		}
+	}
+	return fallback
+}
+
+func sitePHPIni(text, base string) string {
+	set := func(key, value string) {
+		re := regexp.MustCompile(`(?m)^[\t ]*` + regexp.QuoteMeta(key) + `[\t ]*=[^\r\n]*`)
+		line := key + " = " + strconv.Quote(value)
+		if re.MatchString(text) {
+			text = re.ReplaceAllStringFunc(text, func(string) string { return line })
+		} else {
+			text += "\n[PHP]\n" + line + "\n"
+		}
+	}
+	set("error_log", base+"/logs/php-error.log")
+	if phpIniValue(text, "session.save_handler", "files") == "files" {
+		set("session.save_path", base+"/sessions")
+	}
+	return text
+}
+
+// Anchor cleanup to an opened directory so renames cannot redirect privileged deletion.
+func phpSessionFiles(base string, remove bool) (int, error) {
+	path, err := safePath(base, "sessions")
+	if err != nil {
+		return 0, err
+	}
+	root, err := os.OpenRoot(path)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+	dir, err := root.Open(".")
+	if err != nil {
+		return 0, err
+	}
+	defer dir.Close()
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, item := range entries {
+		st, er := root.Lstat(item.Name())
+		if er != nil || !st.Mode().IsRegular() || !strings.HasPrefix(item.Name(), "sess_") || time.Since(st.ModTime()) <= 24*time.Hour {
+			continue
+		}
+		if remove {
+			if er = root.Remove(item.Name()); er != nil {
+				return count, er
+			}
+		}
+		count++
+	}
+	return count, nil
 }
