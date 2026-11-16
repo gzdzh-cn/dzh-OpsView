@@ -2,6 +2,10 @@ name: Validate native packages
 on:
   push:
     branches: [codex/software-management]
+    paths:
+      - 'server/**'
+      - 'packages/**'
+      - '.github/workflows/native-packages.yml'
   workflow_dispatch:
     inputs:
       versions:

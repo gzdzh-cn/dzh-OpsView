@@ -7,7 +7,12 @@ const dir = mkdtempSync(path.join(root, '.opsview', 'smoke-'))
 const suffix = crypto.randomBytes(5).toString('hex'), created = []
 const catalog = JSON.parse(execFileSync('cat', [path.join(root, 'packages/catalog/versions.json')], { encoding:'utf8' }))
 const image = software => catalog.find(x=>x.software===software && x.image).image
-const docker = (...args) => execFileSync('docker', args, { encoding:'utf8', stdio:['pipe','pipe','pipe'], timeout:180000 })
+const secrets = new Set(['test-only-password-123!'])
+const redact = value => [...secrets].reduce((text, secret) => text.replaceAll(secret, '[REDACTED]'), String(value))
+const docker = (...args) => {
+  try { return execFileSync('docker', args, { encoding:'utf8', stdio:['pipe','pipe','pipe'], timeout:180000 }) }
+  catch (error) { throw new Error(`Docker ${args[0]} failed: ${redact(error.stderr || error.code || 'unknown error').slice(-6000)}`) }
+}
 function start(name, args) { const id = docker('run','--rm','-d','--name',`opsview-smoke-${suffix}-${name}`,'--label','opsview.test=true',...args).trim(); created.push(id); return id }
 async function wait(probe, description) { let last; for(let i=0;i<90;i++){ try { return await probe() } catch(e) { last=e; await new Promise(r=>setTimeout(r,1000)) } }; throw new Error(`${description}: ${last}`) }
 function port(id, internal) { const inspect=JSON.parse(docker('inspect',id))[0];return inspect.NetworkSettings.Ports[`${internal}/tcp`][0].HostPort }
@@ -22,8 +27,11 @@ try {
   if(!(await(await fetch(address)).text()).includes('OpsView integration'))throw new Error('old site stopped after invalid configuration')
   console.log('PASS Nginx serves a site and keeps old workers after invalid configuration')
   const password=crypto.randomBytes(20).toString('hex')
+  secrets.add(password)
   const mysql=start('mysql',['-e',`MYSQL_ROOT_PASSWORD=${password}`,image('mysql')])
-  const mysqlSQL=(sql,db)=>docker('exec','-e',`MYSQL_PWD=${password}`,mysql,'mysql','-uroot','--batch','--skip-column-names',...(db?[db]:[]),'-e',sql)
+  // Official images start a temporary socket-only server during initialization.
+  // TCP readiness waits for the final server, avoiding queries during its restart.
+  const mysqlSQL=(sql,db)=>docker('exec','-e',`MYSQL_PWD=${password}`,mysql,'mysql','--protocol=TCP','-h127.0.0.1','-uroot','--batch','--skip-column-names',...(db?[db]:[]),'-e',sql)
   await wait(()=>mysqlSQL('SELECT 1'),'MySQL startup')
   mysqlSQL("CREATE DATABASE opsview_source; CREATE DATABASE opsview_restore; CREATE USER 'opsview_app'@'127.0.0.1' IDENTIFIED BY 'test-only-password-123!'; GRANT ALL ON opsview_source.* TO 'opsview_app'@'127.0.0.1'; CREATE TABLE opsview_source.items(id INT PRIMARY KEY, name VARCHAR(50)); INSERT INTO opsview_source.items VALUES (1,'opsview');")
   docker('exec','-e','MYSQL_PWD=test-only-password-123!',mysql,'mysql','--protocol=TCP','-h127.0.0.1','-uopsview_app','opsview_source','-e','SELECT * FROM items')
@@ -32,7 +40,7 @@ try {
   if(mysqlSQL('SELECT name FROM items','opsview_restore').trim()!=='opsview')throw new Error('MySQL restore mismatch')
   console.log('PASS MySQL dedicated account, logical dump and restore to a new database')
   const pg=start('postgres',['-e',`POSTGRES_PASSWORD=${password}`,image('postgresql')])
-  await wait(()=>docker('exec',pg,'pg_isready','-U','postgres'),'PostgreSQL startup')
+  await wait(()=>docker('exec',pg,'pg_isready','-h','127.0.0.1','-U','postgres'),'PostgreSQL startup')
   const pgSQL=(sql,db='postgres')=>docker('exec',pg,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-t','-A','-d',db,'-c',sql)
   pgSQL("CREATE ROLE opsview_app LOGIN PASSWORD 'test-only-password-123!'");pgSQL('CREATE DATABASE opsview_source OWNER opsview_app');pgSQL('CREATE DATABASE opsview_restore OWNER opsview_app')
   pgSQL("CREATE TABLE items(id INT PRIMARY KEY,name TEXT); INSERT INTO items VALUES(1,'opsview')",'opsview_source')
@@ -41,4 +49,9 @@ try {
   if(pgSQL('SELECT name FROM items','opsview_restore').trim()!=='opsview')throw new Error('PostgreSQL restore mismatch')
   const roles=docker('exec',pg,'pg_dumpall','-U','postgres','--roles-only');if(!roles.includes('opsview_app'))throw new Error('PostgreSQL roles missing from export')
   console.log('PASS PostgreSQL custom dump, role export and restore to a new database')
+} catch (error) {
+  const message=redact(error.message)
+  if(process.env.GITHUB_ACTIONS) console.error(`::error title=Container smoke failure::${message.replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A')}`)
+  else console.error(message)
+  process.exitCode=1
 } finally { for(const id of created.reverse())try{docker('rm','-f',id)}catch{};rmSync(dir,{recursive:true,force:true}) }
