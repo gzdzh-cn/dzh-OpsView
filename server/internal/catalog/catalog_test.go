@@ -35,8 +35,25 @@ func TestSignedManifestTrustAndTamper(t *testing.T) {
 }
 func TestBuiltinCatalogHasPinnedArtifacts(t *testing.T) {
 	for _, entry := range Entries() {
-		if err := Validate(entry); err != nil {
+		if err := Validate(entry); err != nil && entry.DisabledReason == "" {
 			t.Fatalf("%s: %v", entry.ID, err)
 		}
+	}
+}
+
+func TestNewNativeRecipesRequirePerSystemAcceptance(t *testing.T) {
+	e := Entry{Software: "redis", RecipeRevision: "1"}
+	if InstallationReason(e, "native", "source", "ubuntu:24.04") == "" {
+		t.Fatal("unverified native combination enabled")
+	}
+	e.VerifiedSystems = map[string][]string{"source": {"ubuntu:24.04"}}
+	if reason := InstallationReason(e, "native", "source", "ubuntu:24.04"); reason != "" {
+		t.Fatal(reason)
+	}
+	if InstallationReason(e, "native", "source", "debian:12") == "" {
+		t.Fatal("validation leaked across systems")
+	}
+	if InstallationReason(e, "native", "binary", "ubuntu:24.04") == "" {
+		t.Fatal("validation leaked across installation methods")
 	}
 }

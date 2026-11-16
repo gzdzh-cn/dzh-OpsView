@@ -23,13 +23,18 @@ import (
 )
 
 type Engine struct {
-	Root       string
-	TrustDir   string
-	SocketGID  int
-	Vault      *security.Vault
-	mu         sync.Mutex
-	firewallMu sync.Mutex
-	cancel     context.CancelFunc
+	Root                  string
+	PanelConfigPath       string
+	PanelCertificatePath  string
+	TrustDir              string
+	SocketGID             int
+	Vault                 *security.Vault
+	mu                    sync.Mutex
+	siteMu                sync.Mutex
+	runtimeMu             sync.Mutex
+	firewallMu            sync.Mutex
+	cancel                context.CancelFunc
+	allowUnverifiedNative bool // only set by disposable native acceptance tests
 }
 
 func (e *Engine) Initialize() error {
@@ -96,6 +101,9 @@ func (e *Engine) Serve(ctx context.Context, socket string) error {
 	e.cancel = cancel
 	defer cancel()
 	go e.watchFirewall(runCtx)
+	go e.watchSites(runCtx)
+	go e.watchPanelRuntime(runCtx)
+	go e.watchCertificates(runCtx)
 	go func() { <-ctx.Done(); _ = srv.Close() }()
 	err = srv.Serve(l)
 	if errors.Is(err, http.ErrServerClosed) {
@@ -130,7 +138,13 @@ func (e *Engine) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := e.Execute(r.Context(), op, emit)
 	if err != nil {
-		_ = enc.Encode(model.Result{Error: err.Error()})
+		result := model.Result{Error: err.Error()}
+		var conflict *model.RevisionConflict
+		if errors.As(err, &conflict) {
+			result.Code = "revision_conflict"
+			result.Revision = conflict.Revision
+		}
+		_ = enc.Encode(result)
 		return
 	}
 	if data == nil {
@@ -155,6 +169,10 @@ func (e *Engine) Execute(ctx context.Context, op model.Operation, log func(strin
 	}
 	switch {
 	case strings.HasPrefix(op.Name, "instance."):
+		action := strings.TrimPrefix(op.Name, "instance.")
+		if action != "install" && action != "start" && action != "stop" && action != "restart" && action != "uninstall" {
+			return e.softwareOperation(ctx, op, log)
+		}
 		return e.instance(ctx, op, log)
 	case strings.HasPrefix(op.Name, "site."):
 		return e.site(ctx, op, log)
@@ -232,8 +250,13 @@ func (e *Engine) states() []model.Resource {
 }
 func run(ctx context.Context, log func(string), dir string, env []string, input io.Reader, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
+	isolateProcess(cmd)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
+	if (filepath.Base(name) == "php" || filepath.Base(name) == "php-fpm" || filepath.Base(name) == "phpize" || filepath.Base(name) == "php-config") && strings.Contains(name, "/runtime/") {
+		base, _, _ := strings.Cut(name, "/runtime/")
+		cmd.Env = append(cmd.Env, "PHP_INI_SCAN_DIR="+base+"/conf/php.d")
+	}
 	cmd.Stdin = input
 	writer := &logWriter{fn: log}
 	cmd.Stdout = writer
@@ -338,4 +361,11 @@ func tail(path string, n int) (string, error) {
 		}
 	}
 	return strings.Join(lines, "\n"), scanner.Err()
+}
+
+func (e *Engine) panelConfigPath() string {
+	if e.PanelConfigPath != "" {
+		return e.PanelConfigPath
+	}
+	return "/etc/opsview/panel.json"
 }

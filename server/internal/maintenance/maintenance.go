@@ -25,8 +25,8 @@ import (
 	"time"
 )
 
-var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update"}
-var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板"}
+var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl"}
+var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板", "SSL 证书与协议"}
 
 const panelUnit = "opsview-panel.service"
 const executorUnit = "opsview-executor.service"
@@ -129,7 +129,7 @@ func (r *Runner) menu() error {
 		}
 		n, e := strconv.Atoi(v)
 		if e != nil || n < 1 || n > len(Commands) {
-			fmt.Fprintln(r.Out, "无效编号，请输入 0–14")
+			fmt.Fprintf(r.Out, "无效编号，请输入 0–%d\n", len(Commands))
 			continue
 		}
 		if e = r.command([]string{Commands[n-1]}); e != nil {
@@ -175,6 +175,13 @@ func (r *Runner) command(args []string) error {
 		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	}
 	switch command {
+	case "ssl":
+		return r.ssl(args)
+	case "entry":
+		if len(args) != 1 || args[0] != "reset" {
+			return errors.New("用法：ov entry reset")
+		}
+		return r.resetEntry()
 	case "status":
 		return r.exec("systemctl", "--no-pager", "status", panelUnit, executorUnit)
 	case "start":
@@ -187,6 +194,30 @@ func (r *Runner) command(args []string) error {
 	case "logs":
 		return r.exec("journalctl", "-u", panelUnit, "-u", executorUnit, "-n", "100", "--no-pager")
 	case "recover-access", "backup", "diagnose":
+		if command == "recover-access" {
+			if len(args) > 1 || (len(args) == 1 && args[0] != "--all") {
+				return errors.New("用法：ov recover-access [--all]")
+			}
+			unlock, err := runtimeconfig.Lock(r.configPath())
+			if err != nil {
+				return err
+			}
+			defer unlock()
+			_ = os.Remove("/var/lib/opsview/managed/panel-pending.json")
+			cfg, er := runtimeconfig.Load(r.configPath())
+			if er != nil {
+				return er
+			}
+			empty := ""
+			cfg.AllowedCIDRs = &empty
+			if len(args) == 1 && args[0] == "--all" {
+				cfg.Entry = ""
+				cfg.AllowedHost = ""
+			}
+			if er = runtimeconfig.Save(r.configPath(), cfg); er != nil {
+				return er
+			}
+		}
 		op := command
 		if op == "backup" {
 			op = "backup-config"
@@ -332,6 +363,16 @@ type credentials struct {
 }
 
 func (r *Runner) info(args []string) error {
+	if len(args) > 0 {
+		unlock, err := runtimeconfig.Lock(r.configPath())
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		if _, er := os.Stat("/var/lib/opsview/managed/panel-pending.json"); er == nil {
+			return errors.New("面板访问设置等待确认，请先确认或恢复访问")
+		}
+	}
 	c, e := runtimeconfig.Load(r.configPath())
 	if e != nil {
 		return e

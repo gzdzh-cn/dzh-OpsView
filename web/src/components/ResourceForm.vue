@@ -80,7 +80,11 @@ watch(
       )
       error.value = ''
       if (props.kind === 'instance' && !form.value.catalogId) {
-        form.value.catalogId = panel.catalog[0]?.id
+        form.value.catalogId = panel.catalog.find(
+          (v) =>
+            (!form.value.softwareFilter || v.software === form.value.softwareFilter) &&
+            !v.disabledReason,
+        )?.id
         selectVersion()
       }
     }
@@ -111,18 +115,28 @@ const applicationOptions = computed(() =>
   })),
 )
 const runtimeOptions = computed(() => panel.kind('instance').filter((r) => r.config.executablePath))
-const catalogOptions = computed(() => panel.catalog)
+const catalogOptions = computed(() =>
+  panel.catalog.filter(
+    (v) => !form.value.softwareFilter || v.software === form.value.softwareFilter,
+  ),
+)
 function selectVersion() {
   const v = panel.catalog.find((v) => v.id === form.value.catalogId)
   form.value.port =
-    v?.software === 'mysql'
-      ? 3306
-      : v?.software === 'postgresql'
-        ? 5432
-        : v?.software === 'nodejs'
-          ? 0
-          : 80
-  if (!v?.source) form.value.mode = 'docker'
+    v?.software === 'php'
+      ? 9000
+      : v?.software === 'redis'
+        ? 6379
+        : v?.software === 'mysql'
+          ? 3306
+          : v?.software === 'postgresql'
+            ? 5432
+            : v?.software === 'nodejs'
+              ? 0
+              : 80
+  form.value.mode = 'native'
+  form.value.installMethod =
+    v?.methods?.[0] || (['mysql', 'nodejs'].includes(v?.software) ? 'binary' : 'source')
 }
 async function save() {
   if (!name.value) {
@@ -132,7 +146,16 @@ async function save() {
   busy.value = true
   error.value = ''
   try {
+    if (
+      props.kind === 'instance' &&
+      form.value.mode === 'native' &&
+      version.value?.availability?.[form.value.installMethod]
+    )
+      throw new Error(version.value.availability[form.value.installMethod])
+    if (props.kind === 'instance' && version.value?.disabledReason)
+      throw new Error(version.value.disabledReason)
     const value = { ...form.value }
+    delete value.softwareFilter
     if (props.kind === 'instance' && ['nginx', 'nodejs'].includes(version.value?.software))
       delete value.password
     let resource: Resource
@@ -220,9 +243,45 @@ void api
           </el-form-item>
           <el-form-item label="网站类型">
             <el-select v-model="form.type">
+              <el-option label="PHP 项目" value="php" />
+              <el-option label="应用项目" value="app" />
               <el-option label="静态站点" value="static" />
               <el-option label="反向代理" value="proxy" />
             </el-select>
+          </el-form-item>
+          <el-form-item v-if="form.type === 'php'" label="PHP 运行环境" required>
+            <el-select v-model="form.phpInstanceId" placeholder="先到软件市场安装 PHP">
+              <el-option
+                v-for="r in panel
+                  .kind('instance')
+                  .filter((r) => r.config.software === 'php' && r.config.mode === 'native')"
+                :key="r.id"
+                :value="r.id"
+                :label="r.name + ' · ' + r.config.version"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="form.type === 'app'" label="应用进程" required>
+            <el-select v-model="form.appId">
+              <el-option
+                v-for="r in applicationTargets"
+                :key="r.id"
+                :value="r.id"
+                :label="r.name + ' · :' + r.config.port"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="到期时间" class="wide">
+            <el-date-picker
+              v-model="form.expiresAt"
+              type="datetime"
+              value-format="YYYY-MM-DDTHH:mm:ssZ"
+              placeholder="永久有效"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item label="备注" class="wide">
+            <el-input v-model="form.note" maxlength="1000" />
           </el-form-item>
           <el-form-item label="绑定域名" class="wide" required>
             <el-input
@@ -280,11 +339,49 @@ void api
               <el-radio-button value="docker" :disabled="!version?.image">Docker</el-radio-button>
             </el-radio-group>
           </el-form-item>
+          <el-form-item v-if="form.mode === 'native'" label="原生安装方式">
+            <el-radio-group v-model="form.installMethod">
+              <el-radio-button
+                value="binary"
+                :disabled="
+                  !!version?.availability?.binary ||
+                  !(
+                    version?.methods ||
+                    (['mysql', 'nodejs'].includes(version?.software) ? ['binary'] : ['source'])
+                  ).includes('binary')
+                "
+              >
+                预编译包安装
+              </el-radio-button>
+              <el-radio-button
+                value="source"
+                :disabled="
+                  !!version?.availability?.source ||
+                  !(
+                    version?.methods ||
+                    (['mysql', 'nodejs'].includes(version?.software) ? ['binary'] : ['source'])
+                  ).includes('source')
+                "
+              >
+                源码编译安装
+              </el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-alert
+            v-if="version?.disabledReason"
+            :title="version.disabledReason"
+            type="warning"
+            :closable="false"
+          />
           <el-form-item v-if="version?.software !== 'nodejs'" label="实例端口" required>
             <el-input-number v-model="form.port" :min="1" :max="65535" />
           </el-form-item>
           <el-form-item
-            v-if="version?.software === 'mysql' || version?.software === 'postgresql'"
+            v-if="
+              version?.software === 'mysql' ||
+              version?.software === 'postgresql' ||
+              version?.software === 'redis'
+            "
             label="数据库管理员密码"
             class="wide"
             required

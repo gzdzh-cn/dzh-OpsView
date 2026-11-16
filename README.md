@@ -4,6 +4,8 @@
 
 当前版本为 **0.1.1 开发测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
+功能、架构、安装维护方式和当前限制的完整介绍见 [项目介绍](项目介绍.md)。
+
 ## 本地启动
 
 需要 Go 1.27.3+、Node.js 22.12+（建议 Node.js 24）及 npm。
@@ -115,3 +117,11 @@ make release                       # Linux amd64 包与 SHA256SUMS
 仓库推送 `vX.Y.Z` 标签后，GitHub Actions 自动测试、构建并发布包含 `install.sh`、`opsview-linux-amd64.tar.gz`、`SHA256SUMS` 的 Release；`vX.Y.Z-rc.1` 等版本发布为预发布，不进入默认安装入口。详见 [发布手册](docs/releasing.md)。
 
 [插件与自定义版本规范](packages/README.md) · [运维手册](docs/operations.md) · [验收记录与发布门槛](docs/acceptance.md)
+
+## 软件与设置功能增量（尚未发布）
+
+软件市场采用逐行列表，Nginx/MySQL/PHP/Redis 提供带左侧菜单的实例设置。新增 PHP 独立站点 FPM、网站三类列表、流量游标及到期策略；面板设置提供五个标签页、HTTP/HTTPS 与 120 秒重新连接确认。原有账号和 Docker 入口保留。
+
+28 个目标版本已固定上游地址与 SHA-256；目录可见不等于全部系统组合通过验收。旧 PHP 隔离依赖组合会明确拒绝安装。源码编译使用低权限用户；已签名的预编译配方按系统选择，未发布的包不能选择安装。
+
+当前已实现范围、未完成项和验证证据见根目录 [软件管理实现说明](软件管理实现说明.md)。GitHub Actions 的 **Build candidate (no production update)** 生成候选附件；**Validate native packages** 独立验证原生配方。两者不自动更新服务器或替换 latest。

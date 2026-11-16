@@ -12,7 +12,7 @@ for component in opsview executor plugin-worker pack; do
 done
 cp deploy/*.service deploy/*.sh "$release_dir/deploy/"
 cp -R packages/catalog packages/plugins "$release_dir/packages/"
-cp README.md 安装教程.md "$release_dir/"
+cp README.md 安装教程.md 软件管理实现说明.md 项目介绍.md "$release_dir/"
 cp -R docs "$release_dir/"
 cp packages/README.md "$release_dir/packages/README.md"
 cp -R packages/examples "$release_dir/packages/"

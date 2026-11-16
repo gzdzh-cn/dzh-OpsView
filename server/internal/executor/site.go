@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/registration"
 	"net"
@@ -37,6 +38,13 @@ func (e *Engine) writeNginxBase(r model.Resource, base string) error {
 		user = "user nginx;\n"
 	}
 	conf := fmt.Sprintf("%sworker_processes auto;\npid %s/logs/nginx.pid;\nerror_log %s/logs/error.log warn;\nevents { worker_connections 1024; }\nhttp {\n default_type application/octet-stream;\n types { text/html html; text/css css; application/javascript js; application/json json; image/png png; image/jpeg jpg jpeg; image/svg+xml svg; }\n sendfile on;\n server_tokens off;\n access_log %s/logs/access.log;\n include %s/conf/sites/*.conf;\n server { listen %d default_server; server_name _; return 404; }\n}\n", user, base, base, base, base, r.Config.Int("port"))
+	if port := r.Config.Int("statusPort"); port > 0 {
+		at := strings.LastIndex(conf, "}")
+		conf = conf[:at] + " include " + base + "/conf/status.conf;\n" + conf[at:]
+		if err := security.WriteAtomic(base+"/conf/status.conf", []byte(nginxStatusServer(port, "abcdef")), 0644); err != nil {
+			return err
+		}
+	}
 	return security.WriteAtomic(base+"/conf/nginx.conf", []byte(conf), 0644)
 }
 func (e *Engine) nginx(ctx context.Context, inst model.Resource, log func(string), args ...string) error {
@@ -50,8 +58,8 @@ func (e *Engine) nginx(ctx context.Context, inst model.Resource, log func(string
 	return run(ctx, log, "", nil, nil, base+"/runtime/sbin/nginx", append(all, args...)...)
 }
 func (e *Engine) site(ctx context.Context, op model.Operation, log func(string)) (result model.Config, retErr error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.siteMu.Lock()
+	defer e.siteMu.Unlock()
 	r := op.Resource
 	inst, err := e.load(r.Config.String("instanceId"))
 	if err != nil {
@@ -63,6 +71,33 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	base := filepath.Join(e.Root, "sites", r.ID)
 	confpath := filepath.Join(e.Root, "instances", inst.ID, "conf", "sites", r.ID+".conf")
 	action := strings.TrimPrefix(op.Name, "site.")
+	if action == "traffic" {
+		return e.siteTraffic(r)
+	}
+	if action == "resume" || action == "stop" {
+		stored, er := e.load(r.ID)
+		if er != nil {
+			return nil, er
+		}
+		r = stored
+		if action == "resume" {
+			if siteExpired(r, time.Now()) {
+				return nil, errors.New("请先延长到期时间")
+			}
+			r.Config["expirySuspended"] = false
+			r.Config["disabled"] = false
+		} else {
+			r.Config["disabled"] = true
+		}
+		action = "apply"
+	}
+	if r.Config.String("type") == "app" {
+		app, er := e.load(r.Config.String("appId"))
+		if er != nil || app.Kind != "app" {
+			return nil, errors.New("关联应用不存在")
+		}
+		r.Config["upstream"] = "http://127.0.0.1:" + strconv.Itoa(app.Config.Int("port"))
+	}
 
 	if action == "configuration" {
 		current, err := os.ReadFile(confpath)
@@ -84,7 +119,7 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		return model.Config{"current": string(current), "managed": stored.Config.String("renderedConfig"), "drift": stored.Config.String("configHash") != security.Hash(string(current)), "history": history}, nil
 	}
 	if action == "logs" {
-		text, err := tail(filepath.Join(e.Root, "instances", inst.ID, "logs", "access.log"), 200)
+		text, err := tail(filepath.Join(e.Root, "sites", r.ID, "logs", "access.json"), 200)
 		return model.Config{"content": text}, err
 	}
 	if action == "delete" {
@@ -115,6 +150,9 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		return nil, errors.New("网站操作无效")
 	}
 
+	if err = e.ensureNginxObservability(inst); err != nil {
+		return nil, err
+	}
 	for _, other := range e.states() {
 		if other.Kind != "site" || other.ID == r.ID || other.Config.String("instanceId") != inst.ID {
 			continue
@@ -126,6 +164,9 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 				}
 			}
 		}
+	}
+	if err = os.MkdirAll(base+"/logs", 0755); err != nil {
+		return nil, err
 	}
 	if err = os.MkdirAll(base+"/www", 0755); err != nil {
 		return nil, err
@@ -146,6 +187,10 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 
 	previousConfigPath := ""
 	if stored, err := e.load(r.ID); err == nil {
+		r.Config["phpPaused"] = stored.Config.Bool("phpPaused")
+		if op.Name != "site.resume" && stored.Config.Bool("expirySuspended") {
+			r.Config["expirySuspended"] = true
+		}
 		driftContent := old
 		if stored.Config.String("instanceId") != inst.ID {
 			previous, err := e.load(stored.Config.String("instanceId"))
@@ -246,6 +291,22 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		r.Config["tls"] = true
 		r.Config["certificateProvider"] = "acme"
 	}
+	if r.Config.String("type") == "php" {
+		restore, snapshotErr := e.snapshotSitePHP(ctx, r, base)
+		if snapshotErr != nil {
+			return nil, snapshotErr
+		}
+		defer func() {
+			if retErr != nil {
+				if rollbackErr := restore(); rollbackErr != nil {
+					retErr = fmt.Errorf("网站应用失败且 PHP 回退未完成，请检查服务日志：%w", retErr)
+				}
+			}
+		}()
+		if err = e.setupSitePHP(ctx, r, base, log); err != nil {
+			return nil, err
+		}
+	}
 	r.Config["probeToken"] = security.ID()
 	candidate := []byte(e.renderSite(r, inst, base))
 	if err = e.applyNginx(ctx, inst, confpath, candidate, old, log); err != nil {
@@ -272,23 +333,34 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	r.Config["configHash"] = security.Hash(string(candidate))
 	r.Config["documentRoot"] = base + "/www"
 	r.Status = "ready"
+	if siteUnavailable(r) {
+		r.Status = "stopped"
+		if siteExpired(r, time.Now()) {
+			r.Status = "expired"
+		}
+	}
 	if r.Config.Bool("tls") {
 		b, _ := os.ReadFile(base + "/cert/fullchain.pem")
 		if block, _ := pem.Decode(b); block != nil {
 			if cert, err := x509.ParseCertificate(block.Bytes); err == nil {
 				r.Config["certificateExpires"] = cert.NotAfter.UTC().Format(time.RFC3339)
+				r.Config["certificateNotBefore"] = cert.NotBefore.UTC().Format(time.RFC3339)
 			}
 		}
 	}
 	if err = e.save(r); err != nil {
 		return nil, err
 	}
-	return model.Config{"configHash": r.Config["configHash"], "documentRoot": base + "/www", "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateProvider": r.Config["certificateProvider"]}, nil
+	if siteUnavailable(r) {
+		e.stopSiteProcesses(ctx, r)
+	}
+	return model.Config{"configHash": r.Config["configHash"], "documentRoot": base + "/www", "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}, nil
 }
 func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 	domains := strings.Join(strings.Fields(r.Config.String("domains")), " ")
 	conf := fmt.Sprintf("server {\n listen %d;\n server_name %s;\n location ^~ /.well-known/acme-challenge/ { root %s/acme; }\n", inst.Config.Int("port"), domains, base)
 
+	conf += " access_log " + base + "/logs/access.json opsview_json;\n error_log " + base + "/logs/error.log warn;\n"
 	conf += r.Config.String("advanced") + "\n"
 	if token := r.Config.String("probeToken"); token != "" {
 		conf += fmt.Sprintf(" location = /.opsview-health-%s { add_header X-OpsView-Revision %s always; return 204; }\n", token, token)
@@ -302,8 +374,16 @@ func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 	if r.Config.Bool("tls") && r.Config.Bool("redirectHTTPS") {
 		redirect = "  if ($scheme = http) { return 301 https://$host$request_uri; }\n"
 	}
-	if r.Config.String("type") == "proxy" {
-		conf += " location / {\n" + redirect + "  proxy_pass " + r.Config.String("upstream") + ";\n  proxy_http_version 1.1;\n  proxy_set_header Host $host;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n }\n"
+	if siteUnavailable(r) {
+		return conf + " location / { return 403; }\n}\n"
+	}
+	if r.Config.String("type") == "php" {
+		conf += redirect
+		conf += " root " + base + "/www;\n index index.php index.html;\n location / { try_files $uri $uri/ /index.php?$query_string; }\n location ~ \\.php$ { try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
+		return conf + "}\n"
+	}
+	if r.Config.String("type") == "proxy" || r.Config.String("type") == "app" {
+		conf += " location / {\n" + redirect + "  proxy_pass " + r.Config.String("upstream") + ";\n  proxy_http_version 1.1;\n  proxy_set_header Host $host;\n  proxy_set_header Upgrade $http_upgrade;\n  proxy_set_header Connection $opsview_connection;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n }\n"
 	} else {
 		conf += " root " + base + "/www;\n index index.html;\n location / {\n" + redirect + " try_files $uri $uri/ /index.html; }\n"
 	}
@@ -406,6 +486,9 @@ func (w webroot) CleanUp(domain, token, keyAuth string) error {
 	return os.Remove(filepath.Join(w.root, token))
 }
 func (e *Engine) issueCertificate(ctx context.Context, r model.Resource, base string) error {
+	return e.issueCertificateProvider(ctx, r, base, webroot{base + "/acme/.well-known/acme-challenge"})
+}
+func (e *Engine) issueCertificateProvider(ctx context.Context, r model.Resource, base string, provider challenge.Provider) error {
 	email := r.Config.String("email")
 	if !strings.Contains(email, "@") || strings.ContainsAny(email, "\r\n") {
 		return errors.New("请在站点配置填写有效的 ACME 联系邮箱")
@@ -452,7 +535,7 @@ func (e *Engine) issueCertificate(ctx context.Context, r model.Resource, base st
 	if err != nil {
 		return err
 	}
-	if err = client.Challenge.SetHTTP01Provider(webroot{base + "/acme/.well-known/acme-challenge"}); err != nil {
+	if err = client.Challenge.SetHTTP01Provider(provider); err != nil {
 		return err
 	}
 	if user.Registration == nil {
@@ -468,7 +551,13 @@ func (e *Engine) issueCertificate(ctx context.Context, r model.Resource, base st
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	result, err := client.Certificate.Obtain(certificate.ObtainRequest{Domains: strings.Fields(r.Config.String("domains")), Bundle: true})
+	profile := ""
+	for _, host := range strings.Fields(r.Config.String("domains")) {
+		if net.ParseIP(host) != nil {
+			profile = "shortlived"
+		}
+	}
+	result, err := client.Certificate.Obtain(certificate.ObtainRequest{Domains: strings.Fields(r.Config.String("domains")), Bundle: true, Profile: profile})
 	if err != nil {
 		return err
 	}

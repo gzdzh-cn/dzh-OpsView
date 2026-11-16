@@ -1,5 +1,457 @@
 [
   {
+    "id": "nginx-1.30.6",
+    "software": "nginx",
+    "version": "1.30.6",
+    "source": "https://nginx.org/download/nginx-1.30.6.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "3cf46f5ed7504d460125866b7bea99fb357f31d887e2e63b35503310e9b8b6c8",
+    "recommended": true
+  },
+  {
+    "id": "php-8.4.27",
+    "software": "php",
+    "version": "8.4.27",
+    "source": "https://www.php.net/distributions/php-8.4.27.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "dcf93923b0e38e0d5252b25b796520b5a47761a08b3488b6d0b5d1115764d3f0",
+    "recommended": true
+  },
+  {
+    "id": "redis-8.10.3",
+    "software": "redis",
+    "version": "8.10.3",
+    "source": "https://download.redis.io/releases/redis-8.10.3.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "edde778f6bdee7581e42fc139ca9e07e2822212092f7501f99989656e3629d02",
+    "recommended": true
+  },
+  {
+    "id": "mysql-8.4.13",
+    "software": "mysql",
+    "version": "8.4.13",
+    "source": "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.13-linux-glibc2.28-x86_64-minimal.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "binary"
+    ],
+    "sha256": "5dfbb764f731df40ef9e4f5d69aed32bdac8ba1af20bd96b7d40a942d83d4ed2",
+    "recommended": true
+  },
+  {
+    "id": "nginx-1.31.8",
+    "software": "nginx",
+    "version": "1.31.8",
+    "source": "https://nginx.org/download/nginx-1.31.8.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "0652b760b3b772d2ec17b47c2fc15d9a95e6fe35cd5b877eadc1a62d9bc75af1",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.29.8",
+    "software": "nginx",
+    "version": "1.29.8",
+    "source": "https://nginx.org/download/nginx-1.29.8.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "7f1b985dace8fe706dfc288b83927c928f0ae60bcb7507c2d4e0025eca7280c3",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.28.3",
+    "software": "nginx",
+    "version": "1.28.3",
+    "source": "https://nginx.org/download/nginx-1.28.3.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "2c96a946bfb0882a21744ed429770a2123ae1828c7c48665092993ddee91a918",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.24.0",
+    "software": "nginx",
+    "version": "1.24.0",
+    "source": "https://nginx.org/download/nginx-1.24.0.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "77a2541637b92a621e3ee76776c8b7b40cf6d707e69ba53a940283e30ff2f55d",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.23.4",
+    "software": "nginx",
+    "version": "1.23.4",
+    "source": "https://nginx.org/download/nginx-1.23.4.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "d43300e36bb249a7e6edc60bca1b0fc372a0bafce2f346d76acfb677a8790fc0",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.22.1",
+    "software": "nginx",
+    "version": "1.22.1",
+    "source": "https://nginx.org/download/nginx-1.22.1.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "9ebb333a9e82b952acd3e2b4aeb1d4ff6406f72491bab6cd9fe69f0dea737f31",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.21.6",
+    "software": "nginx",
+    "version": "1.21.6",
+    "source": "https://nginx.org/download/nginx-1.21.6.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "66dc7081488811e9f925719e34d1b4504c2801c81dee2920e5452a86b11405ae",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.20.2",
+    "software": "nginx",
+    "version": "1.20.2",
+    "source": "https://nginx.org/download/nginx-1.20.2.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "958876757782190a1653e14dc26dfc7ba263de310e04c113e11e97d1bef45a42",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.19.10",
+    "software": "nginx",
+    "version": "1.19.10",
+    "source": "https://nginx.org/download/nginx-1.19.10.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "e8d0290ff561986ad7cd6c33307e12e11b137186c4403a6a5ccdb4914c082d88",
+    "recommended": false
+  },
+  {
+    "id": "nginx-1.18.0",
+    "software": "nginx",
+    "version": "1.18.0",
+    "source": "https://nginx.org/download/nginx-1.18.0.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "4c373e7ab5bf91d34a4f11a0c9496561061ba5eee6020db272a17a7228d35f99",
+    "recommended": false
+  },
+  {
+    "id": "php-7.0.33",
+    "software": "php",
+    "version": "7.0.33",
+    "source": "https://museum.php.net/php7/php-7.0.33.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "ab8c5be6e32b1f8d032909dedaaaa4bbb1a209e519abb01a52ce3914f9a13d96",
+    "disabledReason": "旧版 PHP 隔离依赖配方尚未通过四个目标系统验证",
+    "recommended": false
+  },
+  {
+    "id": "php-7.2.34",
+    "software": "php",
+    "version": "7.2.34",
+    "source": "https://museum.php.net/php7/php-7.2.34.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "409e11bc6a2c18707dfc44bc61c820ddfd81e17481470f3405ee7822d8379903",
+    "disabledReason": "旧版 PHP 隔离依赖配方尚未通过四个目标系统验证",
+    "recommended": false
+  },
+  {
+    "id": "php-7.4.33",
+    "software": "php",
+    "version": "7.4.33",
+    "source": "https://museum.php.net/php7/php-7.4.33.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "924846abf93bc613815c55dd3f5809377813ac62a9ec4eb3778675b82a27b927",
+    "disabledReason": "旧版 PHP 隔离依赖配方尚未通过四个目标系统验证",
+    "recommended": false
+  },
+  {
+    "id": "php-8.0.30",
+    "software": "php",
+    "version": "8.0.30",
+    "source": "https://museum.php.net/php8/php-8.0.30.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "216ab305737a5d392107112d618a755dc5df42058226f1670e9db90e77d777d9",
+    "disabledReason": "旧版 PHP 隔离依赖配方尚未通过四个目标系统验证",
+    "recommended": false
+  },
+  {
+    "id": "php-8.2.35",
+    "software": "php",
+    "version": "8.2.35",
+    "source": "https://www.php.net/distributions/php-8.2.35.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "5737b98601fe5ab1b8c5db0c82ed3158acb9283ed3081ffe2faffb9ac81455e6",
+    "recommended": false
+  },
+  {
+    "id": "redis-8.8.4",
+    "software": "redis",
+    "version": "8.8.4",
+    "source": "https://download.redis.io/releases/redis-8.8.4.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "ac03312b88534905e35c1791266ae48c0664cea10aa4111a6d05627aad0dc9d2",
+    "recommended": false
+  },
+  {
+    "id": "redis-8.0.6",
+    "software": "redis",
+    "version": "8.0.6",
+    "source": "https://download.redis.io/releases/redis-8.0.6.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "6d0a9913887a4972536f9da226f1575859c34d86354129163260a5f9c6bd4229",
+    "recommended": false
+  },
+  {
+    "id": "redis-8.2.11",
+    "software": "redis",
+    "version": "8.2.11",
+    "source": "https://download.redis.io/releases/redis-8.2.11.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "fba14b77c4bdcb2d5418b6741fc0cdaac4b78bc73eab9b2e5f3c255d597f16fa",
+    "recommended": false
+  },
+  {
+    "id": "redis-8.4.8",
+    "software": "redis",
+    "version": "8.4.8",
+    "source": "https://download.redis.io/releases/redis-8.4.8.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "c0cb381cefb09c4bf330d5c39b90edcbda04f892a56f77d05acd056e89e70403",
+    "recommended": false
+  },
+  {
+    "id": "redis-7.4.12",
+    "software": "redis",
+    "version": "7.4.12",
+    "source": "https://download.redis.io/releases/redis-7.4.12.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "56588ee1648539556f2b6cf4e873e3734afbbe40fa952fec2fcd6b6d7dae2924",
+    "recommended": false
+  },
+  {
+    "id": "redis-8.6.8",
+    "software": "redis",
+    "version": "8.6.8",
+    "source": "https://download.redis.io/releases/redis-8.6.8.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "a302a65b6d3bc858e5f44f7c9a487228ab0fea009d17504358f9954552bdb605",
+    "recommended": false
+  },
+  {
+    "id": "redis-7.2.17",
+    "software": "redis",
+    "version": "7.2.17",
+    "source": "https://download.redis.io/releases/redis-7.2.17.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "source"
+    ],
+    "sha256": "07c679c013fd82513299733bddf91999bbbc830351ec9ea985a533b09a595d76",
+    "recommended": false
+  },
+  {
+    "id": "mysql-5.7.44",
+    "software": "mysql",
+    "version": "5.7.44",
+    "source": "https://cdn.mysql.com/archives/mysql-5.7/mysql-5.7.44-linux-glibc2.12-x86_64.tar.gz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "binary"
+    ],
+    "sha256": "798ff0a14cdc1ab259f8a3b6a7f683403e9bbaa85957d82e5370f82b27ba6805",
+    "recommended": false
+  },
+  {
+    "id": "mysql-8.0.46",
+    "software": "mysql",
+    "version": "8.0.46",
+    "source": "https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-8.0.46-linux-glibc2.17-x86_64-minimal.tar.xz",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "description": "官方固定版本；安装前验证 SHA-256。",
+    "recipeRevision": "1",
+    "methods": [
+      "binary"
+    ],
+    "recommended": false,
+    "sha256": "e2777d490fcaadc5a4be06db89b6935c78909bd9c3382af859ab284af0c950b0"
+  },
+  {
     "id": "nginx-1.28.0",
     "software": "nginx",
     "version": "1.28.0",

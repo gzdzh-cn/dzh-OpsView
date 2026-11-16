@@ -1,0 +1,42 @@
+[
+  {
+    "name": "redis",
+    "version": "6.2.0",
+    "source": "https://pecl.php.net/get/redis-6.2.0.tgz",
+    "minPHP": "8.2",
+    "maxPHP": "8.4",
+    "sha256": "5069c13dd22bd9e494bb246891052cb6cc0fc9a1b45c6a572a8be61773101363"
+  },
+  {
+    "name": "memcached",
+    "version": "3.3.0",
+    "source": "https://pecl.php.net/get/memcached-3.3.0.tgz",
+    "minPHP": "8.2",
+    "maxPHP": "8.4",
+    "sha256": "2b85bf6699497170801fb4d06eb9c9a06bfc551cdead04101dd75c980be9eebf"
+  },
+  {
+    "name": "apcu",
+    "version": "5.1.27",
+    "source": "https://pecl.php.net/get/apcu-5.1.27.tgz",
+    "minPHP": "8.2",
+    "maxPHP": "8.4",
+    "sha256": "1a2c37fcad2ae2a1aea779cd6ca9353d8b38d4e27dde2327c52ff3892dfadb3f"
+  },
+  {
+    "name": "imagick",
+    "version": "3.8.0",
+    "source": "https://pecl.php.net/get/imagick-3.8.0.tgz",
+    "minPHP": "8.2",
+    "maxPHP": "8.4",
+    "sha256": "bda67461c854f20d6105782b769c524fc37388b75d4481d951644d2167ffeec6"
+  },
+  {
+    "name": "xdebug",
+    "version": "3.4.7",
+    "source": "https://pecl.php.net/get/xdebug-3.4.7.tgz",
+    "minPHP": "8.2",
+    "maxPHP": "8.4",
+    "sha256": "7592923501e3fdb9741ad35b90e08fc6b3c5dd31eadc4c83b7b3c9dda0627b24"
+  }
+]

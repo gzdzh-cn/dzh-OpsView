@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"opsview/internal/dao"
 	"opsview/internal/logic"
 	"opsview/internal/model"
+	"opsview/internal/runtimeconfig"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,5 +169,94 @@ func TestConfigurationDispatchAndCompleteSSEHistory(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), "event: done") {
 		t.Fatal("missing done")
+	}
+}
+
+func TestAccessGateParsesHostAndEnforcesEntry(t *testing.T) {
+	c, _ := testController(t)
+	c.App.PanelConfigPath = filepath.Join(t.TempDir(), "panel.json")
+	cfg := runtimeconfig.Default()
+	cfg.AllowedHost = "panel.example.com"
+	cfg.Entry = "safe_entry"
+	if err := runtimeconfig.Save(c.App.PanelConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	gate := c.accessGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	call := func(host, path string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", path, nil)
+		req.Host = host
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		w := httptest.NewRecorder()
+		gate.ServeHTTP(w, req)
+		return w
+	}
+	if w := call("other.example.com:18790", "/safe_entry", nil); w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+	if w := call("panel.example.com:18790", "/", nil); w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+	w := call("panel.example.com:18790", "/safe_entry", nil)
+	if w.Code != 204 || len(w.Result().Cookies()) != 1 {
+		t.Fatal(w.Code)
+	}
+	if w = call("panel.example.com:18790", "/", w.Result().Cookies()[0]); w.Code != 204 {
+		t.Fatal(w.Code)
+	}
+}
+
+func TestRootIPPolicyOverridesLegacySQLiteRestriction(t *testing.T) {
+	c, h := testController(t)
+	cookie, _ := setupAndLogin(t, h)
+	if err := c.App.Store.Set("panel", model.Config{"allowedCIDRs": "203.0.113.0/24"}); err != nil {
+		t.Fatal(err)
+	}
+	c.App.PanelConfigPath = filepath.Join(t.TempDir(), "panel.json")
+	cfg := runtimeconfig.Default()
+	empty := ""
+	cfg.AllowedCIDRs = &empty
+	if err := runtimeconfig.Save(c.App.PanelConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(h, "GET", "/api/v1/resources", nil, cookie, "", ""); w.Code != 200 {
+		t.Fatal("cleared root policy still used legacy restriction", w.Code, w.Body.String())
+	}
+	denied := "203.0.113.0/24"
+	cfg.AllowedCIDRs = &denied
+	_ = runtimeconfig.Save(c.App.PanelConfigPath, cfg)
+	if w := request(h, "GET", "/api/v1/auth", nil, nil, "", ""); w.Code != 403 {
+		t.Fatal("root policy did not protect login", w.Code)
+	}
+}
+
+func TestRuntimeConfirmationRequiresNewListenerAndSource(t *testing.T) {
+	c, _ := testController(t)
+	capture := &capturingExecutor{}
+	c.App.Executor = capture
+	c.App.PanelConfigPath = filepath.Join(t.TempDir(), "panel.json")
+	cfg := runtimeconfig.Default()
+	cfg.Protocol = "http"
+	cfg.Port = 19001
+	_ = runtimeconfig.Save(c.App.PanelConfigPath, cfg)
+	call := func(port int) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/api/v1/runtime/confirm", strings.NewReader(`{"token":"`+strings.Repeat("a", 64)+`"}`))
+		req = req.WithContext(context.WithValue(req.Context(), http.LocalAddrContextKey, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}))
+		w := httptest.NewRecorder()
+		c.runtimeConfirm(w, req)
+		return w
+	}
+	if w := call(18790); w.Code != 409 || capture.name != "" {
+		t.Fatal("confirmed through old listener", w.Code)
+	}
+	if w := call(19001); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	denied := "203.0.113.0/24"
+	cfg.AllowedCIDRs = &denied
+	_ = runtimeconfig.Save(c.App.PanelConfigPath, cfg)
+	if w := call(19001); w.Code != 403 {
+		t.Fatal("confirmed from blocked source", w.Code)
 	}
 }

@@ -22,7 +22,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { usePanel } from './stores/panel'
-import { post, errorText } from './lib/api'
+import { api, post, errorText } from './lib/api'
 import Login from './views/Login.vue'
 const panel = usePanel(),
   route = useRoute(),
@@ -56,6 +56,12 @@ async function refresh() {
   }
 }
 async function ready() {
+  const confirmToken = new URLSearchParams(location.hash.slice(1)).get('runtime-confirm')
+  if (confirmToken) {
+    history.replaceState(null, '', location.pathname)
+    await post('/runtime/confirm', { token: confirmToken })
+  }
+
   await panel.session()
   if (panel.auth.authenticated) await refresh()
 }
@@ -71,21 +77,31 @@ function unauthorized() {
   panel.auth.authenticated = false
 }
 let timer: ReturnType<typeof setInterval>
+function setRefresh(seconds: number) {
+  clearInterval(timer)
+  timer = setInterval(() => {
+    if (panel.auth.authenticated) void refresh()
+  }, seconds * 1000)
+}
+function preferences(e: Event) {
+  setRefresh((e as CustomEvent).detail.refreshSeconds || 15)
+}
 onMounted(async () => {
   window.addEventListener('opsview:unauthorized', unauthorized)
+  window.addEventListener('opsview:preferences', preferences)
   try {
     await ready()
   } catch (e) {
     fatal.value = errorText(e)
     panel.loaded = true
   }
-  timer = setInterval(() => {
-    if (panel.auth.authenticated) void refresh()
-  }, 15000)
+  const prefs = panel.auth.authenticated ? await api('/settings').catch(() => ({})) : {}
+  setRefresh(prefs.refreshSeconds || 15)
 })
 onUnmounted(() => {
   clearInterval(timer)
   window.removeEventListener('opsview:unauthorized', unauthorized)
+  window.removeEventListener('opsview:preferences', preferences)
 })
 </script>
 <template>

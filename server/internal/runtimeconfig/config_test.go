@@ -67,3 +67,27 @@ func TestPublicAddressValidation(t *testing.T) {
 		t.Fatal("accepted offline response")
 	}
 }
+
+func TestProtocolCompatibilityAndEntryURL(t *testing.T) {
+	cfg := Default()
+	if cfg.Scheme() != "https" {
+		t.Fatal("legacy HTTPS default lost")
+	}
+	cfg.Protocol = "http"
+	cfg.Entry = "secret_entry"
+	if cfg.URL("panel.example.com") != "http://panel.example.com:18790/secret_entry" {
+		t.Fatal(cfg.URL("panel.example.com"))
+	}
+	if cfg.LocalHealthURL() != "http://127.0.0.1:18790/api/v1/health" {
+		t.Fatal(cfg.LocalHealthURL())
+	}
+	cfg.Entry = "../escape"
+	if cfg.Validate() == nil {
+		t.Fatal("invalid security entry accepted")
+	}
+	cfg.Entry = ""
+	cfg.Protocol = "file"
+	if cfg.Validate() == nil {
+		t.Fatal("invalid protocol accepted")
+	}
+}

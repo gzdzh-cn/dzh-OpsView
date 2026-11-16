@@ -26,13 +26,16 @@ import (
 	"time"
 )
 
-func (e *Engine) instance(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
+func (e *Engine) instance(ctx context.Context, op model.Operation, log func(string)) (result model.Config, retErr error) {
 	action := strings.TrimPrefix(op.Name, "instance.")
 	r := op.Resource
 	if action == "install" {
 		e.mu.Lock()
 		defer e.mu.Unlock()
-		if _, err := e.load(r.ID); err == nil {
+		if previous, err := e.load(r.ID); err == nil {
+			if previous.Config.Bool("installationIncomplete") {
+				return nil, errors.New("此实例安装未完成；请先卸载服务（保留现场数据），再新建实例安装，禁止覆盖残留目录")
+			}
 			return nil, errors.New("实例已安装，请使用启动或重启操作")
 		}
 		entry, ok := e.catalogEntry(r.Config.String("catalogId"))
@@ -45,7 +48,12 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 		if err := checkOS(); err != nil {
 			return nil, err
 		}
-		if (entry.Software == "mysql" || entry.Software == "postgresql") && (len(r.Config.String("password")) < 12 || strings.ContainsAny(r.Config.String("password"), "\x00\r\n")) {
+		if !e.allowUnverifiedNative {
+			if reason := catalog.InstallationReason(entry, r.Config.String("mode"), r.Config.String("installMethod"), hostSystem()); reason != "" {
+				return nil, errors.New(reason)
+			}
+		}
+		if (entry.Software == "mysql" || entry.Software == "postgresql" || entry.Software == "redis") && (len(r.Config.String("password")) < 12 || strings.ContainsAny(r.Config.String("password"), "\x00\r\n")) {
 			return nil, errors.New("数据库管理员密码至少 12 位且不得包含换行")
 		}
 		for _, other := range e.states() {
@@ -97,6 +105,14 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 		if err = e.save(r); err != nil {
 			return nil, err
 		}
+		defer func() {
+			if retErr != nil {
+				r.Status = "error"
+				r.Config["installationIncomplete"] = true
+				_ = e.save(r)
+				log("安装未完成，已保留现场；请卸载服务并保留数据，再新建实例重试")
+			}
+		}()
 		if r.Config.String("mode") == "docker" {
 			err = e.installContainer(ctx, r, entry, base, log)
 		} else {
@@ -110,15 +126,26 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 				return nil, err
 			}
 		}
+		if persisted, er := e.load(r.ID); er == nil {
+			if v, ok := persisted.Config["statusPort"]; ok {
+				r.Config["statusPort"] = v
+			}
+		}
 		r.Status = "ready"
 		if r.Config.Bool("deferStart") {
 			r.Status = "stopped"
-			log("新 Nginx 版本已安装并保持停止；停止旧入口后可启动并迁移站点")
+			log("实例已安装并保持停止；可在设置中启动服务或切换入口")
 		}
 		if err = e.save(r); err != nil {
 			return nil, err
 		}
-		result := model.Config{"software": entry.Software, "version": entry.Version, "bind": "127.0.0.1", "runtimeStatus": r.Status, "installedAt": time.Now().UTC().Format(time.RFC3339)}
+		if persisted, er := e.load(r.ID); er == nil {
+			if v, ok := persisted.Config["statusPort"]; ok {
+				r.Config["statusPort"] = v
+			}
+		}
+		_ = e.save(r)
+		result := model.Config{"software": entry.Software, "version": entry.Version, "bind": "127.0.0.1", "runtimeStatus": r.Status, "installedAt": time.Now().UTC().Format(time.RFC3339), "statusPort": r.Config["statusPort"], "installMethod": r.Config["installMethod"]}
 		if entry.Software == "nodejs" {
 			result["executablePath"] = base + "/runtime/bin/node"
 			r.Config["executablePath"] = result["executablePath"]
@@ -139,7 +166,7 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 			return model.Config{}, e.forget(r.ID)
 		}
 		for _, other := range e.states() {
-			if other.Config.String("instanceId") == r.ID {
+			if other.Config.String("instanceId") == r.ID || other.Config.String("phpInstanceId") == r.ID {
 				return nil, errors.New("执行器检测到关联资源，禁止卸载")
 			}
 		}
@@ -162,6 +189,9 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 		}
 		log("已卸载服务，原始数据保留在 instances/" + r.ID)
 		return model.Config{}, e.forget(r.ID)
+	}
+	if r.Config.String("software") == "php" && (action == "start" || action == "stop" || action == "restart") {
+		return e.controlPHP(ctx, r, action, op.Params, log)
 	}
 	if action != "start" && action != "stop" && action != "restart" {
 		return nil, errors.New("实例操作无效")
@@ -294,8 +324,17 @@ func (e *Engine) installContainer(ctx context.Context, r model.Resource, entry c
 	return err
 }
 func (e *Engine) installNative(ctx context.Context, r model.Resource, entry catalog.Entry, base string, log func(string)) error {
+	if entry.DisabledReason != "" {
+		return errors.New(entry.DisabledReason)
+	}
 	if entry.Source == "" || len(entry.SHA256) != 64 {
 		return errors.New("此版本缺少已验证的原生安装源")
+	}
+	if r.Config.String("installMethod") == "binary" && entry.Software != "mysql" && entry.Software != "nodejs" {
+		return e.installPrecompiled(ctx, r, entry, base, log)
+	}
+	if entry.Software == "nginx" || entry.Software == "php" || entry.Software == "redis" || entry.Software == "postgresql" {
+		return e.installSource(ctx, r, entry, base, log)
 	}
 	if entry.Software == "nodejs" {
 		archive := filepath.Join(e.Root, "downloads", entry.ID+".archive")
@@ -336,56 +375,6 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 		}
 	}
 	switch entry.Software {
-	case "nginx":
-		if err := run(ctx, log, source, nil, nil, "./configure", "--prefix="+runtimePath, "--with-http_ssl_module", "--with-http_v2_module", "--with-http_stub_status_module", "--with-threads"); err != nil {
-			return err
-		}
-		if err := run(ctx, log, source, nil, nil, "make", "-j2"); err != nil {
-			return err
-		}
-		if err := run(ctx, log, source, nil, nil, "make", "install"); err != nil {
-			return err
-		}
-		if err := e.writeNginxBase(r, base); err != nil {
-			return err
-		}
-		return installUnit(ctx, r, fmt.Sprintf("Type=forking\nPIDFile=%s/logs/nginx.pid\nExecStart=%s/sbin/nginx -c %s/conf/nginx.conf\nExecReload=%s/sbin/nginx -c %s/conf/nginx.conf -s reload\nExecStop=%s/sbin/nginx -c %s/conf/nginx.conf -s quit\n", base, runtimePath, base, runtimePath, base, runtimePath, base), log)
-	case "postgresql":
-		if err := run(ctx, log, source, nil, nil, "./configure", "--prefix="+runtimePath, "--with-openssl"); err != nil {
-			return err
-		}
-		if err := run(ctx, log, source, nil, nil, "make", "-j2"); err != nil {
-			return err
-		}
-		if err := run(ctx, log, source, nil, nil, "make", "install"); err != nil {
-			return err
-		}
-		data := filepath.Join(base, "data")
-		if err := run(ctx, log, "", nil, nil, "chown", "-R", user+":"+user, data); err != nil {
-			return err
-		}
-		pwfile := filepath.Join(base, "pg-password")
-		if err := security.WriteAtomic(pwfile, []byte(r.Config.String("password")), 0600); err != nil {
-			return err
-		}
-		defer os.Remove(pwfile)
-		if err := run(ctx, log, "", nil, nil, "chown", user+":"+user, pwfile); err != nil {
-			return err
-		}
-		if err := run(ctx, log, "", nil, nil, "runuser", "-u", user, "--", runtimePath+"/bin/initdb", "-D", data, "-U", "postgres", "--pwfile="+pwfile, "--auth=scram-sha-256"); err != nil {
-			return err
-		}
-		conf := fmt.Sprintf("\nport = %d\nlisten_addresses = '127.0.0.1'\n", r.Config.Int("port"))
-		f, err := os.OpenFile(data+"/postgresql.conf", os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			return err
-		}
-		_, err = f.WriteString(conf)
-		f.Close()
-		if err != nil {
-			return err
-		}
-		return installUnit(ctx, r, fmt.Sprintf("User=%s\nGroup=%s\nExecStart=%s/bin/postgres -D %s\n", user, user, runtimePath, data), log)
 	case "mysql":
 		entries, err := os.ReadDir(source)
 		if err != nil {
@@ -400,7 +389,7 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 		if err = run(ctx, log, "", nil, nil, "chown", "-R", user+":"+user, data); err != nil {
 			return err
 		}
-		conf := fmt.Sprintf("[mysqld]\nbasedir=%s\ndatadir=%s\nport=%d\nbind-address=127.0.0.1\nsocket=%s/mysql.sock\nmysqlx=0\nlog-error=%s/logs/mysql.log\n", runtimePath, data, r.Config.Int("port"), data, base)
+		conf := fmt.Sprintf("[mysqld]\nbasedir=%s\ndatadir=%s\nport=%d\nbind-address=127.0.0.1\nsocket=%s/mysql.sock\nloose-mysqlx=0\nslow-query-log-file=%s/logs/slow.log\nlog-error=%s/logs/mysql.log\n", runtimePath, data, r.Config.Int("port"), data, base, base)
 		if err = security.WriteAtomic(base+"/conf/my.cnf", []byte(conf), 0644); err != nil {
 			return err
 		}
@@ -441,6 +430,9 @@ func installUnit(ctx context.Context, r model.Resource, body string, log func(st
 		return err
 	}
 	if r.Config.Bool("deferStart") {
+		if err := systemctl(ctx, log, "stop", serviceName(r)); err != nil {
+			return err
+		}
 		return run(ctx, log, "", nil, nil, "systemctl", "disable", serviceName(r))
 	}
 	if err := run(ctx, log, "", nil, nil, "systemd-analyze", "verify", filepath.Join("/etc/systemd/system", serviceName(r))); err != nil {
@@ -460,6 +452,7 @@ func download(ctx context.Context, source, expected, path string, log func(strin
 	if err != nil {
 		return err
 	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; OpsViewInstaller)")
 	client := &http.Client{Timeout: 30 * time.Minute, CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if r.URL.Scheme != "https" || len(via) > 5 {
 			return errors.New("不允许的下载重定向")
@@ -482,7 +475,7 @@ func download(ctx context.Context, source, expected, path string, log func(strin
 	defer os.Remove(tmp)
 	h := sha256.New()
 	log("下载并校验安装包")
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(res.Body, 2<<30+1))
+	n, err := io.Copy(io.MultiWriter(f, h, &downloadProgress{log: log, total: res.ContentLength, last: time.Now()}), io.LimitReader(res.Body, 2<<30+1))
 	ce := f.Close()
 	if err != nil {
 		return err
@@ -506,7 +499,7 @@ func extractArchive(ctx context.Context, path, source, dest string, strip bool) 
 	defer f.Close()
 	var reader io.Reader = f
 	var cmd *exec.Cmd
-	if strings.Contains(source, ".tar.gz") {
+	if strings.Contains(source, ".tar.gz") || strings.Contains(source, ".tgz") {
 		g, err := gzip.NewReader(f)
 		if err != nil {
 			return err
@@ -595,4 +588,23 @@ func extractArchive(ctx context.Context, path, source, dest string, strip bool) 
 		}
 	}
 	return nil
+}
+
+type downloadProgress struct {
+	log             func(string)
+	total, received int64
+	last            time.Time
+}
+
+func (p *downloadProgress) Write(b []byte) (int, error) {
+	p.received += int64(len(b))
+	if time.Since(p.last) >= 3*time.Second {
+		p.last = time.Now()
+		if p.total > 0 {
+			p.log(fmt.Sprintf("下载 %d / %d KiB", p.received/1024, p.total/1024))
+		} else {
+			p.log(fmt.Sprintf("已下载 %d KiB", p.received/1024))
+		}
+	}
+	return len(b), nil
 }

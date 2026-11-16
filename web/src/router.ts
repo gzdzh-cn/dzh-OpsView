@@ -9,8 +9,7 @@ export const router = createRouter({
     },
     {
       path: '/sites',
-      component: () => import('./views/Resources.vue'),
-      props: { kind: 'site' },
+      component: () => import('./views/Sites.vue'),
       meta: { title: '网站', caption: '从一个域名，开始部署你的应用' },
     },
     {

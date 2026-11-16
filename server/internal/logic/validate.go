@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var Name = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`)
@@ -38,8 +39,22 @@ func Validate(r model.Resource) error {
 		if !Name.MatchString(c.String("instanceId")) {
 			return errors.New("请选择 Nginx 实例")
 		}
-		if c.String("type") != "static" && c.String("type") != "proxy" {
+		if c.String("type") != "static" && c.String("type") != "proxy" && c.String("type") != "php" && c.String("type") != "app" {
 			return errors.New("网站类型无效")
+		}
+		if c.String("type") == "php" && !Name.MatchString(c.String("phpInstanceId")) {
+			return errors.New("请选择 PHP 实例")
+		}
+		if c.String("type") == "app" && !Name.MatchString(c.String("appId")) {
+			return errors.New("请选择应用进程")
+		}
+		if expiry := c.String("expiresAt"); expiry != "" {
+			if _, err := time.Parse(time.RFC3339, expiry); err != nil {
+				return errors.New("到期时间格式无效")
+			}
+		}
+		if len(c.String("note")) > 1000 {
+			return errors.New("备注最多 1000 字符")
 		}
 		domains := strings.Fields(c.String("domains"))
 		if len(domains) == 0 {

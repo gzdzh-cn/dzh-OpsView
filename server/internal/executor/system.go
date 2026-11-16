@@ -17,6 +17,15 @@ import (
 )
 
 func (e *Engine) system(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
+	if op.Name == "system.panel-certificate-upload" {
+		return e.uploadPanelCertificate(op.Params)
+	}
+	if op.Name == "system.panel-certificate" {
+		return e.panelCertificate(ctx, op.Params, log)
+	}
+	if strings.HasPrefix(op.Name, "system.panel-") {
+		return e.panelRuntime(ctx, op, log)
+	}
 	switch op.Name {
 	case "system.inspect":
 		ports, _ := output(ctx, "ss", "-tulnp")

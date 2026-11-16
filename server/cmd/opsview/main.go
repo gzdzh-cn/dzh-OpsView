@@ -289,7 +289,15 @@ func main() {
 	server.SetDumpRouterMap(false)
 	server.SetReadTimeout(30 * time.Second)
 	server.SetIdleTimeout(90 * time.Second)
-	if !*dev {
+	tlsEnabled := !*dev
+	if *configPath != "" {
+		cfg, er := runtimeconfig.Load(*configPath)
+		if er != nil {
+			log.Fatal(er)
+		}
+		tlsEnabled = tlsEnabled && cfg.Scheme() == "https"
+	}
+	if tlsEnabled {
 		certPath := filepath.Join(*data, "panel.pem")
 		if _, err = os.Stat(certPath); os.IsNotExist(err) {
 			if err = createCertificate(certPath); err != nil {

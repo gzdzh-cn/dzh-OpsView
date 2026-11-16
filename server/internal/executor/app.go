@@ -21,6 +21,18 @@ import (
 func (e *Engine) app(ctx context.Context, op model.Operation, log func(string)) (result model.Config, retErr error) {
 	r := op.Resource
 	action := strings.TrimPrefix(op.Name, "app.")
+	if action == "apply" || action == "start" || action == "restart" {
+		linked, available := false, false
+		for _, site := range e.states() {
+			if site.Kind == "site" && site.Config.String("appId") == r.ID {
+				linked = true
+				available = available || !siteUnavailable(site)
+			}
+		}
+		if linked && !available {
+			return nil, errors.New("关联网站已停止或到期，请先恢复网站")
+		}
+	}
 	base := filepath.Join(e.Root, "apps", r.ID)
 	if action == "apply" {
 		u, err := user.Lookup(r.Config.String("user"))

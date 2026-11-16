@@ -87,7 +87,12 @@ func (a *App) BackupPanel(ctx context.Context) (model.Config, error) {
 		return nil, err
 	}
 	files, _ := filepath.Glob(folder + "/*.ovp")
-	for len(files) > 7 {
+	retention := 7
+	var prefs model.Config
+	if a.Store.Setting("panel", &prefs) == nil && prefs.Int("backupRetention") >= 1 && prefs.Int("backupRetention") <= 30 {
+		retention = prefs.Int("backupRetention")
+	}
+	for len(files) > retention {
 		if err = os.Remove(files[0]); err != nil {
 			return nil, err
 		}

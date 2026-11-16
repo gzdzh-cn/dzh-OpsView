@@ -1,0 +1,88 @@
+name: Validate native packages
+on:
+  push:
+    branches: [codex/software-management]
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: 'recommended or all (legacy combinations may fail validation)'
+        type: choice
+        options: [recommended, all]
+        default: recommended
+permissions:
+  contents: read
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      versions: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: matrix
+        env:
+          SCOPE: ${{ inputs.versions }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          entries=json.load(open('packages/catalog/versions.json'))
+          ids=[e['id'] for e in entries if e['software'] in ['nginx','php','redis'] and (os.environ['SCOPE']=='all' or e.get('recommended')) and e.get('recipeRevision')]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write('versions='+json.dumps(ids)+'\n')
+          PY
+  build:
+    needs: matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        image: [ubuntu:22.04, ubuntu:24.04, debian:bookworm-slim, debian:trixie-slim]
+        entry: ${{ fromJSON(needs.matrix.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: mkdir -p dist/native
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -o ../dist/native-smoke.test ./internal/executor
+        working-directory: server
+      - name: Compile and probe in disposable target system
+        env:
+          NATIVE_IMAGE: ${{ matrix.image }}
+          NATIVE_ENTRY: ${{ matrix.entry }}
+        run: docker run --rm --platform linux/amd64 -e OPSVIEW_NATIVE_ENTRY="$NATIVE_ENTRY" -e OPSVIEW_NATIVE_OUTPUT=/output -v "$PWD/dist/native:/output" -v "$PWD/dist/native-smoke.test:/native-smoke.test:ro" "$NATIVE_IMAGE" /native-smoke.test -test.run '^TestNativePackageSmoke$' -test.v -test.timeout=55m
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ strategy.job-index }}
+          path: dist/native/*
+          if-no-files-found: error
+          retention-days: 14
+
+  systemd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        entry: [nginx-1.30.6, php-8.4.27, redis-8.10.3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: mkdir -p dist/native-systemd
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -o ../dist/native-smoke.test ./internal/executor
+        working-directory: server
+      - name: Build and probe a real native systemd service
+        env:
+          NATIVE_ENTRY: ${{ matrix.entry }}
+        run: sudo env GITHUB_ACTIONS=true OPSVIEW_NATIVE_ENTRY="$NATIVE_ENTRY" OPSVIEW_NATIVE_SYSTEMD=true OPSVIEW_NATIVE_OUTPUT="$PWD/dist/native-systemd" "$PWD/dist/native-smoke.test" -test.run '^TestNativePackageSmoke$' -test.v -test.timeout=50m
+      - uses: actions/upload-artifact@v4
+        with:
+          name: systemd-${{ matrix.entry }}-ubuntu-24.04
+          path: dist/native-systemd/*
+          if-no-files-found: error
+          retention-days: 14

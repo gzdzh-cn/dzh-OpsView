@@ -42,8 +42,12 @@ test('all management menus render without browser errors', async ({ page }) => {
   expect(errors).toEqual([])
 })
 test('invalid site never becomes a deployed resource', async ({ page }) => {
+  await page.route('**/api/v1/resources', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: [nginxFixture] }) : route.continue(),
+  )
   await page.goto('/sites')
-  await page.getByRole('button', { name: '添加网站' }).first().click()
+  await page.getByRole('tab', { name: '其他项目', exact: true }).click()
+  await page.getByRole('button', { name: '添加项目', exact: true }).click()
   await page.getByPlaceholder('字母、数字、横线或下划线，例如 my-app').fill('e2e-invalid-site')
   await page
     .getByPlaceholder('example.com www.example.com，以空格分隔')
@@ -53,9 +57,21 @@ test('invalid site never becomes a deployed resource', async ({ page }) => {
   await expect(page.locator('.el-dialog')).toBeVisible()
 })
 test('queued installation reports executor unavailable instead of success', async ({ page }) => {
+  // This scenario exercises task failure, independently of native host qualification.
+  await page.route('**/api/v1/catalog', async (route) => {
+    const response = await route.fetch()
+    const entries = await response.json()
+    await route.fulfill({
+      json: entries.map((e: any) => ({
+        ...e,
+        disabledReason: '',
+        availability: { source: '', binary: '' },
+      })),
+    })
+  })
   await page.goto('/software')
   await page
-    .locator('.software-card')
+    .locator('.software-list .el-table__body tr')
     .first()
     .getByRole('button', { name: '安装', exact: true })
     .click()
@@ -121,6 +137,119 @@ test('panel backup persists a task, streams resumable logs and downloads encrypt
   expect(bytes.subarray(0, 5).toString()).toBe('OVB1\n')
   expect(bytes.includes(Buffer.from(password))).toBe(false)
   await page.goto('/settings')
-  await expect(page.getByRole('heading', { name: '面板配置备份', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '备份恢复', exact: true }).click()
+  await expect(page.getByRole('button', { name: '立即备份面板配置', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: backups[0].name })).toBeVisible()
+})
+
+const nginxFixture = {
+  id: 'nginx-fixture',
+  kind: 'instance',
+  name: 'nginx-main',
+  status: 'ready',
+  revision: 1,
+  config: { software: 'nginx', version: '1.30.6', mode: 'native', port: 80 },
+}
+test('websites require Nginx and expose exact tab columns', async ({ page }) => {
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [] }))
+  await page.goto('/sites')
+  await expect(page.getByRole('button', { name: '前往软件市场安装' })).toBeVisible()
+  await page.unroute('**/api/v1/resources')
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture] }))
+  await page.reload()
+  for (const [tab, headers] of [
+    [
+      'PHP 项目',
+      ['网站名', '状态', '备份', '根目录', '日流量', '到期时间', '备注', 'SSL证书', '操作'],
+    ],
+    ['反向代理', ['域名', '状态', '代理地址', '日流量', '备注', 'SSL证书', '操作']],
+    ['其他项目', ['项目名称', '状态', '运行端口', '根目录', '到期时间', '备注', 'SSL证书', '操作']],
+  ] as const) {
+    await page.getByRole('tab', { name: tab, exact: true }).click()
+    await expect(page.locator('.site-table .el-table__header th .cell')).toHaveText([...headers])
+  }
+  await page.screenshot({ path: '../.opsview/screenshots/sites-tabs.png', fullPage: true })
+})
+test('software settings show version context and configuration conflict', async ({ page }) => {
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture] }))
+  await page.route('**/api/v1/instances/nginx-fixture/settings', (route) =>
+    route.fulfill({
+      json: {
+        software: 'nginx',
+        version: '1.30.6',
+        state: 'active',
+        editable: true,
+        reload: true,
+        files: ['main'],
+        associated: [],
+      },
+    }),
+  )
+  await page.route('**/api/v1/instances/nginx-fixture/configuration?*', (route) =>
+    route.fulfill({
+      json: {
+        revision: 'a'.repeat(64),
+        content: 'worker_processes auto;\nevents { worker_connections 1024; }\nhttp { }',
+        values: { worker_processes: 'auto' },
+        fields: [],
+        history: [],
+      },
+    }),
+  )
+  await page.route('**/api/v1/instances/nginx-fixture/validate', (route) =>
+    route.fulfill({ status: 409, json: { error: '配置已被外部程序修改，请刷新并比较差异' } }),
+  )
+  await page.goto('/software')
+  await page
+    .locator('.software-list .el-table__body tr')
+    .filter({ hasText: 'Nginx' })
+    .getByRole('button', { name: '设置', exact: true })
+    .click()
+  const dialog = page.locator('.software-settings')
+  await expect(dialog).toContainText('NGINX 1.30.6')
+  await dialog.locator('aside').getByRole('button', { name: '配置文件', exact: true }).click()
+  await expect(dialog.locator('.cm-editor')).toBeVisible()
+  await dialog.getByRole('button', { name: '校验配置', exact: true }).click()
+  await expect(dialog.locator('.el-alert')).toContainText('外部程序修改')
+  await page.screenshot({ path: '../.opsview/screenshots/software-settings.png', fullPage: true })
+})
+test('panel settings have five tabs and stage HTTPS changes', async ({ page }) => {
+  await page.route('**/api/v1/settings/runtime', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = route.request().postDataJSON()
+      expect(payload.config.protocol).toBe('http')
+      expect(payload.confirmedImpact).toBe(true)
+      await route.fulfill({
+        json: { url: 'http://panel.example.com:18790', confirmToken: 'a'.repeat(64) },
+      })
+    } else
+      await route.fulfill({
+        json: {
+          config: {
+            protocol: 'https',
+            listenHost: '0.0.0.0',
+            port: 18790,
+            publicHost: 'panel.example.com',
+          },
+        },
+      })
+  })
+  await page.goto('/settings')
+  await expect(page.getByRole('tab')).toHaveText([
+    '常用设置',
+    '面板设置',
+    '安全设置',
+    '界面设置',
+    '备份恢复',
+  ])
+  await page.getByRole('tab', { name: '面板设置', exact: true }).click()
+  await page.getByText('关闭 SSL', { exact: true }).click()
+  await page.getByRole('button', { name: '保存并重新连接', exact: true }).click()
+  await page.getByRole('button', { name: '确认修改', exact: true }).click()
+  await expect(page.locator('.el-message-box')).toBeHidden()
+  await expect(page.getByRole('link', { name: '新面板登录地址（点击确认）' })).toHaveAttribute(
+    'href',
+    /^http:.*#runtime-confirm=/,
+  )
+  await page.screenshot({ path: '../.opsview/screenshots/panel-settings.png', fullPage: true, animations: 'disabled' })
 })

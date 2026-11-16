@@ -26,6 +26,8 @@ type App struct {
 	Development     bool
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
+	taskMu          sync.Mutex
+	taskCancels     map[string]context.CancelFunc
 	schedule        *cron.Cron
 }
 
@@ -89,7 +91,7 @@ func (a *App) ReloadSchedules() {
 			log.Printf("schedule %s: %v", r.ID, e)
 		}
 	}
-	_, _ = a.schedule.AddFunc("17 3 * * *", func() {
+	_, _ = a.schedule.AddFunc("17 * * * *", func() {
 		sites, err := a.Store.Resources("site")
 		if err != nil {
 			return
@@ -99,7 +101,11 @@ func (a *App) ReloadSchedules() {
 				continue
 			}
 			expires, err := time.Parse(time.RFC3339, site.Config.String("certificateExpires"))
-			if err == nil && time.Until(expires) < 30*24*time.Hour {
+			threshold := 30 * 24 * time.Hour
+			if start, er := time.Parse(time.RFC3339, site.Config.String("certificateNotBefore")); er == nil && expires.Sub(start) > 0 && expires.Sub(start)/3 < threshold {
+				threshold = expires.Sub(start) / 3
+			}
+			if err == nil && time.Until(expires) < threshold {
 				_, _ = a.Queue(site, "renew", model.Config{})
 			}
 		}
@@ -110,7 +116,7 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 		p = model.Config{}
 	}
 	allowed := map[string]map[string]bool{
-		"site": {"apply": true, "delete": true, "renew": true, "certificate": true, "configuration": true, "logs": true}, "instance": {"install": true, "start": true, "stop": true, "restart": true, "uninstall": true}, "database": {"create": true, "access": true, "delete": true, "import": true, "migrate": true}, "app": {"apply": true, "start": true, "stop": true, "restart": true, "delete": true, "logs": true}, "compose": {"apply": true, "start": true, "stop": true, "delete": true, "logs": true}, "firewall": {"apply": true, "confirm": true, "delete": true}, "backup": {"backup": true, "restore": true, "delete": true}, "plugin": {"install": true, "check": true, "uninstall": true}}
+		"site": {"apply": true, "delete": true, "renew": true, "certificate": true, "configuration": true, "logs": true, "stop": true, "resume": true}, "instance": {"install": true, "start": true, "stop": true, "restart": true, "uninstall": true, "reload": true, "configure": true, "guardian": true, "extension": true, "port": true, "snapshot": true, "purge-binlogs": true, "move-storage": true, "switch-version": true, "session": true}, "database": {"create": true, "access": true, "delete": true, "import": true, "migrate": true}, "app": {"apply": true, "start": true, "stop": true, "restart": true, "delete": true, "logs": true}, "compose": {"apply": true, "start": true, "stop": true, "delete": true, "logs": true}, "firewall": {"apply": true, "confirm": true, "delete": true}, "backup": {"backup": true, "restore": true, "delete": true}, "plugin": {"install": true, "check": true, "uninstall": true}}
 	if !allowed[r.Kind][action] {
 		return model.Task{}, errors.New("该资源不支持此操作")
 	}
@@ -123,7 +129,7 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 			if x.ID == r.ID {
 				continue
 			}
-			for _, k := range []string{"instanceId", "targetId"} {
+			for _, k := range []string{"instanceId", "targetId", "phpInstanceId", "appId"} {
 				if x.Config.String(k) == r.ID {
 					return model.Task{}, fmt.Errorf("资源仍被 %s 使用", x.Name)
 				}
@@ -163,7 +169,18 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 	return a.Store.Enqueue(model.Operation{Name: r.Kind + "." + action, Resource: r, Params: p})
 }
 func (a *App) runNext(ctx context.Context) {
+	a.taskMu.Lock()
 	t, op, e := a.Store.Claim()
+	taskCtx, cancel := context.WithCancel(ctx)
+	if e == nil {
+		if a.taskCancels == nil {
+			a.taskCancels = map[string]context.CancelFunc{}
+		}
+		a.taskCancels[t.ID] = cancel
+	}
+	a.taskMu.Unlock()
+	defer func() { cancel(); a.taskMu.Lock(); delete(a.taskCancels, t.ID); a.taskMu.Unlock() }()
+	ctx = taskCtx
 	if errors.Is(e, sql.ErrNoRows) {
 		return
 	}
@@ -180,13 +197,41 @@ func (a *App) runNext(ctx context.Context) {
 	}
 	if e != nil {
 		msg := security.MaskLog(e.Error(), op)
-		_ = a.Store.Finish(t.ID, "failed", msg)
+		state := "failed"
+		if errors.Is(ctx.Err(), context.Canceled) {
+			state = "cancelled"
+		}
+		_ = a.Store.Finish(t.ID, state, msg)
 		a.Store.Event(t.ID, "失败："+msg)
-		if r, err := a.Store.Resource(op.Resource.ID); err == nil {
+		if r, err := a.Store.Resource(op.Resource.ID); err == nil && (strings.HasSuffix(op.Name, ".install") || strings.HasSuffix(op.Name, ".apply") || strings.HasSuffix(op.Name, ".start")) {
 			r.Status = "error"
 			_ = a.Store.Update(&r)
 		}
 		return
+	}
+	if linked, ok := data["linkedResources"]; ok {
+		raw, _ := json.Marshal(linked)
+		var resources []model.Resource
+		if json.Unmarshal(raw, &resources) != nil {
+			_ = a.Store.Finish(t.ID, "failed", "关联资源记录无效")
+			return
+		}
+		for _, resource := range resources {
+			if resource.Kind != "site" && resource.Kind != "instance" {
+				continue
+			}
+			current, er := a.Store.Resource(resource.ID)
+			if er != nil {
+				_ = a.Store.Finish(t.ID, "failed", "关联记录不存在，请核对实际入口")
+				return
+			}
+			resource.Revision = current.Revision
+			if er = a.Store.Update(&resource); er != nil {
+				_ = a.Store.Finish(t.ID, "failed", "入口已切换，关联记录更新失败，请核对实际状态")
+				return
+			}
+		}
+		delete(data, "linkedResources")
 	}
 	for _, linkKey := range []string{"linkedFirewall", "linkedDatabase"} {
 		if linked, ok := data[linkKey]; ok {
@@ -221,10 +266,10 @@ func (a *App) runNext(ctx context.Context) {
 				r.Config[k] = v
 			}
 			r.Status = "ready"
-			if status, ok := data["runtimeStatus"].(string); ok && status == "stopped" {
-				r.Status = "stopped"
+			if status, ok := data["runtimeStatus"].(string); ok && (status == "stopped" || status == "expired") {
+				r.Status = status
 			}
-			if strings.HasSuffix(op.Name, ".stop") {
+			if strings.HasSuffix(op.Name, ".stop") && op.Params.String("siteId") == "" {
 				r.Status = "stopped"
 			}
 			er = a.Store.Update(&r)

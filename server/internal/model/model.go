@@ -50,9 +50,11 @@ type Operation struct {
 	Params   Config   `json:"params,omitempty"`
 }
 type Result struct {
-	Data  Config `json:"data,omitempty"`
-	Error string `json:"error,omitempty"`
-	Log   string `json:"log,omitempty"`
+	Code     string `json:"code,omitempty"`
+	Revision string `json:"revision,omitempty"`
+	Data     Config `json:"data,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Log      string `json:"log,omitempty"`
 }
 type Audit struct {
 	ID         int64  `json:"id"`

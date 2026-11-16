@@ -48,6 +48,9 @@ func (c *Client) Execute(ctx context.Context, op model.Operation, log func(strin
 			return nil, e
 		}
 		if r.Error != "" {
+			if r.Code == "revision_conflict" {
+				return nil, &model.RevisionConflict{Revision: r.Revision}
+			}
 			return nil, errors.New(r.Error)
 		}
 		if r.Log != "" {

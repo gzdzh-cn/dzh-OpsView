@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { computed, onUnmounted, ref } from 'vue'
 import { Clock, ArrowRight } from '@element-plus/icons-vue'
 import { usePanel } from '../stores/panel'
-import { api, date, errorText, type Task } from '../lib/api'
+import { post, api, date, errorText, type Task } from '../lib/api'
 import StatusBadge from '../components/StatusBadge.vue'
 const panel = usePanel(),
   filter = ref('all'),
@@ -47,6 +48,15 @@ function close() {
   selected.value = undefined
 }
 onUnmounted(() => stream?.close())
+async function cancelInstall(id: string) {
+  try {
+    await post(`/tasks/${id}/cancel`)
+    await panel.refresh()
+    ElMessage.success('已请求取消安装')
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
+}
 </script>
 <template>
   <div class="resource-shortcuts" style="margin-top: 0; margin-bottom: 20px">
@@ -76,7 +86,7 @@ onUnmounted(() => stream?.close())
       <el-select v-model="filter" style="width: 140px" size="small">
         <el-option label="全部状态" value="all" />
         <el-option
-          v-for="s in ['queued', 'running', 'succeeded', 'failed', 'interrupted']"
+          v-for="s in ['queued', 'running', 'succeeded', 'failed', 'interrupted', 'cancelled']"
           :key="s"
           :label="
             {
@@ -85,6 +95,7 @@ onUnmounted(() => stream?.close())
               succeeded: '已完成',
               failed: '失败',
               interrupted: '已中断',
+              cancelled: '已取消',
             }[s]
           "
           :value="s"
@@ -112,6 +123,18 @@ onUnmounted(() => stream?.close())
           <span v-else class="muted">
             {{ row.state === 'succeeded' ? '操作已完成' : '等待执行结果' }}
           </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="120">
+        <template #default="{ row }">
+          <el-button
+            v-if="row.operation === 'instance.install' && ['queued', 'running'].includes(row.state)"
+            link
+            type="danger"
+            @click.stop="cancelInstall(row.id)"
+          >
+            取消安装
+          </el-button>
         </template>
       </el-table-column>
       <el-table-column width="60">

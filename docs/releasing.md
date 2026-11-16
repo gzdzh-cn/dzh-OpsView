@@ -49,3 +49,13 @@ bash opsview-linux-amd64/deploy/install.sh
 ```
 
 缺少基础依赖时仍需访问 Ubuntu/Debian 软件源；业务软件安装还需访问其指定源。普通 Docker 容器不具备完整 systemd 环境，脚本会拒绝直接部署。
+
+## 候选与原生配方验证
+
+本轮工作区功能变更尚未发布。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
+
+**Validate native packages** 按推荐版本或完整源码目录，在四系统的独立容器编译、启动并探测 Nginx/PHP/Redis，输出归档及 SHA-256/构建前缀/验证信息。源码容器中的 systemctl 为夹具；另有 Ubuntu 24.04 原生 systemd 任务，实际安装并启动三个推荐软件服务后生成 `systemdVerified: true` 报告。其他系统的原生 systemd、扩展矩阵及公网验收仍必须另外完成。旧 PHP 配方会按目录原因拒绝；未通过的任务不能作为发布依据。MySQL 官方二进制及 PostgreSQL 仍需补充相应矩阵。
+
+全部功能和矩阵未验收前只作为开发候选；不得将带待实现项的构建标记为完整首版。
+
+各功能的实现边界见根目录 [软件管理实现说明](../软件管理实现说明.md)。

@@ -100,3 +100,21 @@ sudo ov info --public-host panel.example.com
 宿主机规则使用 UFW；Docker bridge 的 DNAT 发布端口使用 DOCKER-USER，要求兼容 iptables 后端；不接管 Docker routed/direct-routing 模式。ALLOW 规则只放行其匹配来源，不会自动拒绝所有其他来源；要实现白名单，应先为对应端口添加 deny any 并确认，再添加指定来源 allow。规则插入链头，后添加的规则先匹配。务必从独立机器验证实际可达性，IPv4 和 IPv6 分别检查。核心数据库使用 host 网络，受宿主机规则管理。
 
 修改规则需要在 120 秒内确认，否则撤回；待确认信息保存于磁盘，执行器重启后继续检查。此机制不能代替外部网络验收。云安全组仍属外部限制，面板不能判断互联网最终可达状态。
+
+## 软件配置、站点到期与面板访问设置
+
+实例配置仅允许编辑执行器管理的文件及参数。配置 API 返回 SHA-256 修订号，提交使用 `baseRevision`；文件外部变化时拒绝覆盖。草稿和历史使用执行器密钥加密，位于 `managed/instances/<id>/history/<file>/`。PHP 指定站点配置的历史位于 `managed/sites/<id>/history/`。编辑器返回凭据遮盖值，遮盖值不会替换原密码。
+
+配置应用执行候选检查、历史保存、受控应用和协议探测。MySQL 静态参数重启；Redis 白名单参数动态应用并原子保存受限文件，失败恢复运行值及文件。启用 AOF 等待后台重写完成；关闭 AOF 必须确认影响。Nginx 新建实例额外分配 loopback 状态端口，应用后通过新修订探针检查工作进程接管。旧 Nginx 没有状态端口时显示不可用。
+
+PHP 网站使用独立 FPM 单元 `opsview-site-php-<id>.service`，普通用户、Unix Socket、本机状态端点。网站编辑保留现有站点 ini/FPM 设置。PECL 使用对应版本的 phpize/php-config 构建和验证，随后重载关联活动服务。文件/Redis Session 修改验证扩展和受管 Redis 连接，原配置保存在加密历史；清理只处理受管目录下超过 24 小时未更新的会话文件。
+
+执行器每 15 秒采集结构化网站访问日志和检查到期。流量游标与小时汇总原子提交，按服务器时区统计；到期阻断公众访问、暂停专属 FPM/应用，保留 ACME 路径、文件及共享服务。扩展到期时间不会自行恢复，必须显式恢复访问。
+
+面板运行配置仍在 `/etc/opsview/panel.json`，新增 `protocol`、`entry`、`allowedHost` 和可选 `allowedCIDRs`。缺少协议的旧配置保持 HTTPS；没有新 CIDR 字段时沿用旧元数据限制。新访问变更以 120 秒事务暂存，确认 token 仅返回一次且磁盘只保存哈希。执行器持有回退记录，面板重启后仍可回退。root 可用 `ov recover-access --all` 清除访问限制和待确认记录。
+
+`ov ssl status|on|off|issue|renew` 管理面板协议与证书。续期注册信息加密保存于 `managed/panel-acme/renewal.enc`，每小时按剩余寿命检查，关闭 HTTPS 时暂停。上传证书会停止之前的自动续期。证书、密钥和该目录都应纳入离线灾难恢复规划。
+
+新菜单包含部分尚未交付的高级能力，不能按菜单名称推定已支持；具体范围见根目录 [软件管理实现说明](../软件管理实现说明.md)。
+
+原生新配方按系统验收后才启用：`verifiedSystems` 分别登记 source/binary 的精确系统；未通过安装及服务验收的组合会在市场禁用并由执行器再次拒绝。仅有编译/协议 smoke 不能标记为完成。终端修改与网页确认/超时回退使用共同文件锁；已有待确认变更时终端协议、端口或地址修改会拒绝。

@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"opsview/internal/account"
+	"opsview/internal/model"
+	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
 	"os"
 	"path/filepath"
@@ -125,14 +127,19 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 	delete(c.auth.attempts, ip)
 	token := security.ID() + security.ID()
 	csrf := security.ID()
-	expires := now.Add(8 * time.Hour)
+	minutes := 480
+	var preferences model.Config
+	if c.App.Store.Setting("panel", &preferences) == nil && preferences.Int("sessionMinutes") >= 15 && preferences.Int("sessionMinutes") <= 10080 {
+		minutes = preferences.Int("sessionMinutes")
+	}
+	expires := now.Add(time.Duration(minutes) * time.Minute)
 	e = c.App.Store.AddSession(a, security.Hash(token), csrf, expires.Unix())
 	if e != nil {
 		fail(w, 500, "创建会话失败")
 		return
 	}
 	_, _ = c.App.Store.DB.Exec(`DELETE FROM sessions WHERE expires<?`, now.Unix())
-	http.SetCookie(w, &http.Cookie{Name: "opsview_session", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: 8 * 3600, Expires: expires})
+	http.SetCookie(w, &http.Cookie{Name: "opsview_session", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: minutes * 60, Expires: expires})
 	c.App.Store.Audit("auth.login", "", ip)
 	send(w, 200, map[string]any{"csrf": csrf, "username": a.Username})
 }
@@ -150,7 +157,13 @@ func (c *Controller) authenticated(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		var settings map[string]any
-		if c.App.Store.Setting("panel", &settings) == nil {
+		legacyCIDRs := true
+		if c.App.PanelConfigPath != "" {
+			if cfg, err := runtimeconfig.Load(c.App.PanelConfigPath); err == nil && cfg.AllowedCIDRs != nil {
+				legacyCIDRs = false
+			}
+		}
+		if c.App.Store.Setting("panel", &settings) == nil && legacyCIDRs {
 			if list, ok := settings["allowedCIDRs"].(string); ok && strings.TrimSpace(list) != "" {
 				allowed := false
 				ip := net.ParseIP(clientIP(r))
@@ -274,4 +287,25 @@ func (c *Controller) password(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{"ok": true})
+}
+
+func (c *Controller) username(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Code     string `json:"code"`
+	}
+	if !decode(w, r, &b) {
+		return
+	}
+	a, err := c.currentAdmin()
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(b.Password)) != nil || (a.TOTP != "" && !security.VerifyTOTP(a.TOTP, b.Code)) {
+		fail(w, 403, "密码或双因素验证码错误")
+		return
+	}
+	if err = account.Change(c.App.Store, b.Username, "", false, &a, clientIP(r)); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	send(w, 200, map[string]bool{"ok": true})
 }

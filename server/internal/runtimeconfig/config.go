@@ -18,12 +18,16 @@ import (
 const Path = "/etc/opsview/panel.json"
 
 type Config struct {
-	ListenHost string `json:"listenHost"`
-	Port       int    `json:"port"`
-	PublicHost string `json:"publicHost,omitempty"`
+	AllowedCIDRs *string `json:"allowedCIDRs,omitempty"`
+	Protocol     string  `json:"protocol,omitempty"`
+	Entry        string  `json:"entry,omitempty"`
+	AllowedHost  string  `json:"allowedHost,omitempty"`
+	ListenHost   string  `json:"listenHost"`
+	Port         int     `json:"port"`
+	PublicHost   string  `json:"publicHost,omitempty"`
 }
 
-func Default() Config { return Config{ListenHost: "0.0.0.0", Port: 18790} }
+func Default() Config { return Config{Protocol: "https", ListenHost: "0.0.0.0", Port: 18790} }
 func ValidHost(host string) bool {
 	if ip := net.ParseIP(host); ip != nil {
 		return ip.To4() != nil && ip.IsGlobalUnicast() && !ip.IsPrivate()
@@ -40,6 +44,23 @@ func ValidHost(host string) bool {
 	return true
 }
 func (c Config) Validate() error {
+	if c.AllowedCIDRs != nil {
+		for _, item := range strings.Fields(*c.AllowedCIDRs) {
+			if _, _, err := net.ParseCIDR(item); err != nil {
+				return errors.New("IP 限制必须使用 CIDR 格式")
+			}
+		}
+	}
+	if c.Protocol != "" && c.Protocol != "https" && c.Protocol != "http" {
+		return errors.New("协议必须为 http 或 https")
+	}
+	if c.Entry != "" && !regexp.MustCompile(`^[a-zA-Z0-9_-]{8,64}$`).MatchString(c.Entry) {
+		return errors.New("安全入口须为 8–64 位字母数字、横线或下划线")
+	}
+	if c.AllowedHost != "" && !ValidHost(c.AllowedHost) {
+		return errors.New("访问域名无效")
+	}
+
 	if net.ParseIP(c.ListenHost) == nil || c.Port < 1 || c.Port > 65535 {
 		return errors.New("监听地址必须是 IP，端口须在 1–65535 之间")
 	}
@@ -81,10 +102,14 @@ func (c Config) LocalHealthURL() string {
 	if host == "::" {
 		host = "::1"
 	}
-	return "https://" + net.JoinHostPort(host, strconv.Itoa(c.Port)) + "/api/v1/health"
+	return c.Scheme() + "://" + net.JoinHostPort(host, strconv.Itoa(c.Port)) + "/api/v1/health"
 }
 func (c Config) URL(host string) string {
-	return "https://" + net.JoinHostPort(host, strconv.Itoa(c.Port))
+	url := c.Scheme() + "://" + net.JoinHostPort(host, strconv.Itoa(c.Port))
+	if c.Entry != "" {
+		url += "/" + c.Entry
+	}
+	return url
 }
 func LocalHost() string {
 	addresses, _ := net.InterfaceAddrs()
@@ -118,4 +143,11 @@ func DetectPublicHost(client *http.Client) (string, error) {
 		return "", errors.New("公网 IP 查询返回无效 IPv4")
 	}
 	return host, nil
+}
+
+func (c Config) Scheme() string {
+	if c.Protocol == "http" {
+		return "http"
+	}
+	return "https"
 }

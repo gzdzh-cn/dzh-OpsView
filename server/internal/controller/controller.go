@@ -14,6 +14,7 @@ import (
 	"opsview/internal/model"
 	"opsview/internal/security"
 	"opsview/internal/version"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -55,15 +56,23 @@ func (c *Controller) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, map[string]any{"status": "ok", "version": version.Current})
 	})
+	mux.HandleFunc("POST /api/v1/runtime/confirm", c.runtimeConfirm)
 	mux.HandleFunc("GET /api/v1/auth", c.authStatus)
 	mux.HandleFunc("POST /api/v1/auth/setup", c.setup)
 	mux.HandleFunc("POST /api/v1/auth/login", c.login)
 	routes := map[string]http.HandlerFunc{
-		"GET /api/v1/resources/{id}/download": c.download,
-		"GET /api/v1/settings/backups":        c.panelBackups, "POST /api/v1/settings/backup": c.backupPanel, "GET /api/v1/settings/backup/{file}": c.downloadPanelBackup,
+		"POST /api/v1/tasks/{id}/cancel":          c.cancelTask,
+		"POST /api/v1/auth/username":              c.username,
+		"POST /api/v1/settings/certificate/issue": c.issuePanelCertificate,
+		"GET /api/v1/settings/runtime":            c.runtimeSettings, "PUT /api/v1/settings/runtime": c.runtimeSettings,
+		"GET /api/v1/sites/{id}/{view}":        c.siteRead,
+		"GET /api/v1/instances/{id}/{view}":    c.softwareRead,
+		"POST /api/v1/instances/{id}/validate": c.softwareValidate,
+		"GET /api/v1/resources/{id}/download":  c.download,
+		"GET /api/v1/settings/backups":         c.panelBackups, "POST /api/v1/settings/backup": c.backupPanel, "GET /api/v1/settings/backup/{file}": c.downloadPanelBackup,
 		"POST /api/v1/auth/logout": c.logout, "POST /api/v1/auth/two-factor": c.twoFactor, "POST /api/v1/auth/password": c.password,
 		"GET /api/v1/overview": c.overview, "GET /api/v1/resources": c.resources, "POST /api/v1/resources": c.createResource, "PUT /api/v1/resources/{id}": c.updateResource, "DELETE /api/v1/resources/{id}": c.deleteResource, "POST /api/v1/resources/{id}/actions/{action}": c.action,
-		"GET /api/v1/catalog": func(w http.ResponseWriter, r *http.Request) { send(w, 200, catalog.Entries()) }, "GET /api/v1/plugins": c.plugins, "POST /api/v1/plugins/import": c.importPlugin, "POST /api/v1/catalog/import": c.importCatalog,
+		"GET /api/v1/catalog": func(w http.ResponseWriter, r *http.Request) { send(w, 200, catalog.ForSystem(catalogSystem())) }, "GET /api/v1/plugins": c.plugins, "POST /api/v1/plugins/import": c.importPlugin, "POST /api/v1/catalog/import": c.importCatalog,
 		"GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
 		"POST /api/v1/files": c.files, "GET /api/v1/system": c.system, "POST /api/v1/system/actions/{action}": c.systemAction,
 		"GET /api/v1/docker/{collection}": c.dockerList, "POST /api/v1/docker/containers/{id}/{action}": c.dockerAction,
@@ -84,7 +93,7 @@ func (c *Controller) Handler() http.Handler {
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Cache-Control", "no-store")
 		if r.TLS != nil {
-			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+			w.Header().Set("Strict-Transport-Security", "max-age=0")
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			if origin := r.Header.Get("Origin"); origin != "" {
@@ -98,7 +107,7 @@ func (c *Controller) Handler() http.Handler {
 				}
 			}
 		}
-		mux.ServeHTTP(w, r)
+		c.accessGate(mux).ServeHTTP(w, r)
 	})
 }
 func (c *Controller) static(w http.ResponseWriter, r *http.Request) {
@@ -400,10 +409,23 @@ func (c *Controller) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for k := range v {
-		if k != "name" && k != "allowedCIDRs" {
+		if k != "name" && k != "allowedCIDRs" && k != "refreshSeconds" && k != "sessionMinutes" && k != "backupRetention" {
 			fail(w, 400, "不支持的面板设置")
 			return
 		}
+	}
+	if v.Int("refreshSeconds") == 0 {
+		v["refreshSeconds"] = 15
+	}
+	if v.Int("sessionMinutes") == 0 {
+		v["sessionMinutes"] = 480
+	}
+	if v.Int("backupRetention") == 0 {
+		v["backupRetention"] = 7
+	}
+	if (v.Int("refreshSeconds") != 5 && v.Int("refreshSeconds") != 15 && v.Int("refreshSeconds") != 30 && v.Int("refreshSeconds") != 60) || v.Int("sessionMinutes") < 15 || v.Int("sessionMinutes") > 10080 || v.Int("backupRetention") < 1 || v.Int("backupRetention") > 30 {
+		fail(w, 400, "刷新、会话或备份保留参数超出允许范围")
+		return
 	}
 	ip := net.ParseIP(clientIP(r))
 	allowed := strings.TrimSpace(v.String("allowedCIDRs")) == ""
@@ -526,4 +548,24 @@ func (c *Controller) dockerManage(w http.ResponseWriter, r *http.Request) {
 	}
 	c.App.Store.Audit("docker."+collection+"."+action, p.String("name"), clientIP(r))
 	send(w, 202, task)
+}
+
+func (c *Controller) cancelTask(w http.ResponseWriter, r *http.Request) {
+	if err := c.App.CancelInstall(r.PathValue("id")); err != nil {
+		fail(w, 409, err.Error())
+		return
+	}
+	c.App.Store.Audit("task.cancel", r.PathValue("id"), clientIP(r))
+	send(w, 202, map[string]bool{"accepted": true})
+}
+
+func catalogSystem() string {
+	data, _ := os.ReadFile("/etc/os-release")
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok {
+			values[k] = strings.Trim(v, "\"'")
+		}
+	}
+	return values["ID"] + ":" + values["VERSION_ID"]
 }

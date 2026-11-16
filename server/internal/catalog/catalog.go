@@ -21,15 +21,28 @@ var data []byte
 //go:embed plugins.json
 var pluginData []byte
 
+type BinaryArtifact struct {
+	System      string `json:"system"` // ubuntu:24.04, etc.; cross-distro artifacts are rejected.
+	Source      string `json:"source"`
+	SHA256      string `json:"sha256"`
+	BuildPrefix string `json:"buildPrefix"`
+}
 type Entry struct {
-	ID          string   `json:"id"`
-	Software    string   `json:"software"`
-	Version     string   `json:"version"`
-	Source      string   `json:"source,omitempty"`
-	SHA256      string   `json:"sha256,omitempty"`
-	Image       string   `json:"image,omitempty"`
-	Platforms   []string `json:"platforms"`
-	Description string   `json:"description"`
+	VerifiedSystems map[string][]string `json:"verifiedSystems,omitempty"`
+	Availability    map[string]string   `json:"availability,omitempty"`
+	Recommended     bool                `json:"recommended,omitempty"`
+	Binaries        []BinaryArtifact    `json:"binaries,omitempty"`
+	DisabledReason  string              `json:"disabledReason,omitempty"`
+	RecipeRevision  string              `json:"recipeRevision,omitempty"`
+	Methods         []string            `json:"methods,omitempty"`
+	ID              string              `json:"id"`
+	Software        string              `json:"software"`
+	Version         string              `json:"version"`
+	Source          string              `json:"source,omitempty"`
+	SHA256          string              `json:"sha256,omitempty"`
+	Image           string              `json:"image,omitempty"`
+	Platforms       []string            `json:"platforms"`
+	Description     string              `json:"description"`
 }
 type Plugin struct {
 	ID              string           `json:"id"`
@@ -86,6 +99,9 @@ func Register(e Entry) error {
 }
 func Plugins() []Plugin { var p []Plugin; _ = json.Unmarshal(pluginData, &p); return p }
 func Validate(e Entry) error {
+	if e.DisabledReason != "" {
+		return errors.New(e.DisabledReason)
+	}
 	platformOK := false
 	for _, platform := range e.Platforms {
 		if platform == "linux/amd64" {
@@ -98,7 +114,7 @@ func Validate(e Entry) error {
 	if !regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`).MatchString(e.ID) || e.Version == "" {
 		return errors.New("配方 ID 或版本无效")
 	}
-	if e.Software != "nginx" && e.Software != "mysql" && e.Software != "postgresql" && e.Software != "nodejs" {
+	if e.Software != "nginx" && e.Software != "mysql" && e.Software != "postgresql" && e.Software != "nodejs" && e.Software != "php" && e.Software != "redis" {
 		return errors.New("配方只能选择已实现的核心软件安装器")
 	}
 	if e.Source != "" {
@@ -117,6 +133,36 @@ func Validate(e Entry) error {
 		}
 		if b, err := hex.DecodeString(parts[1]); err != nil || len(b) != 32 {
 			return errors.New("镜像摘要无效")
+		}
+	}
+	for method, systems := range e.VerifiedSystems {
+		if method != "source" && method != "binary" {
+			return errors.New("验收安装方式无效")
+		}
+		for _, system := range systems {
+			if !targetSystems[system] {
+				return errors.New("验收系统无效")
+			}
+		}
+	}
+	for _, method := range e.Methods {
+		if method != "source" && method != "binary" {
+			return errors.New("原生安装方式无效")
+		}
+	}
+	for _, artifact := range e.Binaries {
+		switch artifact.System {
+		case "ubuntu:22.04", "ubuntu:24.04", "debian:12", "debian:13":
+		default:
+			return errors.New("预编译包系统不受支持")
+		}
+		u, err := url.Parse(artifact.Source)
+		digest, digestErr := hex.DecodeString(artifact.SHA256)
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || digestErr != nil || len(digest) != 32 {
+			return errors.New("预编译包来源或摘要无效")
+		}
+		if !strings.HasPrefix(artifact.BuildPrefix, "/var/lib/opsview/") || filepath.Clean(artifact.BuildPrefix) != artifact.BuildPrefix || !strings.HasSuffix(artifact.BuildPrefix, "/runtime") {
+			return errors.New("预编译包构建前缀无效")
 		}
 	}
 	if e.Source == "" && e.Image == "" {

@@ -4,7 +4,7 @@
 
 ## 软件清单
 
-参考 `examples/software.json`。必填 id、software、version、platforms；source/sha256 或 image 至少一组。software 仅支持 nginx、mysql、postgresql、nodejs。版本 ID 不可覆盖已有条目，更新必须创建新 ID。platforms 必须包含 linux/amd64。
+参考 `examples/software.json`。必填 id、software、version、platforms；source/sha256 或 image 至少一组。software 支持 nginx、mysql、postgresql、nodejs、php、redis。版本 ID 不可覆盖已有条目，更新必须创建新 ID。platforms 必须包含 linux/amd64。
 
 - Nginx、PostgreSQL：匹配安装器的官方源代码归档，目录结构按首层剥离。
 - MySQL：匹配 Linux amd64 的官方二进制 tar 归档，版本依赖由发布者预先验证。
@@ -62,3 +62,13 @@ sudo opsview trust-key --id team --file /path/to/team.key.pub
 worker 通过 systemd-run 以插件专用用户启动，NoNewPrivileges、只读系统、独立临时目录、无设备及能力，128 MiB 内存、32 个任务，只写自身 data 目录。没有 network.outbound 时限制为 AF_UNIX；此权限是地址族约束，并非细粒度域名白名单。Docker Socket 和特权动作不提供给 worker。
 
 内置 S3 worker 的 check 使用表单配置执行 HeadBucket；实际备份通过执行器内的固定 S3 适配器完成。外部 worker 的 check 可实现自己的检查逻辑，不提供任意 root 命令回调。
+
+## 原生预编译产物
+
+条目可声明 `recipeRevision`、`methods`（`source`/`binary`）、`recommended`、`disabledReason` 和 `binaries`。`disabledReason` 非空时执行器拒绝安装。预编译包按 `system` 精确匹配 `ubuntu:22.04`、`ubuntu:24.04`、`debian:12`、`debian:13`，每个产物还需 HTTPS `source`、SHA-256 和以 `/var/lib/opsview/` 开头、以 `/runtime` 结尾的 `buildPrefix`。
+
+构建使用 **Validate native packages** 工作流，产物附 JSON 验证记录。产物未进行签名、系统验证及清单导入之前，不进入默认可选目录；不得把验证附件当作已发布包。导入时使用新的条目 ID，禁止覆盖原条目；安装器校验摘要，初始化独立实例，PHP helper 脚本仅替换受控构建前缀。`conf/`、密码和业务数据不应打包到运行时归档。
+
+源码编译和扩展构建使用 `ovbuild`，安装目录由 root 管理。首批常用 PHP 内置扩展与 5 种固定版本 PECL 配方见 `server/internal/catalog/extensions.json`；旧 PHP 隔离依赖配方尚未验证，目录明确禁用。
+
+新增带 `recipeRevision` 的原生配方需要 `verifiedSystems`，例如 `{"source":["ubuntu:24.04"]}`。只有完成该系统实际原生服务验收后才登记；源码编译 smoke 报告中的 `systemdVerified: false` 不能作为提升依据。`availability` 是 API 按当前系统计算的只读原因，浏览器不能用它绕过执行器校验。

@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 test_dir="$PWD/dist/linux-tests"
 mkdir -p "$test_dir"
-for package in security catalog dao executor controller logic account runtimeconfig maintenance; do
+for package in security catalog dao executor controller logic account runtimeconfig maintenance software; do
   (cd server && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -o "$test_dir/$package.test" "./internal/$package")
 done
 for image in "${@:-ubuntu:24.04}"; do

@@ -9,6 +9,8 @@ const labels: Record<string, string> = {
   succeeded: '已完成',
   failed: '失败',
   interrupted: '已中断',
+  cancelled: '已取消',
+  expired: '已到期',
   stopped: '已停止',
   error: '需检查',
   installing: '安装中',
