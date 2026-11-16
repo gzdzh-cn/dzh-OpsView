@@ -30,6 +30,16 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: bash -c 'source ./install.sh; validate_version "$RELEASE_TAG"'
+      - name: Verify displayed versions match tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          expected = os.environ['RELEASE_TAG'].removeprefix('v')
+          assert json.loads(pathlib.Path('web/package.json').read_text())['version'] == expected
+          assert re.search(r'const Current = "([^"]+)"', pathlib.Path('server/internal/version/version.go').read_text()).group(1) == expected
+          PY
       - run: npm ci
         working-directory: web
       - run: make api check
@@ -77,7 +87,7 @@ jobs:
           if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > draft-state; then
             [ "$(cat draft-state)" = true ] || { echo 'Published releases are immutable in this workflow; use a new tag.' >&2; exit 1; }
           else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "OpsView $RELEASE_TAG" --notes 'Linux amd64 开发测试版本。包含独立 HTTPS 面板、特权执行器及安装/更新程序；生产验收状态见仓库 docs/acceptance.md。'
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "OpsView $RELEASE_TAG" --notes 'Linux amd64 开发测试版本。新增 ov 中文终端菜单、真实安装进度、一次性随机登录账号、统一运行端口配置及更新失败回退。保留 v0.1.0 管理员及插件清单兼容；验证范围见仓库 docs/acceptance.md。'
           fi
           gh release upload "$RELEASE_TAG" opsview-linux-amd64.tar.gz SHA256SUMS install.sh --clobber
           if [[ "$RELEASE_TAG" == *-* ]]; then

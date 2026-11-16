@@ -53,5 +53,5 @@ add('/repositories/{id}/refresh','post','验证仓库清单并同步插件',body
 add('/system/actions/{action}','post','受控系统操作',body=config,status='202')
 add('/docker/containers/{id}/{action}','post','容器操作或日志',body=config,status='202')
 add('/docker/manage/{collection}/{action}','post','固定摘要拉取镜像及管理网络和卷',ref('Task'),config,status='202')
-spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":"0.1.0"},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session"}}}}
+spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session"}}}}
 (root/'server/internal/api/openapi.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n')

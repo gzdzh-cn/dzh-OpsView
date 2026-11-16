@@ -12,9 +12,22 @@ import socket
 import ssl
 import subprocess
 import tempfile
+import sys
+import traceback
 import time
 import urllib.error
 import urllib.request
+
+def report_failure(kind, error, tb):
+    # A public annotation gives the failing assertion location without exposing captured output.
+    frames = traceback.extract_tb(tb)
+    location = f'{Path(frames[-1].filename).name}:{frames[-1].lineno}' if frames else 'unknown'
+    message = f'{kind.__name__} at {location}'
+    if isinstance(error, AssertionError) and str(error).startswith('command exit mismatch:'):
+        message += ' ' + str(error)
+    print('::error::' + message, flush=True)
+    sys.__excepthook__(kind, error, tb)
+sys.excepthook = report_failure
 
 if os.environ.get('GITHUB_ACTIONS') != 'true' or os.geteuid() != 0:
     raise SystemExit('仅在隔离 CI root 主机运行此测试。')
@@ -33,7 +46,9 @@ def run(args, *, ok=True, data=None, user=None):
     result = subprocess.run(list(map(str, args)), input=data, capture_output=True, text=True, timeout=240)
     if (result.returncode == 0) != ok:
         # Do not include stdout/stderr: either may contain generated credentials.
-        raise AssertionError(f'command exit mismatch: {Path(args[0]).name}, status {result.returncode}')
+        phase = re.findall(r'\[[1-8]/8 [^\]\r\n]+\]', result.stdout + result.stderr)
+        phase = phase[-1] if phase else 'no deployment phase'
+        raise AssertionError(f'command exit mismatch: {Path(args[0]).name}, status {result.returncode}, phase {phase}')
     return result.stdout + result.stderr
 
 def api(path, payload=None, opener=None):

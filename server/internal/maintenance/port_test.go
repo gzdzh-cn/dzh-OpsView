@@ -13,7 +13,7 @@ import (
 )
 
 func TestPortTransaction(t *testing.T) {
-	for _, scenario := range []string{"success", "failed-health", "existing-rule", "missing-source", "unknown-firewall"} {
+	for _, scenario := range []string{"success", "failed-health", "existing-rule", "missing-source", "unknown-firewall", "unknown-nft"} {
 		t.Run(scenario, func(t *testing.T) {
 			dir := t.TempDir()
 			trace := filepath.Join(dir, "trace")
@@ -37,7 +37,12 @@ case "$*" in
 esac
 exit 0
 `)
-			write("nft", "exit 1\n")
+			if scenario == "unknown-nft" {
+				write("nft", "echo 'table ip filter { chain extra { type filter hook input priority 0; } }'\n")
+			} else {
+				write("nft", "exit 1\n")
+			}
+			write("ip6tables", "echo '-A INPUT -j ufw6-before-input'\n")
 			if scenario == "unknown-firewall" {
 				write("iptables", "echo '-A INPUT -j custom-firewall'\n")
 			} else {
@@ -99,7 +104,7 @@ exit 0
 			if scenario == "existing-rule" && strings.Contains(commands, "ufw allow") {
 				t.Fatal("duplicated existing rule")
 			}
-			if scenario == "unknown-firewall" && strings.Contains(commands, "ufw allow") {
+			if (scenario == "unknown-firewall" || scenario == "unknown-nft") && strings.Contains(commands, "ufw allow") {
 				t.Fatal("mutated unknown firewall")
 			}
 		})

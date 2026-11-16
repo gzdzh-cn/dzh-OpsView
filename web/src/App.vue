@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { version as panelVersion } from '../package.json'
 import { useRoute } from 'vue-router'
 import {
   Monitor,
@@ -132,7 +133,7 @@ onUnmounted(() => {
             <strong>{{ panel.overview?.host?.hostname || '本地服务器' }}</strong>
             <small>{{ panel.auth.development ? '本地开发环境' : '单机管理 · 已连接' }}</small>
           </div>
-          <span class="version">v0.1</span>
+          <span class="version">v{{ panelVersion }}</span>
         </div>
       </div>
     </aside>
@@ -211,7 +212,7 @@ onUnmounted(() => {
           <span>
             GoFrame + Vue 3
             <span class="muted">·</span>
-            v0.1.1
+            v{{ panelVersion }}
           </span>
         </footer>
       </main>

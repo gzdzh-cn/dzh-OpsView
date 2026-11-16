@@ -145,6 +145,12 @@ func compatibleUFW() bool {
 	}
 	// An additional input hook is not an environment we can safely manage automatically.
 	if b, e = exec.Command("nft", "list", "ruleset").Output(); e == nil {
+		hooks := regexp.MustCompile(`(?s)chain\s+([^\s{]+)\s*\{[^{}]*?\bhook\s+input\b`)
+		for _, hook := range hooks.FindAllStringSubmatch(string(b), -1) {
+			if hook[1] != "INPUT" && !strings.HasPrefix(strings.ToLower(hook[1]), "ufw") {
+				return false
+			}
+		}
 		re := regexp.MustCompile(`(?s)table\s+(?:inet|ip|ip6)\s+([^\s{]+)\s*\{(.*?)\n\}`)
 		for _, m := range re.FindAllStringSubmatch(string(b), -1) {
 			if strings.Contains(m[2], "hook input") && !strings.Contains(strings.ToLower(m[1]), "ufw") && m[1] != "filter" {
@@ -152,11 +158,13 @@ func compatibleUFW() bool {
 			}
 		}
 	}
-	b, e = exec.Command("iptables", "-S", "INPUT").Output()
-	if e == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			if strings.HasPrefix(line, "-A INPUT ") && !strings.Contains(line, "ufw-") {
-				return false
+	for _, tool := range []string{"iptables", "ip6tables"} {
+		b, e = exec.Command(tool, "-S", "INPUT").Output()
+		if e == nil {
+			for _, line := range strings.Split(string(b), "\n") {
+				if strings.HasPrefix(line, "-A INPUT ") && !strings.Contains(line, "ufw-") && !strings.Contains(line, "ufw6-") {
+					return false
+				}
 			}
 		}
 	}
