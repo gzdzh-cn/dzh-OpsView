@@ -55,7 +55,11 @@ func (e *Engine) backup(ctx context.Context, op model.Operation, log func(string
 	stamp := time.Now().UTC().Format("20060102T150405.000000000")
 	plain := filepath.Join(base, stamp+".tar.gz")
 	defer os.Remove(plain)
-	if target.Kind == "database" {
+	if target.Kind == "instance" {
+		if err = e.dumpRedis(ctx, target, plain, log); err != nil {
+			return nil, err
+		}
+	} else if target.Kind == "database" {
 		inst, err := e.load(target.Config.String("instanceId"))
 		if err != nil {
 			return nil, err
@@ -95,6 +99,11 @@ func (e *Engine) backup(ctx context.Context, op model.Operation, log func(string
 	manifest := model.Config{"file": filepath.Base(artifact), "sha256": hash, "size": stat.Size(), "createdAt": time.Now().UTC().Format(time.RFC3339), "targetId": target.ID, "targetKind": target.Kind, "consistency": "online-file-copy"}
 	if target.Kind == "database" {
 		manifest["consistency"] = "logical-dump"
+	}
+	if target.Kind == "instance" {
+		manifest["consistency"] = "redis-replication-rdb"
+		manifest["software"] = target.Config.String("software")
+		manifest["version"] = target.Config.String("version")
 	}
 	mb, _ := json.Marshal(manifest)
 	if err = security.WriteAtomic(artifact+".json", mb, 0600); err != nil {
@@ -355,6 +364,9 @@ func (e *Engine) restore(ctx context.Context, op model.Operation, target model.R
 	}
 	if target.Kind == "database" {
 		return e.restoreDatabase(ctx, op, target, plain, log)
+	}
+	if target.Kind == "instance" {
+		return e.restoreRedis(ctx, op, target, plain, log)
 	}
 	dest := filepath.Join(e.Root, "restores", target.ID+"-"+security.ID())
 	if err = os.MkdirAll(dest, 0750); err != nil {

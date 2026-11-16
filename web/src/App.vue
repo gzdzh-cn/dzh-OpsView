@@ -58,8 +58,8 @@ async function refresh() {
 async function ready() {
   const confirmToken = new URLSearchParams(location.hash.slice(1)).get('runtime-confirm')
   if (confirmToken) {
-    history.replaceState(null, '', location.pathname)
     await post('/runtime/confirm', { token: confirmToken })
+    history.replaceState(null, '', location.pathname)
   }
 
   await panel.session()

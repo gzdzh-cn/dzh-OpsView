@@ -30,6 +30,22 @@ const targetVersion = ref(''),
   scopeSite = ref(''),
   session = ref<Config>({ handler: 'files' }),
   sessionRedis = ref('')
+const memoryBudget = ref<Config>({}),
+  memoryTier = ref(1024)
+function mib(value: number) {
+  return ((value || 0) / 1048576).toFixed(1) + ' MiB'
+}
+async function estimateMemory(preset = false) {
+  try {
+    const query = preset
+      ? '?budgetMB=' + memoryTier.value
+      : '?values=' + encodeURIComponent(JSON.stringify(values.value))
+    memoryBudget.value = await api(url('memory-budget') + query)
+    if (preset) values.value = { ...memoryBudget.value.values }
+  } catch (e) {
+    error.value = errorText(e)
+  }
+}
 const guardian = ref({
   enabled: true,
   autostart: true,
@@ -168,6 +184,7 @@ async function load() {
     if (page.value === 'session')
       session.value = await api(url('session') + '?siteId=' + scopeSite.value)
     if (page.value === 'metrics') metrics.value = await api(url('metrics'))
+    if (page.value === 'performance' && sw.value === 'mysql') await estimateMemory()
     if (['error', 'slow'].includes(page.value)) {
       const result = await api(
         url('logs') + '?kind=' + page.value + '&search=' + encodeURIComponent(search.value),
@@ -638,6 +655,21 @@ const documentGlobal = window.document
         </template>
         <template v-else-if="page === 'backup'">
           <h3>数据备份</h3>
+          <p class="form-help">
+            在备份与计划中选择当前 Redis 实例，可创建经过 RDB
+            校验的加密备份，配置保留份数及定时任务；恢复进入另一个空实例。
+          </p>
+          <el-button
+            type="primary"
+            @click="
+              () => {
+                $router.push('/backups')
+                visible = false
+              }
+            "
+          >
+            管理加密备份与恢复
+          </el-button>
           <el-button type="primary" @click="submit('snapshot')">生成 Redis 后台快照</el-button>
           <p class="form-help">
             请求后台保存后，请在负载状态中核对 rdb_last_bgsave_status。快照文件保留在实例 data
@@ -674,6 +706,32 @@ const documentGlobal = window.document
           <el-button @click="cleanSession">清理过期会话</el-button>
         </template>
         <template v-else>
+          <div v-if="sw === 'mysql' && page === 'performance'" class="notice">
+            <div class="settings-toolbar">
+              <el-select v-model="memoryTier" style="width: 170px">
+                <el-option
+                  v-for="n in [512, 1024, 2048, 4096, 8192]"
+                  :key="n"
+                  :value="n"
+                  :label="n + ' MB 预算'"
+                />
+              </el-select>
+              <el-button @click="estimateMemory(true)">填入推荐参数</el-button>
+              <el-button @click="estimateMemory()">估算当前参数</el-button>
+            </div>
+            <template v-if="memoryBudget.estimate">
+              <p>
+                全局缓存 {{ mib(memoryBudget.estimate.globalBytes) }} · 单连接基础
+                {{ mib(memoryBudget.estimate.perConnectionBytes) }} · 基础估算
+                {{ mib(memoryBudget.estimate.estimateBytes) }}
+              </p>
+              <p>
+                主机内存 {{ mib(memoryBudget.hostMemoryBytes) }} · 当前可用
+                {{ mib(memoryBudget.availableBytes) }}
+              </p>
+              <small>{{ memoryBudget.estimate.notice }} 档位先填入表单，确认差异后才应用。</small>
+            </template>
+          </div>
           <el-radio-group
             v-if="sw === 'php' && ['performance', 'timeout'].includes(page)"
             v-model="selectedFile"

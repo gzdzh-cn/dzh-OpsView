@@ -19,6 +19,7 @@ import (
 	"github.com/go-acme/lego/v4/registration"
 	"net"
 	"net/http"
+	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/security"
 	"os"
@@ -169,6 +170,9 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		return nil, err
 	}
 	if err = os.MkdirAll(base+"/www", 0755); err != nil {
+		return nil, err
+	}
+	if err = prepareSiteRunningDirectory(base+"/www", r.Config.String("runningDirectory")); err != nil {
 		return nil, err
 	}
 	if err = os.MkdirAll(base+"/acme/.well-known/acme-challenge", 0755); err != nil {
@@ -332,6 +336,7 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	r.Config["renderedConfig"] = string(candidate)
 	r.Config["configHash"] = security.Hash(string(candidate))
 	r.Config["documentRoot"] = base + "/www"
+	r.Config["runningRoot"] = siteRunningRoot(r, base)
 	r.Status = "ready"
 	if siteUnavailable(r) {
 		r.Status = "stopped"
@@ -354,7 +359,7 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if siteUnavailable(r) {
 		e.stopSiteProcesses(ctx, r)
 	}
-	return model.Config{"configHash": r.Config["configHash"], "documentRoot": base + "/www", "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}, nil
+	return model.Config{"configHash": r.Config["configHash"], "documentRoot": base + "/www", "runningRoot": r.Config["runningRoot"], "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}, nil
 }
 func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 	domains := strings.Join(strings.Fields(r.Config.String("domains")), " ")
@@ -378,14 +383,17 @@ func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 		return conf + " location / { return 403; }\n}\n"
 	}
 	if r.Config.String("type") == "php" {
-		conf += redirect
-		conf += " root " + base + "/www;\n index index.php index.html;\n location / { try_files $uri $uri/ /index.php?$query_string; }\n location ~ \\.php$ { try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
+		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / { " + redirect + siteTryFiles(r) + " }\n location ~ /\\.(?!well-known/) { deny all; }\n location ~ \\.php$ { " + redirect + "try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
 		return conf + "}\n"
 	}
 	if r.Config.String("type") == "proxy" || r.Config.String("type") == "app" {
+		if routes, _ := logic.SiteProxyRoutes(r.Config); len(routes) > 0 {
+			upstreams, locations := renderProxyRoutes(r, redirect)
+			return upstreams + conf + locations + "}\n"
+		}
 		conf += " location / {\n" + redirect + "  proxy_pass " + r.Config.String("upstream") + ";\n  proxy_http_version 1.1;\n  proxy_set_header Host $host;\n  proxy_set_header Upgrade $http_upgrade;\n  proxy_set_header Connection $opsview_connection;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n }\n"
 	} else {
-		conf += " root " + base + "/www;\n index index.html;\n location / {\n" + redirect + " try_files $uri $uri/ /index.html; }\n"
+		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location ~ /\\.(?!well-known/) { deny all; }\n location / {\n" + redirect + " " + siteTryFiles(r) + " }\n"
 	}
 	return conf + "}\n"
 }

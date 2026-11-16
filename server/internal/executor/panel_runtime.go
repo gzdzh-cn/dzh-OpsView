@@ -129,6 +129,9 @@ func (e *Engine) panelRuntime(ctx context.Context, op model.Operation, log func(
 			return nil, err
 		}
 		host := next.PublicHost
+		if next.AllowedHost != "" {
+			host = next.AllowedHost
+		}
 		if host == "" {
 			host = runtimeconfig.LocalHost()
 		}

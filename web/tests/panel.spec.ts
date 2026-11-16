@@ -170,6 +170,45 @@ test('websites require Nginx and expose exact tab columns', async ({ page }) => 
   }
   await page.screenshot({ path: '../.opsview/screenshots/sites-tabs.png', fullPage: true })
 })
+test('proxy editor submits multiple paths and upstreams', async ({ page }) => {
+  let submitted: any
+  await page.route('**/api/v1/resources', async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: [nginxFixture] })
+    submitted = route.request().postDataJSON()
+    await route.fulfill({
+      json: { ...submitted, id: 'proxy-fixture', status: 'pending', revision: 1 },
+    })
+  })
+  await page.route('**/api/v1/resources/proxy-fixture/actions/*', (route) =>
+    route.fulfill({ status: 202, json: { id: 'proxy-task' } }),
+  )
+  await page.goto('/sites')
+  await page.getByRole('tab', { name: '反向代理', exact: true }).click()
+  await page.getByRole('button', { name: '添加反向代理', exact: true }).click()
+  await page.getByPlaceholder('字母、数字、横线或下划线，例如 my-app').fill('proxy-editor-test')
+  await page.getByPlaceholder('example.com www.example.com，以空格分隔').fill('proxy.example.com')
+  await page.getByRole('button', { name: '添加路径规则', exact: true }).click()
+  await page
+    .locator('.proxy-route textarea')
+    .first()
+    .fill('http://127.0.0.1:3000\nhttp://127.0.0.1:3001')
+  await page.getByRole('button', { name: '添加路径规则', exact: true }).click()
+  const second = page.locator('.proxy-route').nth(1)
+  await second.getByPlaceholder('/ 或 /api/').fill('/api/')
+  await second.locator('textarea').fill('http://127.0.0.1:4000')
+  await second.getByPlaceholder('$host 或 api.example.com').fill('api.example.com')
+  await page.getByRole('button', { name: '创建并部署', exact: true }).click()
+  await expect(page.locator('.el-dialog')).not.toBeVisible()
+  expect(submitted.config.proxyRoutes[0].targets).toEqual([
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+  ])
+  expect(submitted.config.proxyRoutes[1]).toMatchObject({
+    path: '/api/',
+    host: 'api.example.com',
+    targets: ['http://127.0.0.1:4000'],
+  })
+})
 test('software settings show version context and configuration conflict', async ({ page }) => {
   await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture] }))
   await page.route('**/api/v1/instances/nginx-fixture/settings', (route) =>
@@ -251,5 +290,9 @@ test('panel settings have five tabs and stage HTTPS changes', async ({ page }) =
     'href',
     /^http:.*#runtime-confirm=/,
   )
-  await page.screenshot({ path: '../.opsview/screenshots/panel-settings.png', fullPage: true, animations: 'disabled' })
+  await page.screenshot({
+    path: '../.opsview/screenshots/panel-settings.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
 })

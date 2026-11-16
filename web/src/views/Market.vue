@@ -141,7 +141,9 @@ function openInstall(software: string) {
     catalogId: entry?.id,
     mode: 'native',
     installMethod:
-      entry?.methods?.[0] || (['mysql', 'nodejs'].includes(software) ? 'binary' : 'source'),
+      entry?.methods?.find((m: string) => !entry?.availability?.[m]) ||
+      entry?.methods?.[0] ||
+      (['mysql', 'nodejs'].includes(software) ? 'binary' : 'source'),
     softwareFilter: software,
     port:
       software === 'php'

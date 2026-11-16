@@ -67,7 +67,17 @@ with tempfile.TemporaryDirectory() as folder:
     login()
     assert run(['opsview','version']).strip()==tag.removeprefix('v')
     info=run(['ov','info']);assert username in info and password not in info
-    run(['ov','port','18882','--source','127.0.0.1','--yes']);port=18882
+    output=run(['ov','port','18882','--source','127.0.0.1','--yes']);port=18882
+    token=re.search(r'#runtime-confirm=([a-f0-9]{64})',output)
+    if token:
+        for attempt in range(30):
+            try:
+                request=urllib.request.Request(f'https://127.0.0.1:{port}/api/v1/runtime/confirm',data=json.dumps({'token':token.group(1)}).encode(),headers={'Content-Type':'application/json'})
+                with urllib.request.urlopen(request,context=ssl._create_unverified_context(),timeout=2) as response: assert json.load(response)['confirmed']
+                break
+            except OSError: time.sleep(1)
+        else: raise AssertionError('CLI port reconnect confirmation failed')
+    del output
     login()
     run(['ov','update','--version',tag])
     assert json.loads(Path('/etc/opsview/panel.json').read_text())['port']==port

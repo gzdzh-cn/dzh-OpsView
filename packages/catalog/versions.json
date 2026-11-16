@@ -13,7 +13,12 @@
       "source"
     ],
     "sha256": "3cf46f5ed7504d460125866b7bea99fb357f31d887e2e63b35503310e9b8b6c8",
-    "recommended": true
+    "recommended": true,
+    "verifiedSystems": {
+      "source": [
+        "ubuntu:24.04"
+      ]
+    }
   },
   {
     "id": "php-8.4.27",
@@ -29,7 +34,12 @@
       "source"
     ],
     "sha256": "dcf93923b0e38e0d5252b25b796520b5a47761a08b3488b6d0b5d1115764d3f0",
-    "recommended": true
+    "recommended": true,
+    "verifiedSystems": {
+      "source": [
+        "ubuntu:24.04"
+      ]
+    }
   },
   {
     "id": "redis-8.10.3",
@@ -45,7 +55,12 @@
       "source"
     ],
     "sha256": "edde778f6bdee7581e42fc139ca9e07e2822212092f7501f99989656e3629d02",
-    "recommended": true
+    "recommended": true,
+    "verifiedSystems": {
+      "source": [
+        "ubuntu:24.04"
+      ]
+    }
   },
   {
     "id": "mysql-8.4.13",

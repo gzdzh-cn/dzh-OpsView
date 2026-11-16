@@ -74,6 +74,19 @@ def authenticated(opener):
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
+def confirm_access(output, scheme='https'):
+    token = re.search(r'#runtime-confirm=([a-f0-9]{64})',output).group(1)
+    # A browser reconnects through the new listener. CI uses loopback to avoid external DNS.
+    for _ in range(30):
+        try:
+            request = urllib.request.Request(f'{scheme}://127.0.0.1:{PORT}/api/v1/runtime/confirm',
+                data=json.dumps({'token':token}).encode(),headers={'Content-Type':'application/json'})
+            with urllib.request.urlopen(request,context=CTX,timeout=2) as response:
+                assert json.load(response)['confirmed']
+            return
+        except (OSError,urllib.error.HTTPError): time.sleep(1)
+    raise AssertionError('new listener could not confirm access change')
+
 with tempfile.TemporaryDirectory() as stage:
     stage = Path(stage)
     # Reject an unrelated ov before mutating services or data.
@@ -171,9 +184,19 @@ with tempfile.TemporaryDirectory() as stage:
     dropin.mkdir(exist_ok=True)
     (dropin/'limits.conf').write_text('[Service]\nLimitNOFILE=65536\n')
     run(['systemctl','daemon-reload'])
-    run(['ov','port','18880','--yes'])
+    output=run(['ov','port','18880','--yes'])
     PORT = 18880
     assert json.loads(CONFIG.read_text())['port'] == PORT
+    run(['bash',RELEASE/'deploy/update.sh'],ok=False) # pending access transactions block update
+    confirm_access(output)
+    del output
+    login(username,password)
+    output=run(['ov','ssl','off','--yes'])
+    confirm_access(output,'http')
+    assert json.loads(CONFIG.read_text())['protocol']=='http'
+    output=run(['ov','ssl','on','--yes'])
+    confirm_access(output)
+    del output
     login(username,password)
     (dropin/'bad.conf').write_text('[Service]\nExecStart=\nExecStart=/bin/false\n')
     run(['systemctl','daemon-reload'])

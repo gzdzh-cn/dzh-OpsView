@@ -129,7 +129,7 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 			if x.ID == r.ID {
 				continue
 			}
-			for _, k := range []string{"instanceId", "targetId", "phpInstanceId", "appId"} {
+			for _, k := range []string{"instanceId", "targetId", "phpInstanceId", "appId", "sessionRedisInstanceId"} {
 				if x.Config.String(k) == r.ID {
 					return model.Task{}, fmt.Errorf("资源仍被 %s 使用", x.Name)
 				}
@@ -154,8 +154,8 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 		if e != nil {
 			return model.Task{}, errors.New("备份目标不存在")
 		}
-		if target.Kind != "site" && target.Kind != "app" && target.Kind != "database" {
-			return model.Task{}, errors.New("仅支持网站、应用和数据库备份")
+		if target.Kind != "site" && target.Kind != "app" && target.Kind != "database" && !(target.Kind == "instance" && target.Config.String("software") == "redis" && target.Config.String("mode") == "native") {
+			return model.Task{}, errors.New("仅支持网站、应用、数据库和原生 Redis 备份")
 		}
 		p["target"] = target
 		if target.Kind == "database" {

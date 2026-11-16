@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"opsview/internal/account"
 	"opsview/internal/runtimeconfig"
+	"opsview/internal/service"
 	"opsview/internal/version"
 	"os"
 	"os/exec"
@@ -38,6 +39,7 @@ type Runner struct {
 	reader      *bufio.Reader
 	ConfigPath  string
 	CheckHealth func(runtimeconfig.Config) error
+	Executor    service.Executor
 }
 
 func (r *Runner) configPath() string {

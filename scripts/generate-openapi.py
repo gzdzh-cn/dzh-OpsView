@@ -60,7 +60,8 @@ software_field=obj({"key":string,"label":string,"section":string,"group":string,
 schemas["SoftwareField"]=software_field
 schemas["ConfigurationDocument"]=obj({"file":string,"revision":string,"content":string,"draft":string,"values":{"type":"object","additionalProperties":string},"fields":{"type":"array","items":ref("SoftwareField")},"history":{"type":"array","items":obj({"revision":string,"createdAt":string})}})
 schemas["ConfigurationChange"]=obj({"file":string,"siteId":string,"baseRevision":string,"content":string,"values":{"type":"object","additionalProperties":string},"apply":{"type":"string","enum":["draft","reload","restart","dynamic"]},"confirmPersistenceChange":{"type":"boolean"}},["file","baseRevision","apply"])
-for view in ['settings','metrics','logs','extensions','binlogs','session']: add('/instances/{id}/'+view,'get','读取实例'+view)
+for view in ['settings','metrics','logs','extensions','binlogs','session','memory-budget']: add('/instances/{id}/'+view,'get','读取实例'+view)
+for name in ['budgetMB','values']: paths['/api/v1/instances/{id}/memory-budget']['get'].setdefault('parameters',[]).append({'name':name,'in':'query','schema':string})
 add('/instances/{id}/configuration','get','读取配置、字段、加密历史及当前修订',ref('ConfigurationDocument'))
 for name in ['file','revision','kind','search','siteId']:
  for view in ['configuration','logs']:paths['/api/v1/instances/{id}/'+view]['get'].setdefault('parameters',[]).append({'name':name,'in':'query','schema':string})

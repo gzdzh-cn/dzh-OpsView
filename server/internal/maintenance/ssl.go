@@ -62,14 +62,6 @@ func (r *Runner) ssl(args []string) error {
 	if err := r.confirm("切换面板协议将重启服务并改变登录地址，确认继续？", yes); err != nil {
 		return err
 	}
-	unlock, lockErr := runtimeconfig.Lock(r.configPath())
-	if lockErr != nil {
-		return lockErr
-	}
-	defer unlock()
-	if _, er := os.Stat("/var/lib/opsview/managed/panel-pending.json"); er == nil {
-		return errors.New("面板访问设置等待确认，请先确认或执行 ov recover-access --all")
-	}
 	if err := CheckOverrides(); err != nil {
 		return err
 	}
@@ -82,18 +74,11 @@ func (r *Runner) ssl(args []string) error {
 	if op == "off" {
 		next.Protocol = "http"
 	}
-	if err = runtimeconfig.Save(r.configPath(), next); err != nil {
-		return err
+	if next.Scheme() == old.Scheme() {
+		fmt.Fprintln(r.Out, "面板协议未变化。")
+		return nil
 	}
-	if err = r.exec("systemctl", "restart", panelUnit); err == nil {
-		err = r.health(next)
-	}
-	if err != nil {
-		_ = runtimeconfig.Save(r.configPath(), old)
-		_ = r.exec("systemctl", "restart", panelUnit)
-		return fmt.Errorf("协议切换失败，已恢复原设置：%w", err)
-	}
-	return r.info(nil)
+	return r.applyPanelAccess(next, "")
 }
 func (r *Runner) execSSLStatus() error {
 	cfg, err := runtimeconfig.Load(r.configPath())

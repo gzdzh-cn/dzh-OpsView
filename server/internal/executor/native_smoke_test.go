@@ -109,6 +109,9 @@ func TestNativePackageSmoke(t *testing.T) {
 		if _, err = e.redisCommand(ctx, r, "PING"); err != nil {
 			t.Fatal(err)
 		}
+		if realSystemd {
+			testRedisBackupRecovery(t, e, r)
+		}
 	case "php":
 		if _, err = fpmStatus(ctx, phpStatusAddress(r)); err != nil {
 			t.Fatal(err)
@@ -128,6 +131,9 @@ func TestNativePackageSmoke(t *testing.T) {
 		probe.Config["port"] = r.Config["statusPort"]
 		if err = probeNginx(ctx, probe, []byte(nginxStatusServer(r.Config.Int("statusPort"), "abcdef"))); err != nil {
 			t.Fatal(err)
+		}
+		if realSystemd {
+			testNginxWebsiteOptions(t, e, r)
 		}
 	}
 	if out := os.Getenv("OPSVIEW_NATIVE_OUTPUT"); out != "" {

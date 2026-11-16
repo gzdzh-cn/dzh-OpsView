@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { usePanel } from '../stores/panel'
 import { api, post, put, action, errorText, type Config, type Resource } from '../lib/api'
 import CodeEditor from './CodeEditor.vue'
+import SiteRuntimeOptions from './SiteRuntimeOptions.vue'
 const props = defineProps<{
     modelValue: boolean
     kind: string
@@ -103,7 +104,8 @@ const targets = computed(() =>
   panel.resources.filter((r) =>
     props.kind === 'schedule'
       ? r.kind === (form.value.operation === 'renew' ? 'site' : 'backup')
-      : ['site', 'database', 'app'].includes(r.kind),
+      : ['site', 'database', 'app'].includes(r.kind) ||
+        (r.kind === 'instance' && r.config.software === 'redis' && r.config.mode === 'native'),
   ),
 )
 const version = computed(() => panel.catalog.find((v) => v.id === form.value.catalogId))
@@ -136,7 +138,9 @@ function selectVersion() {
               : 80
   form.value.mode = 'native'
   form.value.installMethod =
-    v?.methods?.[0] || (['mysql', 'nodejs'].includes(v?.software) ? 'binary' : 'source')
+    v?.methods?.find((m: string) => !v?.availability?.[m]) ||
+    v?.methods?.[0] ||
+    (['mysql', 'nodejs'].includes(v?.software) ? 'binary' : 'source')
 }
 async function save() {
   if (!name.value) {
@@ -310,6 +314,7 @@ void api
               允许请求体大小、proxy/send 超时与 gzip；配置先校验再应用，保留历史版本。
             </small>
           </el-form-item>
+          <SiteRuntimeOptions v-model="form" />
           <el-form-item label="ACME 联系邮箱" class="wide">
             <el-input v-model="form.email" placeholder="admin@example.com" />
           </el-form-item>

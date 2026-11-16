@@ -69,3 +69,35 @@ func TestVersionFieldsAndFPMRelations(t *testing.T) {
 		t.Fatal("invalid pool accepted")
 	}
 }
+
+func TestRedisSaveRulesRoundTripAndDisable(t *testing.T) {
+	old := "# retention\nsave 900 1 # hour\nsave 300 10\nrequirepass private\n"
+	if got := Values("redis", "8.10.3", "main", old)["save"]; got != "900 1 300 10" {
+		t.Fatal(got)
+	}
+	next, err := Patch("redis", "8.10.3", "main", old, map[string]string{"save": "60 100 300 20"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ValidateEdit("redis", "8.10.3", "main", old, next); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(next, "save ") != 1 || !strings.Contains(next, "# hour") || !strings.Contains(next, "requirepass private") {
+		t.Fatal(next)
+	}
+	off, err := Patch("redis", "8.10.3", "main", next, map[string]string{"save": ""})
+	if err != nil || !strings.Contains(off, `save ""`) || Values("redis", "8.10.3", "main", off)["save"] != "" {
+		t.Fatal(off, err)
+	}
+	if err = ValidateEdit("redis", "8.10.3", "main", next, off); err != nil {
+		t.Fatal(err)
+	}
+	if got := Values("redis", "", "main", "save 900 1\nsave \"\"\nsave 60 10\n")["save"]; got != "60 10" {
+		t.Fatal(got)
+	}
+	for _, bad := range []string{"60", "0 1", "60 -1", "60 1\nloadmodule evil", "60 1; shutdown"} {
+		if _, err = Patch("redis", "", "main", old, map[string]string{"save": bad}); err == nil {
+			t.Fatal("accepted", bad)
+		}
+	}
+}

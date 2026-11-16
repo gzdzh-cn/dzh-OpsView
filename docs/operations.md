@@ -85,7 +85,7 @@ sudo ov username new-user        # 更改用户名，旧会话失效；保留 TO
 sudo ov reset-2fa                # 单独确认后关闭 TOTP
 sudo ov recover-access          # 清空面板 IP 限制，旧会话失效
 sudo ov diagnose                # 脱敏诊断输出
-sudo ov port                    # 来源受限的 UFW 放行、重启及本机健康检查，失败回退
+sudo ov port                    # 来源受限 UFW 放行，120 秒内从新链接确认，超时回退
 sudo ov info --public-host panel.example.com
 ```
 
@@ -118,3 +118,11 @@ PHP 网站使用独立 FPM 单元 `opsview-site-php-<id>.service`，普通用户
 新菜单包含部分尚未交付的高级能力，不能按菜单名称推定已支持；具体范围见根目录 [软件管理实现说明](../软件管理实现说明.md)。
 
 原生新配方按系统验收后才启用：`verifiedSystems` 分别登记 source/binary 的精确系统；未通过安装及服务验收的组合会在市场禁用并由执行器再次拒绝。仅有编译/协议 smoke 不能标记为完成。终端修改与网页确认/超时回退使用共同文件锁；已有待确认变更时终端协议、端口或地址修改会拒绝。
+
+### Redis 与网站配置
+
+备份资源可选择受管原生 Redis：获取一致性 RDB、通过对应版本 `redis-check-rdb` 校验后加密，进入现有本地/S3 备份历史和保留策略。恢复须选择另一个已安装、正在运行且没有关联业务的空 Redis 实例；先检查目标版本兼容性，保留原目录，以 RDB 模式加载，再按目标原策略重建 AOF。成功后人工验证并切换应用连接。单独的“后台快照”按钮仅请求 BGSAVE，不等同于完整备份。
+
+PHP Session 登记 Redis 依赖，依赖未移除时不能直接卸载或修改 Redis 端口。MySQL 内存档位只填入候选表单，预算模型不包含临时表等额外开销，确认配置差异后才应用。
+
+网站运行目录相对受管根目录设置，例如 `public`；禁止符号链接及目录跳转。默认文档和伪静态从受控模板生成。反向代理每条前缀规则可配置多个同协议上游，默认保留请求路径，必须保留 `/` 规则；上线前核对 Host、WebSocket 和超时配置。

@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"opsview/internal/model"
+	"strconv"
 	"time"
 )
 
@@ -16,15 +18,33 @@ func (c *Controller) softwareRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := r.PathValue("view")
-	allowed := map[string]string{"settings": "inspect", "configuration": "configuration", "metrics": "metrics", "logs": "logs", "extensions": "extensions", "binlogs": "binlogs", "session": "session"}
+	allowed := map[string]string{"settings": "inspect", "configuration": "configuration", "metrics": "metrics", "logs": "logs", "extensions": "extensions", "binlogs": "binlogs", "session": "session", "memory-budget": "memory-budget"}
 	operation, ok := allowed[view]
 	if !ok {
 		fail(w, 404, "软件设置接口不存在")
 		return
 	}
 	params := model.Config{}
-	for _, key := range []string{"file", "revision", "kind", "search", "siteId"} {
+	for _, key := range []string{"file", "revision", "kind", "search", "siteId", "budgetMB"} {
 		params[key] = r.URL.Query().Get(key)
+	}
+	if operation == "memory-budget" {
+		if budget := r.URL.Query().Get("budgetMB"); budget != "" {
+			n, err := strconv.Atoi(budget)
+			if err != nil {
+				fail(w, 422, "内存档位无效")
+				return
+			}
+			params["budgetMB"] = n
+		}
+		if raw := r.URL.Query().Get("values"); raw != "" {
+			values := map[string]string{}
+			if len(raw) > 8192 || json.Unmarshal([]byte(raw), &values) != nil {
+				fail(w, 422, "内存参数无效")
+				return
+			}
+			params["values"] = values
+		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()

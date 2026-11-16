@@ -2,8 +2,9 @@ package maintenance
 
 import (
 	"bytes"
-	"errors"
+	"encoding/json"
 	"net"
+	"opsview/internal/executor"
 	"opsview/internal/runtimeconfig"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 )
 
 func TestPortTransaction(t *testing.T) {
-	for _, scenario := range []string{"success", "failed-health", "existing-rule", "missing-source", "unknown-firewall", "unknown-nft"} {
+	for _, scenario := range []string{"success", "existing-rule", "missing-source", "unknown-firewall", "unknown-nft"} {
 		t.Run(scenario, func(t *testing.T) {
 			dir := t.TempDir()
 			trace := filepath.Join(dir, "trace")
@@ -67,15 +68,7 @@ exit 0
 				t.Fatal(e)
 			}
 			var out bytes.Buffer
-			r := Runner{Out: &out, Err: &out, Executable: filepath.Join(dir, "metadata"), ConfigPath: config, CheckHealth: func(c runtimeconfig.Config) error {
-				if c.Port != port {
-					t.Fatal("wrong health port")
-				}
-				if scenario == "failed-health" {
-					return errors.New("injected health failure")
-				}
-				return nil
-			}}
+			r := Runner{Out: &out, Err: &out, Executable: filepath.Join(dir, "metadata"), ConfigPath: config, Executor: &executor.Engine{Root: dir, PanelConfigPath: config}}
 			args := []string{fmtPort(port), "--yes"}
 			if scenario != "missing-source" {
 				args = append(args, "--source", "203.0.113.20")
@@ -85,10 +78,6 @@ exit 0
 			b, _ := os.ReadFile(trace)
 			commands := string(b)
 			switch scenario {
-			case "failed-health":
-				if e == nil || c != old || !strings.Contains(commands, "ufw --force delete allow from 203.0.113.20") {
-					t.Fatal("rollback failed", e, commands)
-				}
 			case "missing-source":
 				if e == nil || c != old || strings.Contains(commands, "systemctl restart") {
 					t.Fatal("source restriction bypassed")
@@ -99,6 +88,14 @@ exit 0
 				}
 				if strings.Contains(commands, "delete") {
 					t.Fatal("removed old rules")
+				}
+				pending, _ := os.ReadFile(filepath.Join(dir, "panel-pending.json"))
+				var value map[string]any
+				if json.Unmarshal(pending, &value) != nil || value["tokenHash"] == nil || !strings.Contains(out.String(), "#runtime-confirm=") {
+					t.Fatal("missing remote confirmation", out.String())
+				}
+				if strings.Contains(commands, "systemctl restart") {
+					t.Fatal("CLI restarted before durable executor handoff")
 				}
 			}
 			if scenario == "existing-rule" && strings.Contains(commands, "ufw allow") {

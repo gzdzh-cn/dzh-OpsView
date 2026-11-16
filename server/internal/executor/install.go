@@ -166,7 +166,7 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 			return model.Config{}, e.forget(r.ID)
 		}
 		for _, other := range e.states() {
-			if other.Config.String("instanceId") == r.ID || other.Config.String("phpInstanceId") == r.ID {
+			if other.Config.String("instanceId") == r.ID || other.Config.String("phpInstanceId") == r.ID || other.Config.String("sessionRedisInstanceId") == r.ID {
 				return nil, errors.New("执行器检测到关联资源，禁止卸载")
 			}
 		}

@@ -6,7 +6,6 @@ import (
 	"net"
 	"opsview/internal/runtimeconfig"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -54,14 +53,6 @@ func (r *Runner) port(args []string) error {
 	if e != nil || port < 1 || port > 65535 {
 		return errors.New("端口须为 1–65535")
 	}
-	unlock, lockErr := runtimeconfig.Lock(r.configPath())
-	if lockErr != nil {
-		return lockErr
-	}
-	defer unlock()
-	if _, err := os.Stat("/var/lib/opsview/managed/panel-pending.json"); err == nil {
-		return errors.New("网页访问设置等待确认，请先确认或执行 ov recover-access --all")
-	}
 	old, e := runtimeconfig.Load(r.configPath())
 	if e != nil {
 		return e
@@ -84,9 +75,7 @@ func (r *Runner) port(args []string) error {
 	if e = r.confirm("确认修改端口？", yes); e != nil {
 		return e
 	}
-	active := compatibleUFW()
-	var undo []string
-	if active {
+	if compatibleUFW() {
 		if source == "" {
 			ssh := strings.Fields(os.Getenv("SSH_CONNECTION"))
 			if len(ssh) > 0 && net.ParseIP(ssh[0]) != nil {
@@ -105,45 +94,8 @@ func (r *Runner) port(args []string) error {
 		if !sourceValid(source) {
 			return errors.New("启用 UFW 时必须指定有效来源，可用 --source IP/CIDR")
 		}
-		rule := []string{"allow", "from", source, "to", "any", "port", strconv.Itoa(port), "proto", "tcp", "comment", "opsview-panel"}
-		before, e := exec.Command("ufw", "show", "added").Output()
-		if e != nil {
-			return e
-		}
-		// UFW's canonical output is used to avoid deleting an existing user rule on rollback.
-		existed := existingUFWRule(string(before), source, port)
-
-		if !existed {
-			if e = r.exec("ufw", rule...); e != nil {
-				return e
-			}
-			undo = append([]string{"--force", "delete"}, rule...)
-		}
-	} else {
-		fmt.Fprintln(r.Out, "未检测到兼容且启用的 UFW，仅修改面板配置。请手动检查宿主机防火墙及云安全组。")
 	}
-	committed := false
-	defer func() {
-		if !committed && len(undo) > 0 {
-			if err := r.exec("ufw", undo...); err != nil {
-				fmt.Fprintln(r.Err, "撤销本次 UFW 规则失败，请人工核对：", err)
-			}
-		}
-	}()
-	if e = runtimeconfig.Save(r.configPath(), next); e != nil {
-		return e
-	}
-	if e = r.exec("systemctl", "restart", panelUnit); e == nil {
-		e = r.health(next)
-	}
-	if e != nil {
-		restoreErr := runtimeconfig.Save(r.configPath(), old)
-		restartErr := r.exec("systemctl", "restart", panelUnit)
-		return fmt.Errorf("新端口不可用，已回退（配置恢复：%v，服务重启：%v）：%w", restoreErr, restartErr, e)
-	}
-	committed = true
-	fmt.Fprintf(r.Out, "端口已改为 %d。\n", port)
-	return r.info(nil)
+	return r.applyPanelAccess(next, source)
 }
 func compatibleUFW() bool { return runtimeconfig.CompatibleUFW() }
 func existingUFWRule(output, source string, port int) bool {

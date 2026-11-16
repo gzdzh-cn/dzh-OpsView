@@ -43,6 +43,35 @@ const migrationOpen = ref(false),
   certificateOpen = ref(false),
   certificateSource = ref<Resource>(),
   certificateValues = ref({ certificate: '', privateKey: '' })
+const redisRestoreOpen = ref(false),
+  redisRestoreSource = ref<Resource>(),
+  redisRestoreTarget = ref(''),
+  redisRestoreConfirmed = ref(false)
+const redisRestoreTargets = computed(() =>
+  panel
+    .kind('instance')
+    .filter(
+      (r) =>
+        r.config.software === 'redis' &&
+        r.config.mode === 'native' &&
+        r.id !== redisRestoreSource.value?.config.targetId &&
+        ['ready', 'running'].includes(r.status),
+    ),
+)
+async function restoreRedis() {
+  if (!redisRestoreSource.value || !redisRestoreTarget.value || !redisRestoreConfirmed.value) return
+  try {
+    await action(redisRestoreSource.value.id, 'restore', {
+      targetInstanceId: redisRestoreTarget.value,
+      maintenanceConfirmed: true,
+    })
+    redisRestoreOpen.value = false
+    await panel.refresh()
+    ElMessage.success('Redis 校验及恢复任务已提交，请在任务中心查看结果')
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
+}
 const migrationTargets = computed(() =>
   panel
     .kind('instance')
@@ -141,6 +170,13 @@ async function execute(row: Resource, op: string, params: Record<string, any> = 
     }
     if (op === 'restore') {
       const target = panel.resources.find((r) => r.id === row.config.targetId)
+      if (target?.kind === 'instance' && target.config.software === 'redis') {
+        redisRestoreSource.value = row
+        redisRestoreTarget.value = ''
+        redisRestoreConfirmed.value = false
+        redisRestoreOpen.value = true
+        return
+      }
       if (target?.kind === 'database') {
         const result = await ElMessageBox.prompt('恢复到新的数据库名称，禁止覆盖源库', '恢复备份', {
           inputPattern: /^[A-Za-z][A-Za-z0-9_]{0,62}$/,
@@ -386,6 +422,35 @@ async function sync(row: Resource) {
     </div>
   </section>
   <ResourceForm v-model="dialog" :kind="kind" :editing="editing" />
+  <el-dialog v-model="redisRestoreOpen" title="恢复 Redis 到新实例" width="min(600px,90vw)">
+    <p>
+      先在软件市场安装另一个 Redis
+      实例。目标必须为空且没有关联资源；源实例和持久化文件保留，成功后再切换应用连接。
+    </p>
+    <el-form label-width="100px">
+      <el-form-item label="目标实例">
+        <el-select v-model="redisRestoreTarget" placeholder="选择已启动的原生 Redis 空实例">
+          <el-option
+            v-for="r in redisRestoreTargets"
+            :key="r.id"
+            :value="r.id"
+            :label="`${r.name} · ${r.config.version} · :${r.config.port}`"
+          />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <el-checkbox v-model="redisRestoreConfirmed">目标处于维护窗口，没有业务写入</el-checkbox>
+    <template #footer>
+      <el-button @click="redisRestoreOpen = false">取消</el-button>
+      <el-button
+        type="primary"
+        :disabled="!redisRestoreTarget || !redisRestoreConfirmed"
+        @click="restoreRedis"
+      >
+        校验并恢复
+      </el-button>
+    </template>
+  </el-dialog>
   <el-drawer
     :model-value="!!details"
     :title="details?.name + ' · 资源详情'"

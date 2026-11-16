@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/shirou/gopsutil/v4/mem"
 	"io"
 	"net"
 	"net/http"
@@ -115,6 +116,52 @@ func (e *Engine) softwareOperation(ctx context.Context, op model.Operation, log 
 	}
 	if action == "metrics" {
 		return e.softwareMetrics(ctx, r)
+	}
+	if action == "memory-budget" {
+		if sw != "mysql" {
+			return nil, errors.New("内存档位仅适用于 MySQL")
+		}
+		path, er := e.softwarePath(r, "main")
+		if er != nil {
+			return nil, er
+		}
+		b, er := os.ReadFile(path)
+		if er != nil {
+			return nil, er
+		}
+		values := software.Values("mysql", version, "main", string(b))
+		if budget := op.Params.Int("budgetMB"); budget != 0 {
+			preset, er := software.MySQLMemoryPreset(budget)
+			if er != nil {
+				return nil, er
+			}
+			for k, v := range preset {
+				values[k] = v
+			}
+		}
+		if raw, ok := op.Params["values"]; ok {
+			b, _ := json.Marshal(raw)
+			input := map[string]string{}
+			if json.Unmarshal(b, &input) != nil {
+				return nil, errors.New("内存参数必须为字符串")
+			}
+			if er := software.ValidateValues(software.Fields(sw, version, "main"), input); er != nil {
+				return nil, er
+			}
+			for k, v := range input {
+				values[k] = v
+			}
+		}
+		estimate, er := software.EstimateMySQLMemory(version, values)
+		if er != nil {
+			return nil, er
+		}
+		result := model.Config{"values": values, "estimate": estimate}
+		if m, er := mem.VirtualMemory(); er == nil {
+			result["hostMemoryBytes"] = m.Total
+			result["availableBytes"] = m.Available
+		}
+		return result, nil
 	}
 	if action == "guardian" {
 		return e.softwareGuardian(ctx, r, op.Params, log)
@@ -368,7 +415,7 @@ func (e *Engine) inspectSoftware(ctx context.Context, r model.Resource) model.Co
 	sw := r.Config.String("software")
 	associated := []model.Config{}
 	for _, s := range e.states() {
-		if s.ID != r.ID && (s.Config.String("instanceId") == r.ID || s.Config.String("phpInstanceId") == r.ID) {
+		if s.ID != r.ID && (s.Config.String("instanceId") == r.ID || s.Config.String("phpInstanceId") == r.ID || s.Config.String("sessionRedisInstanceId") == r.ID || s.Config.String("targetId") == r.ID) {
 			associated = append(associated, model.Config{"id": s.ID, "name": s.Name, "kind": s.Kind})
 		}
 	}
@@ -600,8 +647,10 @@ func (e *Engine) redisCommandFormat(ctx context.Context, r model.Resource, forma
 		return "", errors.New("Redis 请求失败")
 	}
 	text := string(b)
-	if strings.HasPrefix(text, "ERR ") || strings.HasPrefix(text, "NOAUTH") || strings.HasPrefix(text, "WRONGPASS") {
-		return "", errors.New("Redis 拒绝请求")
+	for _, code := range []string{"ERR ", "NOAUTH ", "WRONGPASS ", "NOPERM ", "LOADING ", "BUSY ", "MISCONF ", "READONLY ", "MASTERDOWN ", "NOREPLICAS "} {
+		if strings.HasPrefix(text, code) {
+			return "", errors.New("Redis 拒绝请求或正在加载，请检查服务状态与授权")
+		}
 	}
 	return text, nil
 }
@@ -641,6 +690,9 @@ func (e *Engine) softwarePort(ctx context.Context, r model.Resource, p model.Con
 		return model.Config{"port": port}, nil
 	}
 	for _, x := range e.states() {
+		if x.Config.String("sessionRedisInstanceId") == r.ID {
+			return nil, errors.New("Redis 被 PHP Session 使用，请先切换会话存储后再修改端口")
+		}
 		if x.Kind == "database" && x.Config.String("instanceId") == r.ID && x.Config.Bool("allowRemote") {
 			return nil, errors.New("有关联远程数据库，请先调整访问规则以免连接中断")
 		}

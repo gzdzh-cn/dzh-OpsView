@@ -13,6 +13,12 @@ while [ "$#" -gt 0 ]; do
   case "$1" in --public-host) [ "$#" -ge 2 ] || deploy_error '--public-host 缺少地址'; public_host=$2; shift 2;; *) deploy_error "未知参数：$1";; esac
 done
 [ -x /opt/opsview/bin/opsview ] && [ -d /var/lib/opsview/panel ] || deploy_error '未找到已有安装，请先运行安装程序。'
+# Share the executor/ov configuration lock before checking the reconnect transaction.
+command -v flock >/dev/null 2>&1 || deploy_error '缺少 flock，无法锁定运行配置。'
+install -d -o root -g root -m 0755 /etc/opsview
+exec 9>/etc/opsview/panel.json.lock
+flock -w 5 9 || deploy_error '其他进程正在修改面板访问设置，请稍后重试。'
+[ ! -e /var/lib/opsview/managed/panel-pending.json ] || deploy_error '面板访问设置等待重新连接确认，请先确认或执行 ov recover-access --all。'
 stage_start 5 预检及备份现有服务
 ensure_dependencies
 check_ov_conflict

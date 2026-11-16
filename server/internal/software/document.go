@@ -153,10 +153,23 @@ func Values(sw, version, file, text string) map[string]string {
 	}
 	for _, f := range Fields(sw, version, file) {
 		out[f.Key] = f.Default
+		saves := []string{}
+		hasSave := false
 		for _, d := range ds {
 			if d.key == f.Key && (d.section == f.Section || sw == "redis") {
 				out[f.Key] = strings.Trim(d.value, `"`)
+				if sw == "redis" && f.Key == "save" {
+					hasSave = true
+					if value := strings.Trim(d.value, `"`); value == "" {
+						saves = nil
+					} else {
+						saves = append(saves, value)
+					}
+				}
 			}
+		}
+		if hasSave {
+			out[f.Key] = strings.TrimSpace(strings.Join(saves, " "))
 		}
 	}
 	return out
@@ -186,14 +199,22 @@ func Patch(sw, version, file, text string, values map[string]string) (string, er
 		found := false
 		for _, d := range ds {
 			if d.key == f.Key && (d.section == f.Section || sw == "redis") {
-				found = true
 				replacement := f.Key + " = " + v
 				if sw == "nginx" {
 					replacement = f.Key + " " + v + ";"
 				}
 				if sw == "redis" {
 					replacement = f.Key + " " + v
+					if f.Key == "save" {
+						if v == "" {
+							replacement = `save ""`
+						}
+						if found {
+							replacement = ""
+						}
+					}
 				}
+				found = true
 				edits = append(edits, edit{d.start, d.end, replacement})
 			}
 		}
@@ -220,6 +241,9 @@ func Patch(sw, version, file, text string, values map[string]string) (string, er
 				text = text[:loc[1]] + "\n " + line + text[loc[1]:]
 			}
 		} else if sw == "redis" {
+			if f.Key == "save" && v == "" {
+				v = `""`
+			}
 			text += "\n" + f.Key + " " + v + "\n"
 		} else {
 			text += "\n[" + f.Section + "]\n" + f.Key + " = " + v + "\n"
@@ -255,7 +279,7 @@ func ValidateEdit(sw, version, file, old, candidate string) error {
 				f, ok = allowed["/"+d.key]
 			}
 			if ok {
-				if seen[k] {
+				if seen[k] && !(sw == "redis" && d.key == "save") {
 					return nil, fmt.Errorf("%s 重复定义，请先合并", d.key)
 				}
 				seen[k] = true

@@ -125,3 +125,5 @@ make release                       # Linux amd64 包与 SHA256SUMS
 28 个目标版本已固定上游地址与 SHA-256；目录可见不等于全部系统组合通过验收。旧 PHP 隔离依赖组合会明确拒绝安装。源码编译使用低权限用户；已签名的预编译配方按系统选择，未发布的包不能选择安装。
 
 当前已实现范围、未完成项和验证证据见根目录 [软件管理实现说明](软件管理实现说明.md)。GitHub Actions 的 **Build candidate (no production update)** 生成候选附件；**Validate native packages** 独立验证原生配方。两者不自动更新服务器或替换 latest。
+
+本轮 GitHub 已验证三个推荐原生软件在 Ubuntu 24.04 的 systemd 安装，源码/预编译安装按系统验收记录开放。新增版本的完整支持范围及剩余工作见 [软件管理实现说明](软件管理实现说明.md)。`ov port`、`ov ssl on/off` 会显示新地址，需在 120 秒内重新连接确认，未确认时禁止更新。

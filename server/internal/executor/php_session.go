@@ -20,6 +20,7 @@ func (e *Engine) phpSession(ctx context.Context, r model.Resource, p model.Confi
 	}
 	base := filepath.Join(e.Root, "instances", r.ID)
 	unit := serviceName(r)
+	subject := r
 	if id := p.String("siteId"); id != "" {
 		site, err := e.load(id)
 		if err != nil || site.Kind != "site" || site.Config.String("phpInstanceId") != r.ID {
@@ -30,6 +31,7 @@ func (e *Engine) phpSession(ctx context.Context, r model.Resource, p model.Confi
 		}
 		base = filepath.Join(e.Root, "sites", site.ID)
 		unit = phpSiteUnit(site)
+		subject = site
 	}
 	if r.Config.Bool("servicesPaused") && p.String("operation") == "save" {
 		return nil, errors.New("PHP 服务已暂停，请先启动")
@@ -139,5 +141,15 @@ func (e *Engine) phpSession(ctx context.Context, r model.Resource, p model.Confi
 		_ = systemctl(context.Background(), func(string) {}, "reload", unit)
 		return nil, errors.New("会话配置应用失败，已恢复原文件")
 	}
-	return model.Config{"handler": handler, "configurationRevision": security.Hash(next)}, nil
+	if handler == "redis" {
+		subject.Config["sessionRedisInstanceId"] = p.String("instanceId")
+	} else {
+		delete(subject.Config, "sessionRedisInstanceId")
+	}
+	if err = e.save(subject); err != nil {
+		_ = writeOwnedAtomic(path, old, st.Mode().Perm())
+		_ = systemctl(context.Background(), func(string) {}, "reload", unit)
+		return nil, errors.New("会话依赖登记失败，已恢复原配置")
+	}
+	return model.Config{"handler": handler, "configurationRevision": security.Hash(next), "linkedResources": []model.Resource{subject}}, nil
 }

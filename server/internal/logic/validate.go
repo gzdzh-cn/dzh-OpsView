@@ -68,7 +68,17 @@ func Validate(r model.Resource) error {
 		if err := ValidateNginxAdvanced(c.String("advanced")); err != nil {
 			return err
 		}
+		if err := ValidateSiteOptions(c); err != nil {
+			return err
+		}
 		if c.String("type") == "proxy" {
+			routes, err := SiteProxyRoutes(c)
+			if err != nil {
+				return err
+			}
+			if len(routes) > 0 {
+				break
+			}
 			u, e := url.Parse(c.String("upstream"))
 			if e != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || strings.ContainsAny(c.String("upstream"), ";{}\r\n\t \"'\\$") {
 				return errors.New("反向代理地址无效")

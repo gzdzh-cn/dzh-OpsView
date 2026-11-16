@@ -103,6 +103,7 @@ func Fields(sw, version, file string) []Field {
 			field("maxclients", "最大连接", "", "performance", "1000", number, "dynamic"),
 			field("timeout", "客户端超时", "", "performance", "0", number, "dynamic"),
 			field("tcp-keepalive", "TCP keepalive", "", "performance", "300", number, "dynamic"),
+			field("save", "RDB 保存策略（秒 变更数，多组用空格分隔）", "", "persistence", "900 1 300 10", `^(?:|[1-9][0-9]{0,7} [0-9]{1,10}(?: [1-9][0-9]{0,7} [0-9]{1,10}){0,7})$`, "dynamic"),
 			field("appendonly", "AOF 持久化", "", "persistence", "yes", `^(yes|no)$`, "dynamic", "yes", "no"),
 			field("appendfsync", "AOF 同步策略", "", "persistence", "everysec", `^(always|everysec|no)$`, "dynamic", "always", "everysec", "no"),
 			field("auto-aof-rewrite-percentage", "AOF 重写比例", "", "persistence", "100", number, "dynamic"),

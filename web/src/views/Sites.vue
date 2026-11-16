@@ -5,6 +5,7 @@ import { usePanel } from '../stores/panel'
 import { action, api, put, errorText, size, date, type Resource, type Config } from '../lib/api'
 import ResourceForm from '../components/ResourceForm.vue'
 import CodeEditor from '../components/CodeEditor.vue'
+import SiteRuntimeOptions from '../components/SiteRuntimeOptions.vue'
 const panel = usePanel(),
   tab = ref('php'),
   filter = ref(''),
@@ -20,7 +21,14 @@ const panel = usePanel(),
   trafficPeriod = ref('24h'),
   cert = ref({ certificate: '', privateKey: '' })
 const nginx = computed(() =>
-  panel.kind('instance').filter((r) => r.config.software === 'nginx' && r.status !== 'pending'),
+  panel
+    .kind('instance')
+    .filter(
+      (r) =>
+        r.config.software === 'nginx' &&
+        ['ready', 'running', 'stopped'].includes(r.status) &&
+        !r.config.installationIncomplete,
+    ),
 )
 const rows = computed(() =>
   panel
@@ -364,6 +372,7 @@ async function loadLogs() {
             <el-form-item v-if="draft.type === 'proxy'" label="代理地址">
               <el-input v-model="draft.upstream" />
             </el-form-item>
+            <SiteRuntimeOptions v-model="draft" />
             <el-form-item label="高级配置"><CodeEditor v-model="draft.advanced" /></el-form-item>
           </el-form>
           <el-button type="primary" @click="save">保存并应用</el-button>
