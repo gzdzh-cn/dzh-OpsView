@@ -30,17 +30,20 @@ ensure_dependencies() {
 }
 
 wait_for_panel() {
-  local _attempt response url
+  local _attempt response url stable=0
   url=$(/opt/opsview/bin/opsview runtime-config health-url) || return 1
   for _attempt in {1..30}; do
-    if systemctl is-active --quiet opsview-panel.service && systemctl is-active --quiet opsview-executor.service; then
+    if systemctl is-active --quiet opsview-panel.service && systemctl is-active --quiet opsview-executor.service && [ -S /run/opsview/executor.sock ]; then
       # Only loopback health checks accept the initial self-signed certificate.
       if response=$(curl --noproxy '*' --silent --fail --insecure --connect-timeout 1 --max-time 2 "$url") &&
         [[ "$response" =~ \"status\"[[:space:]]*:[[:space:]]*\"ok\" ]]; then
-        return 0
+        stable=$((stable+1))
+        if [ "$stable" -ge 3 ]; then return 0; fi
+      else stable=0
       fi
+    else stable=0
     fi
-    printf '等待服务健康检查：%s/30\n' "$_attempt"
+    printf '等待服务健康检查：%s/30（连续通过 %s/3）\n' "$_attempt" "$stable"
     sleep 1
   done
   return 1

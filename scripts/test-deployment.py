@@ -21,7 +21,7 @@ import urllib.request
 def report_failure(kind, error, tb):
     # A public annotation gives the failing assertion location without exposing captured output.
     frames = traceback.extract_tb(tb)
-    location = f'{Path(frames[-1].filename).name}:{frames[-1].lineno}' if frames else 'unknown'
+    location = ' -> '.join(f'{Path(frame.filename).name}:{frame.lineno}' for frame in frames if Path(frame.filename).name == 'test-deployment.py') or 'unknown'
     message = f'{kind.__name__} at {location}'
     if isinstance(error, AssertionError) and str(error).startswith('command exit mismatch:'):
         message += ' ' + str(error)
