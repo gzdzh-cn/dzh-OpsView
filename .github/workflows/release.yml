@@ -95,3 +95,13 @@ jobs:
           else
             gh release edit "$RELEASE_TAG" --draft=false --latest
           fi
+  verify-public-install:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify public installation and ov update
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: sudo env GITHUB_ACTIONS=true RELEASE_TAG="$RELEASE_TAG" python3 scripts/test-release-install.py

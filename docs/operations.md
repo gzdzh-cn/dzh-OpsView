@@ -54,7 +54,7 @@ sudo opsview backup-config
 sudo opsview restore-config --file /var/lib/opsview/panel/backups/EXAMPLE.ovp --output /var/lib/opsview/panel-restored
 ```
 
-`restore-config` 读取当前数据目录中的 `master.key`，认证解密后恢复 SQLite、面板证书和运行配置快照到新目录，检查 SQLite 完整性，并使旧会话失效。新目录必须尚不存在。默认不会切换正在运行的面板。`panel.json` 快照不会自动覆盖 `/etc/opsview/panel.json`，需人工核对后切换。
+`restore-config` 读取当前数据目录中的 `master.key`，认证解密后恢复 SQLite、面板证书和运行配置快照到新目录，检查 SQLite 完整性，并使旧会话失效。新目录必须尚不存在。默认不会切换正在运行的面板。`panel.json` 快照不会自动覆盖 `/etc/opsview/panel.json`，需人工核对后切换。写入运行配置时使用 `install -o root -g root -m 0644`，确保仍由 root 管理且面板可以读取。
 
 验证新目录后停止面板，保留旧目录，将新目录切换为 `/var/lib/opsview/panel`，确保 owner 为 opsview、目录 0700，再启动面板。不要在运行中替换 SQLite 数据库，也不要遗漏 WAL 文件。恢复后重启的任务标为中断，核对执行器现场后再重试。
 
