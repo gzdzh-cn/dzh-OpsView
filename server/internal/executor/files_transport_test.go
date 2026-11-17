@@ -109,7 +109,7 @@ func TestFilesThroughUnixSocketTextLimit(t *testing.T) {
 	if err != nil || data.String("text") != original {
 		t.Fatalf("large result failed: %v", err)
 	}
-	text := strings.Repeat("\x01", fileTextLimit)
+	text := strings.Repeat("\x01", 2<<20) + strings.Repeat("x", fileTextLimit-(2<<20))
 	_, err = client.Execute(context.Background(), model.Operation{Name: "files.write", Params: model.Config{"scope": "server", "path": path, "text": text, "revision": data.String("revision")}}, func(string) {})
 	if err != nil {
 		t.Fatal("escaped request failed", err)

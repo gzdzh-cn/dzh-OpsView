@@ -542,7 +542,9 @@ test('application entry retires to other websites and plugins use row lists', as
   await expect(page.locator('.list-panel .el-table')).toBeVisible()
   await expect(page.locator('.plugin-card')).toHaveCount(0)
   await page.getByRole('tab', { name: '仓库管理', exact: true }).click()
-  await expect(page.getByRole('button', { name: '添加插件仓库', exact: true }).first()).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '添加插件仓库', exact: true }).first(),
+  ).toBeVisible()
 })
 
 test('server file page navigates root, shows revisions, recovers conflicts and stays within mobile viewport', async ({
