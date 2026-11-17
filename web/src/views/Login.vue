@@ -30,6 +30,10 @@ async function submit() {
       code: code.value,
     })
     setCSRF(data.csrf)
+    await panel.session()
+    if (!panel.auth.authenticated) {
+      throw new Error('浏览器未保存登录会话，请允许此站点使用 Cookie，或使用无痕窗口重试。')
+    }
     emit('ready')
   } catch (e) {
     error.value = errorText(e)

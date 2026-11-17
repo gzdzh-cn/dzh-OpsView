@@ -41,10 +41,21 @@ func clientIP(r *http.Request) string {
 	}
 	return ip
 }
+
+// Browsers refuse an HTTP response that overwrites an existing Secure cookie.
+// Keep HTTPS's existing name for compatibility and use a separate HTTP cookie
+// so disabling SSL works without deleting cookies in every browser.
+func sessionCookieName(r *http.Request) string {
+	if r.TLS != nil {
+		return "opsview_session"
+	}
+	return "opsview_session_http"
+}
+
 func (c *Controller) authStatus(w http.ResponseWriter, r *http.Request) {
 	a, e := c.currentAdmin()
 	var csrf string
-	cookie, err := r.Cookie("opsview_session")
+	cookie, err := r.Cookie(sessionCookieName(r))
 	if err == nil {
 		_ = c.App.Store.DB.QueryRow(`SELECT csrf FROM sessions WHERE hash=? AND expires>?`, security.Hash(cookie.Value), time.Now().Unix()).Scan(&csrf)
 	}
@@ -139,13 +150,13 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = c.App.Store.DB.Exec(`DELETE FROM sessions WHERE expires<?`, now.Unix())
-	http.SetCookie(w, &http.Cookie{Name: "opsview_session", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: minutes * 60, Expires: expires})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName(r), Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: minutes * 60, Expires: expires})
 	c.App.Store.Audit("auth.login", "", ip)
 	send(w, 200, map[string]any{"csrf": csrf, "username": a.Username})
 }
 func (c *Controller) authenticated(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, e := r.Cookie("opsview_session")
+		cookie, e := r.Cookie(sessionCookieName(r))
 		if e != nil {
 			fail(w, 401, "请先登录")
 			return
@@ -188,13 +199,17 @@ func (c *Controller) authenticated(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 func (c *Controller) logout(w http.ResponseWriter, r *http.Request) {
-	cookie, _ := r.Cookie("opsview_session")
+	cookie, err := r.Cookie(sessionCookieName(r))
+	if err != nil {
+		fail(w, 401, "请先登录")
+		return
+	}
 	_, e := c.App.Store.DB.Exec(`DELETE FROM sessions WHERE hash=?`, security.Hash(cookie.Value))
 	if e != nil {
 		fail(w, 500, "注销失败")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "opsview_session", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName(r), Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil})
 	send(w, 200, map[string]any{"ok": true})
 }
 func (c *Controller) twoFactor(w http.ResponseWriter, r *http.Request) {

@@ -13,7 +13,7 @@ schemas = {"Resource": resource, "Task": task, "Error": obj({"error": string,"co
 paths = {}
 def add(path, method, summary, response=config, body=None, public=False, status="200"):
     route = paths.setdefault('/api/v1' + path, {})
-    op = {"operationId": method + '_' + path.replace('/', '_').replace('{', '').replace('}', '').replace('-', '_').strip('_'), "summary": summary, "security": [] if public else [{"session": []}], "responses": {status: {"description": "成功", "content": {"application/json": {"schema": response}}}, "400": {"description": "校验失败", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "401": {"description": "未登录"}, "409": {"description": "资源冲突"}}}
+    op = {"operationId": method + '_' + path.replace('/', '_').replace('{', '').replace('}', '').replace('-', '_').strip('_'), "summary": summary, "security": [] if public else [{"session": []}, {"httpSession": []}], "responses": {status: {"description": "成功", "content": {"application/json": {"schema": response}}}, "400": {"description": "校验失败", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "401": {"description": "未登录"}, "409": {"description": "资源冲突"}}}
     params = []
     for part in path.split('/'):
         if part.startswith('{'): params.append({"name": part[1:-1], "in": "path", "required": True, "schema": string})
@@ -95,5 +95,5 @@ add('/runtime/confirm','post','使用一次性确认凭证提交重新连接结�
 add('/settings/certificate/issue','post','提交域名或公网 IP ACME 申请',ref('Task'),obj({'host':string,'email':string,'acceptTerms':{'type':'boolean'}}),status='202')
 add('/auth/username','post','修改用户名，失效旧会话并保留双因素认证',body=obj({'username':string,'password':string,'code':string}))
 add('/tasks/{id}/cancel','post','取消软件安装或文件任务；变更阶段保留可恢复副本',body=config,status='202')
-spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session"}}}}
+spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session","description":"HTTPS 会话，Secure Cookie"},"httpSession":{"type":"apiKey","in":"cookie","name":"opsview_session_http","description":"HTTP 会话，与 HTTPS Cookie 分离以兼容关闭 SSL"}}}}
 (root/'server/internal/api/openapi.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n')

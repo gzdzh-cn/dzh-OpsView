@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpsView API",
-    "version": "0.1.3-rc.2"
+    "version": "0.1.3-rc.3"
   },
   "paths": {
     "/api/v1/health": {
@@ -208,6 +208,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -270,6 +273,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -346,6 +352,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -422,6 +431,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -471,6 +483,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -530,6 +545,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -595,6 +613,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -653,6 +674,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -729,6 +753,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -771,6 +798,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -847,6 +877,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -887,6 +920,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -929,6 +965,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -969,6 +1008,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1009,6 +1051,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1047,6 +1092,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1108,6 +1156,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1148,6 +1199,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1188,6 +1242,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1238,6 +1295,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1278,6 +1338,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1338,6 +1401,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1388,6 +1454,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1460,6 +1529,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1517,6 +1589,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1587,6 +1662,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1637,6 +1715,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1703,6 +1784,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1781,6 +1865,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1820,6 +1907,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1880,6 +1970,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -1952,6 +2045,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2021,6 +2117,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2090,6 +2189,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2167,6 +2269,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2243,6 +2348,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2293,6 +2401,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2343,6 +2454,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2462,6 +2576,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2512,6 +2629,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2562,6 +2682,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2618,6 +2741,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2682,6 +2808,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2766,6 +2895,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2840,6 +2972,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2908,6 +3043,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -2958,6 +3096,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -3008,6 +3149,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -3046,6 +3190,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -3161,6 +3308,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -3236,6 +3386,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -3312,6 +3465,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "httpSession": []
           }
         ],
         "responses": {
@@ -4196,7 +4352,14 @@
       "session": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "opsview_session"
+        "name": "opsview_session",
+        "description": "HTTPS 会话，Secure Cookie"
+      },
+      "httpSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "opsview_session_http",
+        "description": "HTTP 会话，与 HTTPS Cookie 分离以兼容关闭 SSL"
       }
     }
   }
