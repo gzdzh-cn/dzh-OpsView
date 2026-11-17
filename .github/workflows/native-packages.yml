@@ -5,6 +5,7 @@ on:
     paths:
       - 'server/internal/executor/native.go'
       - 'server/internal/executor/install.go'
+      - 'server/internal/executor/mysql_compat.go'
       - 'server/internal/executor/precompiled.go'
       - 'server/internal/executor/fast_package_test.go'
       - 'packages/catalog/versions.json'

@@ -397,6 +397,9 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 				return err
 			}
 		}
+		if err = prepareMySQLAIO(ctx, runtimePath, log); err != nil {
+			return err
+		}
 		data := filepath.Join(base, "data")
 		if err = run(ctx, log, "", nil, nil, "chown", "-R", user+":"+user, data); err != nil {
 			return err

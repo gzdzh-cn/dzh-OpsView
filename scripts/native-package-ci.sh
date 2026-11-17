@@ -12,4 +12,16 @@ for attempt in $(seq 1 40); do
   sleep 1
 done
 [ "$state" = running ] || [ "$state" = degraded ] || { docker logs "$container_name"; exit 1; }
-docker exec -e GITHUB_ACTIONS=true -e "OPSVIEW_PACKAGE_MODE=$PACKAGE_MODE" -e "OPSVIEW_NATIVE_ENTRY=$NATIVE_ENTRY" -e OPSVIEW_NATIVE_OUTPUT=/output "$container_name" /native-smoke.test -test.run '^TestFastPackageAcceptance$' -test.v -test.timeout=85m
+set +e
+docker exec -e GITHUB_ACTIONS=true -e "OPSVIEW_PACKAGE_MODE=$PACKAGE_MODE" -e "OPSVIEW_NATIVE_ENTRY=$NATIVE_ENTRY" -e OPSVIEW_NATIVE_OUTPUT=/output "$container_name" /native-smoke.test -test.run '^TestFastPackageAcceptance$' -test.v -test.timeout=85m 2>&1 | tee dist/native-acceptance.log
+result=${PIPESTATUS[0]}
+set -e
+if [ "$result" -ne 0 ]; then
+  python3 - <<'REPORT'
+import pathlib
+text='\n'.join(pathlib.Path('dist/native-acceptance.log').read_text(errors='replace').splitlines()[-35:])
+text=text.replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+print(f'::error title=Native acceptance failed::{text}')
+REPORT
+  exit "$result"
+fi
