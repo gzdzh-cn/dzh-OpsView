@@ -128,4 +128,6 @@ make release                       # Linux amd64 包与 SHA256SUMS
 
 当前已实现范围、未完成项和验证证据见根目录 [软件管理实现说明](软件管理实现说明.md)。GitHub Actions 的 **Build candidate (no production update)** 生成候选附件；**Validate native packages** 独立验证原生配方。两者不自动更新服务器或替换 latest。
 
+软件日志新增时间/级别/站点筛选、归档清理和当前脱敏结果下载，Nginx 在线重开日志会核对实际进程描述符。其他软件归档要求对应服务先停止；尚无定时轮转保留策略。
+
 本轮 GitHub 已验证三个推荐原生软件在 Ubuntu 24.04 的 systemd 安装，源码/预编译安装按系统验收记录开放。新增版本的完整支持范围及剩余工作见 [软件管理实现说明](软件管理实现说明.md)。`ov port`、`ov ssl on/off` 会显示新地址，需在 120 秒内重新连接确认，未确认时禁止更新。

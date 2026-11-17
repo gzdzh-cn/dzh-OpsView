@@ -108,6 +108,9 @@ func (e *Engine) softwareOperation(ctx context.Context, op model.Operation, log 
 	if r.Config.String("mode") == "docker" {
 		return nil, errors.New("此设置仅适用于原生实例；已有容器请在 Docker 页面管理")
 	}
+	if action == "rotate-log" || action == "delete-log-archive" {
+		return e.manageSoftwareLog(ctx, r, op.Params, action, log)
+	}
 	if action == "logs" {
 		if sw == "redis" && op.Params.String("kind") == "slow" {
 			return e.redisSlowLog(ctx, r)
@@ -539,36 +542,6 @@ func (e *Engine) softwareGuardian(ctx context.Context, r model.Resource, p model
 		return nil, err
 	}
 	return model.Config{"guardian": p}, nil
-}
-func (e *Engine) softwareLogs(ctx context.Context, r model.Resource, p model.Config) (model.Config, error) {
-	kind := p.String("kind")
-	if kind == "" || kind == "service" {
-		text, err := output(ctx, "journalctl", "-u", serviceName(r), "-n", "200", "--no-pager")
-		return model.Config{"content": security.MaskLog(text, r)}, err
-	}
-	allowed := map[string]map[string]string{"nginx": {"error": "error.log"}, "mysql": {"error": "mysql.log", "slow": "slow.log"}, "php": {"error": "php-error.log", "fpm": "fpm.log", "slow": "slow.log"}, "redis": {"error": "redis.log"}}
-	name := allowed[r.Config.String("software")][kind]
-	if name == "" {
-		return nil, errors.New("日志类型无效")
-	}
-	path := filepath.Join(e.Root, "instances", r.ID, "logs", name)
-	if err := regularManagedLimit(path, filepath.Dir(path), 0); err != nil {
-		if os.IsNotExist(err) {
-			return model.Config{"content": "", "notice": "尚未产生日志或该日志未启用"}, nil
-		}
-		return nil, err
-	}
-	content, err := tail(path, 500)
-	if q := p.String("search"); q != "" {
-		lines := []string{}
-		for _, l := range strings.Split(content, "\n") {
-			if strings.Contains(l, q) {
-				lines = append(lines, l)
-			}
-		}
-		content = strings.Join(lines, "\n")
-	}
-	return model.Config{"content": security.MaskLog(content, r)}, err
 }
 func (e *Engine) softwareMetrics(ctx context.Context, r model.Resource) (model.Config, error) {
 	data := e.inspectSoftware(ctx, r)

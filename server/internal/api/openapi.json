@@ -2130,8 +2130,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true
+                  "$ref": "#/components/schemas/SoftwareLogs"
                 }
               }
             }
@@ -2192,6 +2191,41 @@
           },
           {
             "name": "siteId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "archive",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
             "in": "query",
             "schema": {
               "type": "string"
@@ -3442,6 +3476,75 @@
           "file",
           "baseRevision",
           "apply"
+        ]
+      },
+      "SoftwareLogs": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "notice": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "archive": {
+            "type": "string"
+          },
+          "canRotate": {
+            "type": "boolean"
+          },
+          "rotationNotice": {
+            "type": "string"
+          },
+          "windowTruncated": {
+            "type": "boolean"
+          },
+          "limited": {
+            "type": "boolean"
+          },
+          "unknownTimeRecords": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "windowBytes": {
+            "type": "integer"
+          },
+          "archives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "size": {
+                  "type": "integer"
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "size",
+                "createdAt"
+              ]
+            }
+          }
+        },
+        "required": [
+          "content"
         ]
       }
     },

@@ -137,6 +137,7 @@ func TestNativePackageSmoke(t *testing.T) {
 		}
 		if realSystemd {
 			testNginxWebsiteOptions(t, e, r)
+			testNginxLogRotation(t, e, r)
 		}
 	}
 	if out := os.Getenv("OPSVIEW_NATIVE_OUTPUT"); out != "" {

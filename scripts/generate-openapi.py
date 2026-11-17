@@ -65,6 +65,10 @@ for name in ['budgetMB','values']: paths['/api/v1/instances/{id}/memory-budget']
 add('/instances/{id}/configuration','get','读取配置、字段、加密历史及当前修订',ref('ConfigurationDocument'))
 for name in ['file','revision','kind','search','siteId']:
  for view in ['configuration','logs']:paths['/api/v1/instances/{id}/'+view]['get'].setdefault('parameters',[]).append({'name':name,'in':'query','schema':string})
+for name in ['since','until','level','archive','limit']:
+ paths['/api/v1/instances/{id}/logs']['get']['parameters'].append({'name':name,'in':'query','schema':string})
+schemas['SoftwareLogs']=obj({'content':string,'notice':string,'revision':string,'size':{'type':'integer'},'count':{'type':'integer'},'archive':string,'canRotate':{'type':'boolean'},'rotationNotice':string,'windowTruncated':{'type':'boolean'},'limited':{'type':'boolean'},'unknownTimeRecords':{'type':'integer'},'timezone':string,'windowBytes':{'type':'integer'},'archives':{'type':'array','items':obj({'name':string,'size':{'type':'integer'},'createdAt':string})}},['content'])
+paths['/api/v1/instances/{id}/logs']['get']['responses']['200']['content']['application/json']['schema']=ref('SoftwareLogs')
 paths['/api/v1/instances/{id}/session']['get'].setdefault('parameters',[]).append({'name':'siteId','in':'query','schema':string})
 add('/instances/{id}/validate','post','校验候选配置，不替换运行配置',body=ref('ConfigurationChange'))
 for view in ['traffic','logs']:add('/sites/{id}/'+view,'get','读取网站'+view)

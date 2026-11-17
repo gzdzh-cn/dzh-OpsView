@@ -30,6 +30,7 @@ jobs:
         working-directory: web
       - run: node scripts/container-smoke.mjs
       - run: ./scripts/linux-tests.sh ubuntu:22.04 ubuntu:24.04 debian:bookworm-slim debian:trixie-slim
+      - run: ./scripts/test-log-rotation.sh
       - run: make release
   deployment:
     runs-on: ubuntu-24.04

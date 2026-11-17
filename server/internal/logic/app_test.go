@@ -166,3 +166,30 @@ func TestNginxAdvancedDirectiveBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestLogMaintenancePreservesInstanceStateAndMetadata(t *testing.T) {
+	store, err := dao.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.DB.Close()
+	app := &App{Store: store, Executor: &testExecutor{}}
+	r := model.Resource{Kind: "instance", Name: "stopped-db", Config: model.Config{"software": "mysql"}}
+	if err = store.Create(&r); err != nil {
+		t.Fatal(err)
+	}
+	r.Status = "stopped"
+	if err = store.Update(&r); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"rotate-log", "delete-log-archive"} {
+		if _, err = app.Queue(r, action, model.Config{"kind": "error", "confirmed": true}); err != nil {
+			t.Fatal(err)
+		}
+		app.runNext(context.Background())
+		current, err := store.Resource(r.ID)
+		if err != nil || current.Status != "stopped" || current.Revision != r.Revision || current.Config.String("workingDirectory") != "" {
+			t.Fatal("log maintenance changed instance state", current, err)
+		}
+	}
+}

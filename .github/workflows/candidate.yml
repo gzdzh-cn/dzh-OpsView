@@ -29,6 +29,7 @@ jobs:
       - run: npm run test:e2e
         working-directory: web
       - run: ./scripts/linux-tests.sh ubuntu:22.04 ubuntu:24.04 debian:bookworm-slim debian:trixie-slim
+      - run: ./scripts/test-log-rotation.sh
       - run: make release
       - run: sudo env GITHUB_ACTIONS=true bash scripts/test-deployment.sh
       - uses: actions/upload-artifact@v4

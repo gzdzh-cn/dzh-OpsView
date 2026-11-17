@@ -25,7 +25,7 @@ func (c *Controller) softwareRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params := model.Config{}
-	for _, key := range []string{"file", "revision", "kind", "search", "siteId", "budgetMB"} {
+	for _, key := range []string{"file", "revision", "kind", "search", "siteId", "budgetMB", "since", "until", "level", "archive", "limit"} {
 		params[key] = r.URL.Query().Get(key)
 	}
 	if operation == "memory-budget" {

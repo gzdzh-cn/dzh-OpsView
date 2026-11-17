@@ -116,7 +116,7 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 		p = model.Config{}
 	}
 	allowed := map[string]map[string]bool{
-		"site": {"apply": true, "delete": true, "renew": true, "certificate": true, "configuration": true, "logs": true, "stop": true, "resume": true}, "instance": {"install": true, "start": true, "stop": true, "restart": true, "uninstall": true, "reload": true, "configure": true, "guardian": true, "extension": true, "port": true, "snapshot": true, "purge-binlogs": true, "move-storage": true, "switch-version": true, "session": true}, "database": {"create": true, "access": true, "delete": true, "import": true, "migrate": true}, "app": {"apply": true, "start": true, "stop": true, "restart": true, "delete": true, "logs": true}, "compose": {"apply": true, "start": true, "stop": true, "delete": true, "logs": true}, "firewall": {"apply": true, "confirm": true, "delete": true}, "backup": {"backup": true, "restore": true, "delete": true}, "plugin": {"install": true, "check": true, "uninstall": true}}
+		"site": {"apply": true, "delete": true, "renew": true, "certificate": true, "configuration": true, "logs": true, "stop": true, "resume": true}, "instance": {"install": true, "start": true, "stop": true, "restart": true, "uninstall": true, "reload": true, "configure": true, "guardian": true, "extension": true, "port": true, "snapshot": true, "purge-binlogs": true, "rotate-log": true, "delete-log-archive": true, "move-storage": true, "switch-version": true, "session": true}, "database": {"create": true, "access": true, "delete": true, "import": true, "migrate": true}, "app": {"apply": true, "start": true, "stop": true, "restart": true, "delete": true, "logs": true}, "compose": {"apply": true, "start": true, "stop": true, "delete": true, "logs": true}, "firewall": {"apply": true, "confirm": true, "delete": true}, "backup": {"backup": true, "restore": true, "delete": true}, "plugin": {"install": true, "check": true, "uninstall": true}}
 	if !allowed[r.Kind][action] {
 		return model.Task{}, errors.New("该资源不支持此操作")
 	}
@@ -255,7 +255,7 @@ func (a *App) runNext(ctx context.Context) {
 		}
 	}
 	r, er := a.Store.Resource(op.Resource.ID)
-	if er == nil {
+	if er == nil && op.Name != "instance.rotate-log" && op.Name != "instance.delete-log-archive" {
 		if strings.HasSuffix(op.Name, ".delete") || strings.HasSuffix(op.Name, ".uninstall") {
 			er = a.Store.Delete(r.ID)
 		} else {

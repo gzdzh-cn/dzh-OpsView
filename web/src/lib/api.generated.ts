@@ -937,6 +937,26 @@ export interface components {
             apply: "draft" | "reload" | "restart" | "dynamic";
             confirmPersistenceChange?: boolean;
         };
+        SoftwareLogs: {
+            content: string;
+            notice?: string;
+            revision?: string;
+            size?: number;
+            count?: number;
+            archive?: string;
+            canRotate?: boolean;
+            rotationNotice?: string;
+            windowTruncated?: boolean;
+            limited?: boolean;
+            unknownTimeRecords?: number;
+            timezone?: string;
+            windowBytes?: number;
+            archives?: {
+                name: string;
+                size: number;
+                createdAt: string;
+            }[];
+        };
     };
     responses: never;
     parameters: never;
@@ -2786,6 +2806,11 @@ export interface operations {
                 kind?: string;
                 search?: string;
                 siteId?: string;
+                since?: string;
+                until?: string;
+                level?: string;
+                archive?: string;
+                limit?: string;
             };
             header?: never;
             path: {
@@ -2801,9 +2826,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SoftwareLogs"];
                 };
             };
             /** @description 校验失败 */

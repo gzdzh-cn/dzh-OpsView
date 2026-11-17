@@ -134,11 +134,35 @@ func TestInvalidConfigDoesNotCreateResources(t *testing.T) {
 	}
 }
 
-type capturingExecutor struct{ name string }
+type capturingExecutor struct {
+	name   string
+	params model.Config
+}
 
 func (e *capturingExecutor) Execute(_ context.Context, op model.Operation, _ func(string)) (model.Config, error) {
 	e.name = op.Name
+	e.params = op.Params
 	return model.Config{}, nil
+}
+
+func TestSoftwareLogQueryDispatch(t *testing.T) {
+	c, h := testController(t)
+	cookie, _ := setupAndLogin(t, h)
+	r := model.Resource{Kind: "instance", Name: "php-logs", Config: model.Config{"software": "php"}}
+	if err := c.App.Store.Create(&r); err != nil {
+		t.Fatal(err)
+	}
+	capture := &capturingExecutor{}
+	c.App.Executor = capture
+	w := request(h, "GET", "/api/v1/instances/"+r.ID+"/logs?kind=fpm&siteId=site-a&since=2026-11-17T00%3A00%3A00Z&until=2026-11-18T00%3A00%3A00Z&level=warning&search=failure&archive=example&limit=200", nil, cookie, "", "")
+	if w.Code != 200 || capture.name != "instance.logs" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for key, want := range map[string]string{"kind": "fpm", "siteId": "site-a", "since": "2026-11-17T00:00:00Z", "until": "2026-11-18T00:00:00Z", "level": "warning", "search": "failure", "archive": "example", "limit": "200"} {
+		if capture.params.String(key) != want {
+			t.Fatalf("lost query %s: %v", key, capture.params)
+		}
+	}
 }
 func TestConfigurationDispatchAndCompleteSSEHistory(t *testing.T) {
 	c, h := testController(t)

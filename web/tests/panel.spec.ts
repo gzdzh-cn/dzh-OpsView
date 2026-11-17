@@ -296,3 +296,102 @@ test('panel settings have five tabs and stage HTTPS changes', async ({ page }) =
     animations: 'disabled',
   })
 })
+
+test('software logs filter, download and confirm archive scope', async ({ page }) => {
+  const archive = '20261117T120000.123456789Z-abc123.log'
+  const requests: URL[] = []
+  let mutation: any
+  await page.route('**/api/v1/tasks', (route) =>
+    route.fulfill({ json: mutation ? [{ id: 'log-archive-task', state: 'succeeded' }] : [] }),
+  )
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture] }))
+  await page.route('**/api/v1/instances/nginx-fixture/settings', (route) =>
+    route.fulfill({ json: { state: 'active', editable: true, associated: [] } }),
+  )
+  await page.route('**/api/v1/instances/nginx-fixture/logs?*', (route) => {
+    const url = new URL(route.request().url())
+    requests.push(url)
+    const archived = !!url.searchParams.get('archive')
+    return route.fulfill({
+      json: {
+        content: archived
+          ? '2026/11/17 12:00:00 [error] archived record'
+          : '2026/11/17 12:00:00 [error] current record',
+        revision: archived ? 'archive-revision' : 'current-revision',
+        size: 100,
+        archives: [{ name: archive, size: 100, createdAt: '2026-11-17T12:00:00Z' }],
+        canRotate: !archived,
+        archive: url.searchParams.get('archive') || '',
+        timezone: 'UTC',
+        count: 1,
+      },
+    })
+  })
+  await page.route('**/api/v1/resources/nginx-fixture/actions/*', (route) => {
+    mutation = { action: route.request().url().split('/').pop(), ...route.request().postDataJSON() }
+    return route.fulfill({ json: { id: 'log-archive-task', state: 'queued' }, status: 202 })
+  })
+  await page.goto('/software')
+  await page
+    .locator('.software-list .el-table__body tr')
+    .filter({ hasText: 'Nginx' })
+    .getByRole('button', { name: '设置', exact: true })
+    .click()
+  const dialog = page.locator('.software-settings')
+  await dialog.locator('aside').getByRole('button', { name: '错误日志', exact: true }).click()
+  await expect(dialog.locator('.service-log')).toContainText('current record')
+  await dialog.getByPlaceholder('搜索日志').fill('current')
+  const range = dialog.getByRole('combobox', { name: '日志时间范围', exact: true })
+  await range.nth(0).fill('2026-11-17 00:00:00')
+  await range.nth(1).fill('2026-11-18 00:00:00')
+  await range.nth(1).press('Tab')
+  await range.nth(1).press('Escape')
+  await dialog
+    .locator('.el-select')
+    .filter({ has: page.getByRole('combobox', { name: '日志级别', exact: true }) })
+    .click()
+  await page.getByRole('option', { name: '错误', exact: true }).click()
+  await dialog.getByRole('button', { name: '读取', exact: true }).click()
+  await expect.poll(() => requests.at(-1)?.searchParams.get('level')).toBe('error')
+  expect(requests.at(-1)?.searchParams.get('search')).toBe('current')
+  expect(requests.at(-1)?.searchParams.get('since')).toMatch(/^2026-11-1[67]T.*Z$/)
+  expect(requests.at(-1)?.searchParams.get('until')).toMatch(/^2026-11-1[78]T.*Z$/)
+  const downloaded = page.waitForEvent('download')
+  await dialog.getByRole('button', { name: '下载当前结果', exact: true }).click()
+  expect((await downloaded).suggestedFilename()).toBe('nginx-error.log')
+  await dialog.getByRole('button', { name: '归档并清理', exact: true }).click()
+  await expect(page.locator('.el-message-box')).toContainText('其他软件须先停止对应服务')
+  await page.locator('.el-message-box').getByRole('button', { name: '取消', exact: true }).click()
+  expect(mutation).toBeUndefined()
+  await dialog.getByRole('button', { name: '归档并清理', exact: true }).click()
+  await page
+    .locator('.el-message-box')
+    .getByRole('button', { name: '确认操作', exact: true })
+    .click()
+  await expect.poll(() => mutation?.action).toBe('rotate-log')
+  expect(mutation).toMatchObject({
+    kind: 'error',
+    confirmed: true,
+    baseRevision: 'current-revision',
+    archive: '',
+    siteId: '',
+  })
+  await dialog
+    .locator('.el-select')
+    .filter({ has: page.getByRole('combobox', { name: '日志归档', exact: true }) })
+    .click()
+  await page.getByRole('option').filter({ hasText: archive }).click()
+  await expect(dialog.locator('.service-log')).toContainText('archived record')
+  await expect(dialog.getByRole('checkbox', { name: '每 5 秒刷新' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: '归档并清理', exact: true })).toBeHidden()
+  await dialog.getByRole('button', { name: '删除归档', exact: true }).click()
+  await page
+    .locator('.el-message-box')
+    .getByRole('button', { name: '确认操作', exact: true })
+    .click()
+  await expect.poll(() => mutation?.action).toBe('delete-log-archive')
+  expect(mutation).toMatchObject({ archive, baseRevision: 'archive-revision', confirmed: true })
+  await expect(page.locator('.el-message-box')).toBeHidden()
+  await expect(dialog.locator('.service-log')).toContainText('current record')
+  await page.screenshot({ path: '../.opsview/screenshots/software-logs.png', fullPage: true })
+})

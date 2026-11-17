@@ -32,6 +32,76 @@ const targetVersion = ref(''),
   sessionRedis = ref('')
 const memoryBudget = ref<Config>({}),
   memoryTier = ref(1024)
+const logResult = ref<Config>({}),
+  logRange = ref<[Date, Date] | null>(null),
+  logLevel = ref(''),
+  logKind = ref('error'),
+  logArchive = ref(''),
+  autoLogs = ref(false),
+  logBottom = ref(true),
+  logElement = ref<HTMLElement>()
+let logTimer: ReturnType<typeof setInterval> | undefined
+const fileLog = computed(
+  () => ['error', 'slow'].includes(page.value) && !(sw.value === 'redis' && page.value === 'slow'),
+)
+const levels = [
+  ['debug', '调试'],
+  ['info', '信息'],
+  ['notice', '通知'],
+  ['warning', '警告'],
+  ['error', '错误'],
+  ['critical', '严重'],
+  ['alert', '告警'],
+  ['emergency', '紧急'],
+]
+let logRequest = 0
+async function readLogs() {
+  const request = ++logRequest
+  const query = new URLSearchParams({
+    kind: page.value === 'error' ? logKind.value : page.value,
+    siteId: scopeSite.value,
+    search: search.value,
+    level: logLevel.value,
+    archive: logArchive.value,
+  })
+  if (logRange.value) {
+    query.set('since', logRange.value[0].toISOString())
+    query.set('until', logRange.value[1].toISOString())
+  }
+  const result = await api(url('logs') + '?' + query)
+  if (request !== logRequest || !visible.value) return
+  logResult.value = result
+  logText.value = result.content || result.notice || '暂无匹配日志'
+  if (logBottom.value && logElement.value) {
+    requestAnimationFrame(() => logElement.value?.scrollTo({ top: logElement.value.scrollHeight }))
+  }
+}
+function resetLogFilters() {
+  search.value = ''
+  logRange.value = null
+  logLevel.value = ''
+  void readLogs().catch((e) => (error.value = errorText(e)))
+}
+async function manageLog(remove = false) {
+  try {
+    await ElMessageBox.confirm(
+      remove
+        ? '永久删除选定归档，无法恢复。当前日志和其他归档会保留。'
+        : '将当前日志完整归档，并建立新日志文件。Nginx 在线重开日志；其他软件须先停止对应服务。归档占用磁盘，需要时可单独删除。',
+      remove ? '删除日志归档' : '归档并清理当前日志',
+      { type: 'warning', confirmButtonText: '确认操作', cancelButtonText: '取消' },
+    )
+    await submit(remove ? 'delete-log-archive' : 'rotate-log', {
+      kind: page.value === 'error' ? logKind.value : page.value,
+      siteId: scopeSite.value,
+      archive: logArchive.value,
+      baseRevision: logResult.value.revision,
+      confirmed: true,
+    })
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') error.value = errorText(e)
+  }
+}
 function mib(value: number) {
   return ((value || 0) / 1048576).toFixed(1) + ' MiB'
 }
@@ -125,6 +195,15 @@ const dynamicEligible = computed(() => {
 })
 const editable = computed(() => !!info.value.editable)
 const file = computed(() => (page.value === 'fpm' ? 'fpm' : selectedFile.value))
+watch([autoLogs, visible, fileLog, logArchive], () => {
+  if (logTimer) clearInterval(logTimer)
+  logTimer = undefined
+  if (autoLogs.value && visible.value && fileLog.value && !logArchive.value) {
+    logTimer = setInterval(() => {
+      void readLogs().catch((e) => (error.value = errorText(e)))
+    }, 5000)
+  }
+})
 const changeDiff = computed(() => {
   if (pendingApply.value.source === 'values')
     return (
@@ -187,12 +266,7 @@ async function load() {
     }
     if (page.value === 'metrics') metrics.value = await api(url('metrics'))
     if (page.value === 'performance' && sw.value === 'mysql') await estimateMemory()
-    if (['error', 'slow'].includes(page.value)) {
-      const result = await api(
-        url('logs') + '?kind=' + page.value + '&search=' + encodeURIComponent(search.value),
-      )
-      logText.value = result.content || result.notice || '暂无日志'
-    }
+    if (['error', 'slow'].includes(page.value)) await readLogs()
     if (['extensions', 'phpinfo'].includes(page.value)) {
       const result = await api(url('extensions'))
       extensions.value = result.extensions
@@ -219,6 +293,9 @@ watch(
       page.value = 'service'
       info.value = {}
       task.value = ''
+      scopeSite.value = ''
+      logArchive.value = ''
+      logResult.value = {}
       void load()
     } else if (timer) {
       clearInterval(timer)
@@ -227,17 +304,30 @@ watch(
   },
 )
 watch(page, () => {
+  ++logRequest
+  logResult.value = {}
+  logArchive.value = ''
+  logKind.value = 'error'
   selectedFile.value =
     sw.value === 'php' && ['performance', 'slow'].includes(page.value) ? 'fpm' : 'main'
   void load()
 })
 watch(scopeSite, () => {
+  ++logRequest
+  logArchive.value = ''
+  logResult.value = {}
   void load()
 })
 watch(selectedFile, () => {
   void readDocument().catch((e) => (error.value = errorText(e)))
 })
+watch(logKind, () => {
+  logArchive.value = ''
+  if (page.value === 'error') void readLogs().catch((e) => (error.value = errorText(e)))
+})
 onUnmounted(() => {
+  ++logRequest
+  if (logTimer) clearInterval(logTimer)
   if (timer) clearInterval(timer)
 })
 async function submit(operation: string, params: Config = {}) {
@@ -256,6 +346,12 @@ async function submit(operation: string, params: Config = {}) {
         if (current.state !== 'succeeded') error.value = current.error || '任务未完成'
         else {
           ElMessage.success('操作完成')
+          if (
+            operation === 'delete-log-archive' &&
+            params.archive === logArchive.value &&
+            params.siteId === scopeSite.value
+          )
+            logArchive.value = ''
           await load()
         }
       }
@@ -784,11 +880,98 @@ const documentGlobal = window.document
           </div>
           <template v-if="['error', 'slow', 'binlog'].includes(page)">
             <div class="settings-toolbar">
-              <el-input v-model="search" placeholder="搜索日志" @keyup.enter="load" />
+              <el-select
+                v-if="page === 'error'"
+                v-model="logKind"
+                aria-label="日志文件"
+                style="width: 160px"
+              >
+                <el-option label="运行/错误日志" value="error" />
+                <el-option v-if="sw === 'php'" label="FPM 日志" value="fpm" />
+                <el-option label="systemd 服务日志" value="service" />
+              </el-select>
+              <el-input
+                v-if="page !== 'binlog' && fileLog"
+                v-model="search"
+                placeholder="搜索日志"
+                @keyup.enter="load"
+              />
               <el-button @click="load">读取</el-button>
-              <el-button @click="download">下载</el-button>
+              <el-button @click="download">下载当前结果</el-button>
             </div>
-            <pre class="service-log">{{ logText }}</pre>
+            <template v-if="fileLog">
+              <div class="settings-toolbar">
+                <el-date-picker
+                  v-model="logRange"
+                  type="datetimerange"
+                  start-placeholder="开始时间"
+                  end-placeholder="结束时间"
+                  aria-label="日志时间范围"
+                />
+                <el-select
+                  v-model="logLevel"
+                  placeholder="全部级别"
+                  clearable
+                  aria-label="日志级别"
+                  style="width: 130px"
+                >
+                  <el-option
+                    v-for="[key, label] in levels"
+                    :key="key"
+                    :label="label"
+                    :value="key"
+                  />
+                </el-select>
+                <el-button @click="resetLogFilters">重置筛选</el-button>
+              </div>
+              <div class="settings-toolbar">
+                <el-select
+                  v-if="logKind !== 'service'"
+                  v-model="logArchive"
+                  aria-label="日志归档"
+                  placeholder="当前日志"
+                  style="width: 320px"
+                  @change="readLogs().catch((e) => (error = errorText(e)))"
+                >
+                  <el-option label="当前日志" value="" />
+                  <el-option
+                    v-for="a in logResult.archives || []"
+                    :key="a.name"
+                    :value="a.name"
+                    :label="`${a.name} · ${mib(a.size)}`"
+                  />
+                </el-select>
+                <el-checkbox v-model="autoLogs" :disabled="!!logArchive">每 5 秒刷新</el-checkbox>
+                <el-checkbox v-model="logBottom">滚动到底部</el-checkbox>
+                <el-button
+                  v-if="logResult.canRotate"
+                  :disabled="!editable || !logResult.size"
+                  @click="manageLog()"
+                >
+                  归档并清理
+                </el-button>
+                <el-button
+                  v-if="logArchive"
+                  type="danger"
+                  :disabled="!editable"
+                  @click="manageLog(true)"
+                >
+                  删除归档
+                </el-button>
+              </div>
+              <p class="form-help">
+                时间选择使用浏览器时区；无时区日志按服务器时区
+                {{ logResult.timezone || '未知' }}
+                解析。级别为精确匹配，无法识别时间的记录在时间筛选时排除。
+              </p>
+              <p v-if="logResult.windowTruncated || logResult.limited" class="form-help">
+                仅扫描文件末尾 1 MiB，最多显示 500 条匹配记录；下载范围与当前结果一致。
+              </p>
+              <p v-if="logResult.rotationNotice" class="form-help">
+                {{ logResult.rotationNotice }}
+              </p>
+            </template>
+            <pre ref="logElement" class="service-log">{{ logText }}</pre>
             <p v-if="page === 'binlog'" class="form-help">
               自动清理需要完整的复制与备份依赖记录，未确认前禁止删除日志文件。
             </p>
