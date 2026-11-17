@@ -347,12 +347,18 @@ async function sync(row: Resource) {
             >
               <button v-if="kind !== 'instance'" @click="edit(row)">配置</button>
               <button
-                v-if="row.status === 'pending' || row.status === 'error'"
+                v-if="row.status === 'pending' || (kind !== 'instance' && row.status === 'error')"
                 @click="execute(row, kind === 'instance' ? 'install' : 'apply')"
               >
                 部署
               </button>
-              <button v-else @click="execute(row, 'start')">启动</button>
+              <button
+                v-else-if="row.status !== 'error' || row.config.installedAt"
+                @click="execute(row, 'start')"
+              >
+                启动
+              </button>
+              <small v-else class="cell-subtext">安装失败，请先卸载并清理记录</small>
               <button @click="execute(row, 'stop')">停止</button>
               <button v-if="kind !== 'instance'" @click="execute(row, 'logs')">日志</button>
             </template>

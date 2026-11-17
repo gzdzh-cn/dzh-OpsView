@@ -115,6 +115,9 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 	if r.Kind == "app" {
 		return model.Task{}, errors.New("应用进程功能已下线，已有服务与数据保留")
 	}
+	if r.Kind == "instance" && action == "install" && (r.Status == "error" || r.Status == "uninstalled" || r.Config.Bool("retainedData")) {
+		return model.Task{}, errors.New("失败或已卸载的实例仍保留版本占用，请卸载并明确清理记录后重新安装")
+	}
 	if p == nil {
 		p = model.Config{}
 	}

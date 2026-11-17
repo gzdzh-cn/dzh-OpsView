@@ -260,3 +260,16 @@ func TestSessionTasksUpdateOnlyTheirLinkedScope(t *testing.T) {
 		})
 	}
 }
+
+func TestRetainedOrFailedInstancesCannotBeReinstalled(t *testing.T) {
+	a := &App{}
+	for _, r := range []model.Resource{
+		{Kind: "instance", Status: "error", Config: model.Config{}},
+		{Kind: "instance", Status: "uninstalled", Config: model.Config{}},
+		{Kind: "instance", Status: "pending", Config: model.Config{"retainedData": true}},
+	} {
+		if _, err := a.Queue(r, "install", nil); err == nil {
+			t.Fatal("retained record reinstalled", r.Status)
+		}
+	}
+}

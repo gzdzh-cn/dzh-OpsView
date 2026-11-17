@@ -10,6 +10,7 @@ const panelCommand =
     : 'go run ./cmd/opsview'
 export default defineConfig({
   testDir: './tests',
+  reporter: process.env.CI ? [['list'], ['github']] : [['list']],
   fullyParallel: false,
   workers: 1,
   timeout: 30000,

@@ -544,6 +544,6 @@
     "platforms": [
       "linux/amd64"
     ],
-    "description": "Node.js LTS 运行时，无常驻服务，供应用进程选择可执行文件。"
+    "description": "Node.js LTS 运行时，无常驻服务，供服务器上的外部应用使用。"
   }
 ]

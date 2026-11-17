@@ -126,9 +126,11 @@ function selectVersion() {
               : 80
   form.value.mode = 'native'
   form.value.installMethod =
-    v?.methods?.find((m: string) => !v?.availability?.[m]) ||
-    v?.methods?.[0] ||
-    (['mysql', 'nodejs'].includes(v?.software) ? 'binary' : 'source')
+    v?.methods?.includes('binary') && !v?.availability?.binary
+      ? 'binary'
+      : v?.methods?.find((m: string) => !v?.availability?.[m]) ||
+        v?.methods?.[0] ||
+        (['mysql', 'nodejs'].includes(v?.software) ? 'binary' : 'source')
 }
 async function save() {
   if (!name.value && props.kind !== 'instance') {

@@ -30,6 +30,9 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 	action := strings.TrimPrefix(op.Name, "instance.")
 	r := op.Resource
 	if action == "install" {
+		if r.Status == "error" || r.Status == "uninstalled" || r.Config.Bool("retainedData") {
+			return nil, errors.New("请先卸载并清理保留记录后，再新建实例安装")
+		}
 		if r.Config.String("mode") != "native" {
 			return nil, errors.New("软件市场仅支持原生安装")
 		}
