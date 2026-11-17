@@ -8,17 +8,86 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "2",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "3cf46f5ed7504d460125866b7bea99fb357f31d887e2e63b35503310e9b8b6c8",
     "recommended": true,
     "verifiedSystems": {
       "source": [
-        "ubuntu:24.04"
+        "ubuntu:24.04",
+        "debian:12",
+        "ubuntu:22.04",
+        "debian:13"
+      ],
+      "binary": [
+        "debian:12",
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:13"
       ]
-    }
+    },
+    "binaries": [
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/nginx-1.30.6-debian-12.tar.gz",
+        "sha256": "4f9daaf88c021b3ada4414fcc5f017e2f932178a779d11ad2055a1b1fc86a68e",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/23048dca22610da8019d2d30b05b9ff1/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/nginx-1.30.6-ubuntu-24.04.tar.gz",
+        "sha256": "62ccbb197aae09dcde7af3d8bbe3a21f40ea6e6c72b2487c0cd0774e68e2dee5",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/49ac0c946a6ca8e49eeca834cfa726ff/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/nginx-1.30.6-ubuntu-22.04.tar.gz",
+        "sha256": "df345210dafcaab63bf6464e7f4472ab7f70c3c56ce880901ffd88b661f42e8d",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/6d270734712ecbea31b1feccf40256e4/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/nginx-1.30.6-debian-13.tar.gz",
+        "sha256": "610f8de8e02480ec39726f414fed3e4af0be4bb2968ca6108068b7aa3f49ad05",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/931a3b1fead14590ffbc2b724ce589e7/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "php-8.4.27",
@@ -29,17 +98,226 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "2",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "dcf93923b0e38e0d5252b25b796520b5a47761a08b3488b6d0b5d1115764d3f0",
     "recommended": true,
     "verifiedSystems": {
       "source": [
-        "ubuntu:24.04"
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12"
+      ],
+      "binary": [
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12"
       ]
-    }
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/php-8.4.27-ubuntu-24.04.tar.gz",
+        "sha256": "3addfd304aebe0fbaa969b81561cf8167493569c3a76b2681f972373eb6f711f",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/386b77d4b041052d7add38bf6d77d0f4/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libbrotli1:amd64",
+          "libbz2-1.0:amd64",
+          "libc6:amd64",
+          "libcom-err2:amd64",
+          "libcurl4t64:amd64",
+          "libffi8:amd64",
+          "libfreetype6:amd64",
+          "libgcc-s1:amd64",
+          "libgmp10:amd64",
+          "libgnutls30t64:amd64",
+          "libgssapi-krb5-2:amd64",
+          "libhogweed6t64:amd64",
+          "libicu74:amd64",
+          "libidn2-0:amd64",
+          "libjpeg-turbo8:amd64",
+          "libk5crypto3:amd64",
+          "libkeyutils1:amd64",
+          "libkrb5-3:amd64",
+          "libkrb5support0:amd64",
+          "libldap2:amd64",
+          "liblzma5:amd64",
+          "libnettle8t64:amd64",
+          "libnghttp2-14:amd64",
+          "libonig5:amd64",
+          "libp11-kit0:amd64",
+          "libpng16-16t64:amd64",
+          "libpq5:amd64",
+          "libpsl5t64:amd64",
+          "librtmp1:amd64",
+          "libsasl2-2:amd64",
+          "libsqlite3-0:amd64",
+          "libssh-4:amd64",
+          "libssl3t64:amd64",
+          "libstdc++6:amd64",
+          "libtasn1-6:amd64",
+          "libunistring5:amd64",
+          "libxml2:amd64",
+          "libzip4t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/php-8.4.27-ubuntu-22.04.tar.gz",
+        "sha256": "8047056c9c28c2403759a46faf2cced7498adafde4813b30da4b2b0d1811b2e1",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/7a355bfea298b784cdf9117e3fcda525/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libbrotli1:amd64",
+          "libbz2-1.0:amd64",
+          "libc6:amd64",
+          "libcom-err2:amd64",
+          "libcurl4:amd64",
+          "libffi8:amd64",
+          "libfreetype6:amd64",
+          "libgcc-s1:amd64",
+          "libgmp10:amd64",
+          "libgnutls30:amd64",
+          "libgssapi-krb5-2:amd64",
+          "libhogweed6:amd64",
+          "libicu70:amd64",
+          "libidn2-0:amd64",
+          "libjpeg-turbo8:amd64",
+          "libk5crypto3:amd64",
+          "libkeyutils1:amd64",
+          "libkrb5-3:amd64",
+          "libkrb5support0:amd64",
+          "libldap-2.5-0:amd64",
+          "liblzma5:amd64",
+          "libnettle8:amd64",
+          "libnghttp2-14:amd64",
+          "libonig5:amd64",
+          "libp11-kit0:amd64",
+          "libpng16-16:amd64",
+          "libpq5:amd64",
+          "libpsl5:amd64",
+          "librtmp1:amd64",
+          "libsasl2-2:amd64",
+          "libsqlite3-0:amd64",
+          "libssh-4:amd64",
+          "libssl3:amd64",
+          "libstdc++6:amd64",
+          "libtasn1-6:amd64",
+          "libunistring2:amd64",
+          "libxml2:amd64",
+          "libzip4:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/php-8.4.27-debian-13.tar.gz",
+        "sha256": "af1acfc3007540a5e782aeeaf40faf1ac0d9944eab46605466d51d2d3ea183a7",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/b1b7139012149385f15238703ab51ac8/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libbrotli1:amd64",
+          "libbz2-1.0:amd64",
+          "libc6:amd64",
+          "libcom-err2:amd64",
+          "libcurl4t64:amd64",
+          "libffi8:amd64",
+          "libfreetype6:amd64",
+          "libgcc-s1:amd64",
+          "libgmp10:amd64",
+          "libgnutls30t64:amd64",
+          "libgssapi-krb5-2:amd64",
+          "libhogweed6t64:amd64",
+          "libicu76:amd64",
+          "libidn2-0:amd64",
+          "libjpeg62-turbo:amd64",
+          "libk5crypto3:amd64",
+          "libkeyutils1:amd64",
+          "libkrb5-3:amd64",
+          "libkrb5support0:amd64",
+          "libldap2:amd64",
+          "liblzma5:amd64",
+          "libnettle8t64:amd64",
+          "libnghttp2-14:amd64",
+          "libnghttp3-9:amd64",
+          "libonig5:amd64",
+          "libp11-kit0:amd64",
+          "libpng16-16t64:amd64",
+          "libpq5:amd64",
+          "libpsl5t64:amd64",
+          "librtmp1:amd64",
+          "libsasl2-2:amd64",
+          "libsqlite3-0:amd64",
+          "libssh2-1t64:amd64",
+          "libssl3t64:amd64",
+          "libstdc++6:amd64",
+          "libtasn1-6:amd64",
+          "libunistring5:amd64",
+          "libxml2:amd64",
+          "libzip5:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/php-8.4.27-debian-12.tar.gz",
+        "sha256": "1a2d2d5d09de237ad6df65831542792d0587729ea90adf2149b2a7e9ee8039ee",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/d66bd3dbcf02d4e551d7b9c3dc01fbab/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libbrotli1:amd64",
+          "libbz2-1.0:amd64",
+          "libc6:amd64",
+          "libcom-err2:amd64",
+          "libcurl4:amd64",
+          "libffi8:amd64",
+          "libfreetype6:amd64",
+          "libgcc-s1:amd64",
+          "libgmp10:amd64",
+          "libgnutls30:amd64",
+          "libgssapi-krb5-2:amd64",
+          "libhogweed6:amd64",
+          "libicu72:amd64",
+          "libidn2-0:amd64",
+          "libjpeg62-turbo:amd64",
+          "libk5crypto3:amd64",
+          "libkeyutils1:amd64",
+          "libkrb5-3:amd64",
+          "libkrb5support0:amd64",
+          "libldap-2.5-0:amd64",
+          "liblzma5:amd64",
+          "libnettle8:amd64",
+          "libnghttp2-14:amd64",
+          "libonig5:amd64",
+          "libp11-kit0:amd64",
+          "libpng16-16:amd64",
+          "libpq5:amd64",
+          "libpsl5:amd64",
+          "librtmp1:amd64",
+          "libsasl2-2:amd64",
+          "libsqlite3-0:amd64",
+          "libssh2-1:amd64",
+          "libssl3:amd64",
+          "libstdc++6:amd64",
+          "libtasn1-6:amd64",
+          "libunistring2:amd64",
+          "libxml2:amd64",
+          "libzip4:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "redis-8.10.3",
@@ -50,17 +328,75 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "2",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "edde778f6bdee7581e42fc139ca9e07e2822212092f7501f99989656e3629d02",
     "recommended": true,
     "verifiedSystems": {
       "source": [
-        "ubuntu:24.04"
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12"
+      ],
+      "binary": [
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12"
       ]
-    }
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/redis-8.10.3-ubuntu-24.04.tar.gz",
+        "sha256": "dc0e12df592c2ad73c495c5a26f8e380f360221cd16932cf5d7401258fcda2fd",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/124405effec62f763e7906a4b063b5d2/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libssl3t64:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/redis-8.10.3-ubuntu-22.04.tar.gz",
+        "sha256": "63fda1b75c6edfe6f46e568510dd5a8f15c4af98b78fad7bf0845d5e8879239d",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/0d8680a9ee7b18fe63aaba0dd044b001/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libssl3:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/redis-8.10.3-debian-13.tar.gz",
+        "sha256": "71e6b605c5f9c27c2d0aa181e8dc1092f36eb510a45f65945e8b880e3d72f98a",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/4f06e8752dd4c36e3dd8442054b169d7/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/redis-8.10.3-debian-12.tar.gz",
+        "sha256": "742992e10477e12816a0739a7f925e706eda9487dc5e860b318edf6ad1af066d",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/0d2ead93aeaa14789cf61fd84c4d15f5/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libssl3:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "mysql-8.4.13",
@@ -71,12 +407,20 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "2",
     "methods": [
       "binary"
     ],
     "sha256": "5dfbb764f731df40ef9e4f5d69aed32bdac8ba1af20bd96b7d40a942d83d4ed2",
-    "recommended": true
+    "recommended": true,
+    "verifiedSystems": {
+      "binary": [
+        "debian:13",
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:12"
+      ]
+    }
   },
   {
     "id": "nginx-1.31.8",
@@ -500,7 +844,98 @@
     "platforms": [
       "linux/amd64"
     ],
-    "description": "固定版本与来源；安装时再次验证完整性。"
+    "description": "固定版本与来源；安装时再次验证完整性。",
+    "verifiedSystems": {
+      "binary": [
+        "debian:12",
+        "debian:13",
+        "ubuntu:24.04",
+        "ubuntu:22.04"
+      ],
+      "source": [
+        "debian:12",
+        "debian:13",
+        "ubuntu:24.04",
+        "ubuntu:22.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/postgresql-18.0-debian-12.tar.gz",
+        "sha256": "99a10b775070125c15cae9e9fb187c747517b1a94ca417bb455d221834c3de26",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/37b626790cbcc3e8573148195c7308a7/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libgcc-s1:amd64",
+          "libicu72:amd64",
+          "libreadline8:amd64",
+          "libssl3:amd64",
+          "libstdc++6:amd64",
+          "libtinfo6:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/postgresql-18.0-debian-13.tar.gz",
+        "sha256": "e23a554dc01ad7109ebb941096db04516c64b52a26dbf608672353011473fdd0",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/14d94f553d96e1b04d0133a5756591c9/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libgcc-s1:amd64",
+          "libicu76:amd64",
+          "libreadline8t64:amd64",
+          "libssl3t64:amd64",
+          "libstdc++6:amd64",
+          "libtinfo6:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/postgresql-18.0-ubuntu-24.04.tar.gz",
+        "sha256": "4b3d45ef424b361893ed53cc546bec4d8981aed8cbfb71986343cf3ff1e50d11",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/7344c1b01f3004329c81e15f2a7ed7f5/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libgcc-s1:amd64",
+          "libicu74:amd64",
+          "libreadline8t64:amd64",
+          "libssl3t64:amd64",
+          "libstdc++6:amd64",
+          "libtinfo6:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44057101979/postgresql-18.0-ubuntu-22.04.tar.gz",
+        "sha256": "997d35ee9400bc629e3f086dd7f7c35f449ebe59f1c196cc26ed19f587f20b8a",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/d6e7171658a363d1232bc358e74d8ccf/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libgcc-s1:amd64",
+          "libicu70:amd64",
+          "libreadline8:amd64",
+          "libssl3:amd64",
+          "libstdc++6:amd64",
+          "libtinfo6:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ],
+    "methods": [
+      "binary",
+      "source"
+    ],
+    "recommended": true,
+    "recipeRevision": "2"
   },
   {
     "id": "mysql-8.4.6",
@@ -544,6 +979,19 @@
     "platforms": [
       "linux/amd64"
     ],
-    "description": "Node.js LTS 运行时，无常驻服务，供服务器上的外部应用使用。"
+    "description": "Node.js LTS 运行时，无常驻服务，供服务器上的外部应用使用。",
+    "verifiedSystems": {
+      "binary": [
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04",
+        "ubuntu:24.04"
+      ]
+    },
+    "methods": [
+      "binary"
+    ],
+    "recommended": true,
+    "recipeRevision": "2"
   }
 ]

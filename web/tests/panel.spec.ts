@@ -355,7 +355,9 @@ test('software logs filter, download and confirm archive scope', async ({ page }
   await range.nth(0).fill('2026-11-17 00:00:00')
   await range.nth(1).fill('2026-11-18 00:00:00')
   await range.nth(1).press('Tab')
-  await range.nth(1).press('Escape')
+  await range.nth(0).click()
+  await page.locator('.el-picker-panel:visible').getByRole('button', { name: '确定', exact: true }).click()
+  await expect(page.locator('.el-picker-panel:visible')).toHaveCount(0)
   await dialog
     .locator('.el-select')
     .filter({ has: page.getByRole('combobox', { name: '日志级别', exact: true }) })
