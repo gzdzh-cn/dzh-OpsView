@@ -441,7 +441,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 服务器绝对路径或旧资源相对路径操作；批量耗时操作返回 taskId，写入冲突返回 409 */
+        /** 服务器绝对路径或旧资源相对路径操作；metadata 返回 FileMetadata，列表和路径元信息过滤禁止访问项；批量耗时操作返回 taskId，写入冲突返回 409 */
         post: operations["post_files"];
         delete?: never;
         options?: never;
@@ -947,6 +947,8 @@ export interface components {
         FileInput: {
             /** @enum {string} */
             scope?: "server";
+            /** @description metadata 操作校验最近访问目录，仅返回当前允许浏览的路径 */
+            recentPaths?: string[];
             resourceId?: string;
             /** @enum {string} */
             action: "list" | "stat" | "read" | "write" | "mkdir" | "note" | "metadata" | "favorite" | "copy" | "move" | "rename" | "permissions" | "delete" | "search" | "size" | "compress" | "extract" | "trash" | "upload-create" | "upload-status" | "upload-finish" | "upload-cancel";
@@ -981,6 +983,16 @@ export interface components {
             sha256?: string;
             note?: string;
             remove?: boolean;
+        };
+        FileMetadata: {
+            favorites: string[];
+            recentPaths: string[];
+            shortcuts: {
+                name: string;
+                path: string;
+            }[];
+            /** Format: int64 */
+            uploadLimit: number;
         };
         DockerStatus: {
             /** @enum {string} */

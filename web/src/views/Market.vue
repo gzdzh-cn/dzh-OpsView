@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageState } from '../composables/pageState'
 import PluginMarket from '../components/PluginMarket.vue'
 import DataList from '../components/DataList.vue'
 import { computed, ref, watch } from 'vue'
@@ -12,7 +13,7 @@ import SoftwareSettings from '../components/SoftwareSettings.vue'
 import type { Resource } from '../lib/api'
 import CodeEditor from '../components/CodeEditor.vue'
 const panel = usePanel(),
-  tab = ref('software'),
+  tab = usePageState('tab', 'software'),
   install = ref(false),
   initial = ref<Config>({}),
   importOpen = ref(false),
@@ -102,7 +103,7 @@ async function removeInstance(r: Resource) {
       await import('../lib/api').then(({ api }) => api(`/resources/${r.id}`, { method: 'DELETE' }))
     else await action(r.id, 'uninstall')
     chooseOpen.value = false
-    await panel.refresh()
+    await panel.refresh(['resources', 'tasks', 'catalog'])
     ElMessage.success('卸载任务已提交')
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
@@ -160,11 +161,11 @@ async function importPackage() {
     const envelope = JSON.parse(importText.value)
     if (importType.value === 'catalog') {
       await post('/catalog/import', envelope)
-      await panel.refresh()
+      await panel.refresh(['resources', 'tasks', 'catalog'])
     } else {
       const resource = await post('/plugins/import', { name: importName.value, envelope })
       await action(resource.id, 'install')
-      await panel.refresh()
+      await panel.refresh(['resources', 'tasks', 'catalog'])
     }
     importOpen.value = false
     ElMessage.success('已导入，签名由本机执行器验证')
@@ -182,11 +183,13 @@ async function importPackage() {
     <el-tab-pane label="仓库管理" name="repositories" />
   </el-tabs>
   <template v-if="tab === 'software'">
-    <div class="notice">
-      原生安装支持固定版本及独立实例。极速安装包与编译配方按实际验证状态提供；安装过程可在任务中心查看。
-    </div>
     <div class="surface software-list">
-      <DataList :rows="groups" row-key="software">
+      <DataList
+        :key="'Market-1' + ':' + tab"
+        :state-key="'Market-1' + ':' + tab"
+        :rows="groups"
+        row-key="software"
+      >
         <el-table-column label="软件" width="150">
           <template #default="{ row: g }">
             <div class="software-row-title">
@@ -198,7 +201,6 @@ async function importPackage() {
         <el-table-column label="简介" min-width="250">
           <template #default="{ row: g }">
             <p class="software-description" @click="introduction = g">{{ g.description }}</p>
-            <small>项目维护 · 原生安装</small>
           </template>
         </el-table-column>
         <el-table-column label="已安装版本" min-width="180">
@@ -260,7 +262,11 @@ async function importPackage() {
   <Resources v-if="tab === 'repositories'" kind="repository" />
   <SoftwareSettings v-model="settingsOpen" :resource="settingsResource" />
   <el-dialog v-model="chooseOpen" title="选择实例" width="600px">
-    <DataList :rows="matchingInstances">
+    <DataList
+      :key="'Market-2' + ':' + tab"
+      :state-key="'Market-2' + ':' + tab"
+      :rows="matchingInstances"
+    >
       <el-table-column prop="name" label="实例" />
       <el-table-column label="版本">
         <template #default="{ row }">{{ row.config.version }}</template>
@@ -322,9 +328,9 @@ async function importPackage() {
   gap: 12px;
 }
 .software-row-title .software-logo {
-  width: 38px;
-  height: 38px;
-  font-size: 15px;
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
 }
 .software-description {
   max-width: 420px;
@@ -333,7 +339,7 @@ async function importPackage() {
   text-overflow: ellipsis;
   cursor: pointer;
   color: #475569;
-  margin: 5px 0;
+  margin: 0;
 }
 .software-list small {
   color: #94a3b8;
@@ -347,6 +353,6 @@ async function importPackage() {
   line-height: 1.8;
 }
 .software-list {
-  padding: 8px 16px;
+  padding: 0;
 }
 </style>

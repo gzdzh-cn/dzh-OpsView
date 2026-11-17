@@ -543,9 +543,7 @@ func (e *Engine) serverFiles(ctx context.Context, op model.Operation, log func(s
 	case "write":
 		return e.writeFileText(p)
 	case "metadata":
-		favorites := []string{}
-		_ = e.readFileMeta("favorites", &favorites)
-		return model.Config{"favorites": favorites, "shortcuts": []model.Config{{"name": "根目录", "path": "/"}, {"name": "站点目录", "path": filepath.Join(e.Root, "sites")}, {"name": "备份目录", "path": filepath.Join(e.Root, "backups")}}, "uploadLimit": fileUploadLimit}, nil
+		return e.fileMetadata(ctx, p)
 	case "favorite":
 		f, err := e.openFile(p.String("path"), true)
 		if err != nil {
@@ -593,6 +591,13 @@ func (e *Engine) serverFiles(ctx context.Context, op model.Operation, log func(s
 		st, err := f.root.Lstat(f.name)
 		if err != nil {
 			return nil, err
+		}
+		visibility, err := e.fileVisibility(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !visibility.visible(f.path, st) {
+			return nil, errors.New("此路径不开放文件管理")
 		}
 		return fileInfo(f.path, st), nil
 	case "search":

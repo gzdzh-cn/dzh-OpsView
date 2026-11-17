@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('textbox', { name: '用户名', exact: true }).fill(username)
   await page.getByRole('textbox', { name: '密码', exact: true }).fill(password)
   await page.getByRole('button', { name: '进入控制台' }).click()
-  await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible()
+  await expect(page.getByRole('main', { name: '概览', exact: true })).toBeVisible()
 })
 test('sidebar navigates all embedded management pages without missing assets', async ({ page }) => {
   const errors: string[] = []
@@ -43,12 +43,17 @@ test('sidebar navigates all embedded management pages without missing assets', a
   ]) {
     await page.locator(`.sidebar a[href="${url}"]`).click()
     await expect(page).toHaveURL(url!)
-    await expect(page.getByRole('heading', { name: title, exact: true, level: 1 })).toBeVisible()
+    await expect(page.getByRole('main', { name: title, exact: true })).toBeVisible()
     await expect(page.locator('.surface').first()).toBeVisible()
+    await page.screenshot({
+      path: `../.opsview/screenshots/compact-${url!.slice(1)}.png`,
+      animations: 'disabled',
+      fullPage: true,
+    })
   }
   await page.locator('.sidebar').getByRole('link', { name: '概览', exact: true }).click()
   await expect(page).toHaveURL('/')
-  await expect(page.getByRole('heading', { name: '概览', exact: true, level: 1 })).toBeVisible()
+  await expect(page.getByRole('main', { name: '概览', exact: true })).toBeVisible()
   expect(missingAssets).toEqual([])
   expect(errors).toEqual([])
 })
@@ -105,11 +110,16 @@ test('desktop and mobile layouts remain inside viewport', async ({ page }) => {
   await expect(page.locator('.mobile-menu')).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)
   expect(overflow).toBe(false)
-  await page.screenshot({ path: '../.opsview/screenshots/overview-mobile.png', fullPage: true })
+  await expect(page.locator('.sidebar')).not.toBeInViewport()
+  await page.screenshot({
+    path: '../.opsview/screenshots/overview-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
   await page.locator('.mobile-menu').click()
   await expect(page.locator('.sidebar')).toBeInViewport()
   await page.locator('.sidebar').getByRole('link', { name: '网站', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '网站', exact: true, level: 1 })).toBeVisible()
+  await expect(page.getByRole('main', { name: '网站', exact: true })).toBeVisible()
 })
 
 test('panel backup persists a task, streams resumable logs and downloads encrypted bytes', async ({
@@ -356,7 +366,10 @@ test('software logs filter, download and confirm archive scope', async ({ page }
   await range.nth(1).fill('2026-11-18 00:00:00')
   await range.nth(1).press('Tab')
   await range.nth(0).click()
-  await page.locator('.el-picker-panel:visible').getByRole('button', { name: '确定', exact: true }).click()
+  await page
+    .locator('.el-picker-panel:visible')
+    .getByRole('button', { name: '确定', exact: true })
+    .click()
   await expect(page.locator('.el-picker-panel:visible')).toHaveCount(0)
   await dialog
     .locator('.el-select')
@@ -532,11 +545,12 @@ test('Docker engine states gate resource requests and negotiate older engines', 
   expect(resources).toBe(0)
   state = 'ready'
   await page.getByRole('button', { name: '重新检测', exact: true }).click()
-  await expect(page.locator('.notice').first()).toContainText('API 1.41')
+  await expect(page.getByText('API 1.41', { exact: false })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '重新检测', exact: true })).toHaveCount(0)
   await expect(page.getByRole('tab', { name: '容器', exact: true })).toBeVisible()
   expect(resources).toBe(1)
   await page.getByRole('tab', { name: '应用模板', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '容器应用模板', exact: true })).toBeVisible()
+  await expect(page.locator('.list-panel .el-table')).toBeVisible()
 })
 
 test('application entry retires to other websites and plugins use row lists', async ({ page }) => {
@@ -642,4 +656,193 @@ test('server file page navigates root, shows revisions, recovers conflicts and s
     'static',
   )
   await page.screenshot({ path: '../.opsview/screenshots/files-mobile.png', fullPage: true })
+})
+
+test('compact shell preserves account access, tabs and per-list filters across navigation', async ({
+  page,
+}) => {
+  await expect(page.locator('.topbar')).toHaveCount(1)
+  await expect(page.locator('.page-heading, .page-footer, .welcome-card, .breadcrumb')).toHaveCount(
+    0,
+  )
+  await expect(page.getByRole('button', { name: '刷新状态' })).toHaveCount(0)
+  await page.locator('.sidebar a[href="/software"]').click()
+  await page.getByRole('tab', { name: '仓库管理', exact: true }).click()
+  await page.getByPlaceholder('搜索名称').fill('keep-filter')
+  await page.locator('.sidebar a[href="/databases"]').click()
+  await expect(page.locator('.topbar')).toHaveCount(0)
+  await page.locator('.sidebar a[href="/software"]').click()
+  await expect(page.getByRole('tab', { name: '仓库管理', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByPlaceholder('搜索名称')).toHaveValue('keep-filter')
+  await page.locator('.sidebar-account button').hover()
+  await page.getByRole('menuitem', { name: '退出登录', exact: true }).click()
+  await expect(page.getByRole('button', { name: '进入控制台' })).toBeVisible()
+})
+
+test('slow independent reads never block navigation and warm switches meet latency budget', async ({
+  page,
+}) => {
+  let overviewReads = 0,
+    catalogReads = 0
+  await page.route('**/api/v1/overview', async (route) => {
+    overviewReads++
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await route.fulfill({ json: { cpu: 1, host: { hostname: 'slow-host' } } }).catch(() => {})
+  })
+  await page.route('**/api/v1/catalog', async (route) => {
+    catalogReads++
+    await route.continue()
+  })
+  await page.reload()
+  await expect(page.getByRole('main', { name: '概览', exact: true })).toBeVisible()
+  await expect(page.locator('.page-skeleton')).toBeVisible()
+  await page.locator('.sidebar a[href="/software"]').click()
+  await expect(page.getByRole('tab', { name: '核心软件', exact: true })).toBeVisible()
+  await expect(page.locator('.software-list .el-table__body tr').first()).toBeVisible()
+  await page.locator('.sidebar a[href="/databases"]').click()
+  await expect(page.getByRole('main', { name: '数据库', exact: true })).toBeVisible()
+  // Browser-side timers exclude Playwright's click/actionability and assertion polling overhead.
+  const timings = await page.evaluate(async () => {
+    const samples: number[] = []
+    for (let i = 0; i < 20; i++) {
+      const target = i % 2 === 0 ? '/software' : '/databases'
+      const label = i % 2 === 0 ? '软件与插件' : '数据库'
+      const start = performance.now()
+      ;(document.querySelector(`.sidebar a[href="${target}"]`) as HTMLElement).click()
+      await new Promise<void>((resolve, reject) => {
+        const check = () => {
+          const main = document.querySelector('main')
+          if (
+            main?.getAttribute('aria-label') === label &&
+            main.querySelector(target === '/software' ? '.software-list .el-table' : '.surface')
+          )
+            requestAnimationFrame(() => resolve())
+          else if (performance.now() - start > 3000) reject(new Error('navigation stalled'))
+          else requestAnimationFrame(check)
+        }
+        check()
+      })
+      samples.push(performance.now() - start)
+    }
+    return samples.sort((a, b) => a - b)
+  })
+  console.log(`Cached navigation P95: ${timings[18]!.toFixed(1)}ms`)
+  expect(timings[18]).toBeLessThanOrEqual(300)
+  expect(catalogReads).toBe(1)
+  expect(overviewReads).toBe(1)
+})
+
+test('system loads only selected tab and discards late reads after navigation', async ({
+  page,
+}) => {
+  let audits = 0
+  await page.route('**/api/v1/audit', async (route) => {
+    audits++
+    await route.fulfill({ json: [] })
+  })
+  await page.route('**/api/v1/system', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await route.fulfill({ json: { portItems: [], serviceItems: [] } }).catch(() => {})
+  })
+  const feedback = await page.evaluate(async () => {
+    const start = performance.now()
+    ;(document.querySelector('.sidebar a[href="/system"]') as HTMLElement).click()
+    await new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (
+          document.querySelector('.navigation-progress') ||
+          document.querySelector('main[aria-label="系统与安全"]')
+        )
+          resolve()
+        else if (performance.now() - start > 1000) reject(new Error('no navigation feedback'))
+        else requestAnimationFrame(check)
+      }
+      requestAnimationFrame(check)
+    })
+    return performance.now() - start
+  })
+  expect(feedback).toBeLessThanOrEqual(200)
+  await expect(page.getByRole('tab', { name: '防火墙规则', exact: true })).toBeVisible()
+  expect(audits).toBe(0)
+  await page.getByRole('tab', { name: '操作审计', exact: true }).click()
+  await expect.poll(() => audits).toBe(1)
+  await page.locator('.sidebar a[href="/tasks"]').click()
+  await expect(page.getByRole('main', { name: '任务中心', exact: true })).toBeVisible()
+  await expect(page.getByRole('main')).not.toContainText('AbortError')
+})
+
+test('inactive browser polling pauses and failed overview does not discard resources', async ({
+  page,
+}) => {
+  let resources = 0
+  await page.route('**/api/v1/resources', async (route) => {
+    resources++
+    await route.fulfill({ json: [nginxFixture] })
+  })
+  await page.route('**/api/v1/overview', (route) =>
+    route.fulfill({ status: 503, json: { error: '指标暂时不可用' } }),
+  )
+  await page.reload()
+  await expect(page.getByRole('alert')).toContainText('指标暂时不可用')
+  await page.locator('.sidebar a[href="/sites"]').click()
+  await expect(page.getByRole('button', { name: '添加PHP 项目', exact: false })).toBeVisible()
+  const before = resources
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(
+      new CustomEvent('opsview:preferences', { detail: { refreshSeconds: 0.1 } }),
+    )
+  })
+  await page.waitForTimeout(350)
+  expect(resources).toBe(before)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new CustomEvent('opsview:preferences', { detail: { refreshSeconds: 15 } }))
+  })
+  await expect.poll(() => resources).toBeGreaterThan(before)
+})
+
+test('file shortcuts remove protected legacy history before displaying it', async ({ page }) => {
+  await page.evaluate(() =>
+    localStorage.setItem('opsview:file-recent', JSON.stringify(['/proc', '/etc', '/run/opsview'])),
+  )
+  await page.route('**/api/v1/files', (route) => {
+    const body = route.request().postDataJSON()
+    if (body.action === 'metadata') {
+      expect(body.recentPaths).toContain('/proc')
+      return route.fulfill({
+        json: {
+          favorites: ['/etc'],
+          recentPaths: ['/etc'],
+          shortcuts: [{ name: '根目录', path: '/' }],
+        },
+      })
+    }
+    return route.fulfill({ json: { path: '/', items: [], total: 0, readOnly: false } })
+  })
+  await page.locator('.sidebar a[href="/files"]').click()
+  await page.getByRole('button', { name: '快捷目录', exact: true }).hover()
+  await expect(page.getByRole('menuitem', { name: '最近 /etc', exact: true })).toBeVisible()
+  await expect(page.getByText('/proc', { exact: false })).toHaveCount(0)
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('opsview:file-recent')))
+    .not.toContain('/proc')
+})
+
+test('a failed route chunk offers recovery instead of an inert menu', async ({ page }) => {
+  let fail = true
+  await page.route(/\/assets\/Backups-[^/]+\.js$/, (route) =>
+    fail ? route.fulfill({ status: 503, body: 'unavailable' }) : route.continue(),
+  )
+  await page.locator('.sidebar a[href="/backups"]').click()
+  await expect(page.getByRole('alert')).toContainText('页面资源加载失败')
+  fail = false
+  await page.getByRole('button', { name: '重新加载页面', exact: true }).click()
+  await expect(page.getByRole('main', { name: '备份与计划', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '备份任务', exact: true })).toBeVisible()
 })

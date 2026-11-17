@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { EditorView } from '@codemirror/view'
-import { basicSetup } from 'codemirror'
+import type { EditorView as Editor } from '@codemirror/view'
 const props = defineProps<{ modelValue: string; readonly?: boolean }>(),
   emit = defineEmits(['update:modelValue']),
   el = ref<HTMLElement>()
-let editor: EditorView
-onMounted(() => {
+let editor: Editor
+let alive = true
+onMounted(async () => {
+  const [{ EditorView }, { basicSetup }] = await Promise.all([
+    import('@codemirror/view'),
+    import('codemirror'),
+  ])
+  if (!alive || !el.value) return
   editor = new EditorView({
     doc: props.modelValue,
     parent: el.value,
@@ -37,6 +42,9 @@ watch(
       editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: v } })
   },
 )
-onUnmounted(() => editor?.destroy())
+onUnmounted(() => {
+  alive = false
+  editor?.destroy()
+})
 </script>
 <template><div ref="el" class="code-editor"></div></template>

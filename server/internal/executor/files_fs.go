@@ -56,12 +56,15 @@ func (e *Engine) filePrivatePaths() []string {
 }
 func (e *Engine) checkFilePath(path string, write bool) error { return e.checkFilePolicy(path, false) }
 func (e *Engine) checkFilePolicy(path string, internal bool) error {
+	return checkFilePolicyPaths(path, internal, e.filePrivatePaths())
+}
+func checkFilePolicyPaths(path string, internal bool, private []string) error {
 	if !filepath.IsAbs(path) || strings.ContainsAny(path, "\x00\r\n") {
 		return errors.New("文件路径必须是有效绝对路径")
 	}
 	for _, prefix := range []string{"/proc", "/sys", "/dev", "/run"} {
 		if pathContains(prefix, path) {
-			return errors.New("运行时及设备目录仅展示基础信息")
+			return errors.New("运行时及设备目录不开放文件管理")
 		}
 	}
 	for _, component := range strings.Split(filepath.Clean(path), "/") {
@@ -69,7 +72,7 @@ func (e *Engine) checkFilePolicy(path string, internal bool) error {
 			return errors.New("受保护的回收站或临时文件")
 		}
 	}
-	for _, protected := range e.filePrivatePaths() {
+	for _, protected := range private {
 		if pathContains(protected, path) {
 			return errors.New("此路径包含面板密钥、认证数据或受保护元数据")
 		}
@@ -255,13 +258,7 @@ func (e *Engine) listFiles(ctx context.Context, p model.Config) (model.Config, e
 	if path == "" {
 		path = "/"
 	}
-	var dir *os.File
-	var err error
-	if path == "/proc" || path == "/sys" || path == "/dev" || path == "/run" {
-		dir, err = os.Open(path)
-	} else {
-		dir, err = e.openFile(path, true)
-	}
+	dir, err := e.openFile(path, true)
 	if err != nil {
 		return nil, err
 	}
@@ -270,11 +267,12 @@ func (e *Engine) listFiles(ctx context.Context, p model.Config) (model.Config, e
 	if err != nil {
 		return nil, err
 	}
-	pseudo := actual == "/proc" || actual == "/sys" || actual == "/dev" || actual == "/run"
-	if !pseudo {
-		if err = e.checkFilePath(actual, false); err != nil {
-			return nil, err
-		}
+	if err = e.checkFilePath(actual, false); err != nil {
+		return nil, err
+	}
+	visibility, err := e.fileVisibility(ctx)
+	if err != nil {
+		return nil, err
 	}
 	entries := []model.Config{}
 	notes := map[string]string{}
@@ -296,10 +294,13 @@ func (e *Engine) listFiles(ctx context.Context, p model.Config) (model.Config, e
 				continue
 			}
 			full := filepath.Join(actual, entry.Name())
+			if !visibility.visible(full, st) {
+				continue
+			}
 			item := fileInfo(full, st)
 			item["note"] = notes[full]
-			item["protected"] = pseudo || e.checkFilePath(full, false) != nil
-			item["browsable"] = full == "/proc" || full == "/sys" || full == "/dev" || full == "/run"
+			item["protected"] = false
+			item["browsable"] = st.IsDir()
 			entries = append(entries, item)
 		}
 		if len(entries) > fileWalkLimit {
@@ -347,7 +348,7 @@ func (e *Engine) listFiles(ctx context.Context, p model.Config) (model.Config, e
 	}
 	start := min((page-1)*limit, total)
 	end := min(start+limit, total)
-	return model.Config{"items": entries[start:end], "total": total, "path": actual, "root": "/", "page": page, "pageSize": limit, "readOnly": pseudo}, nil
+	return model.Config{"items": entries[start:end], "total": total, "path": actual, "root": "/", "page": page, "pageSize": limit, "readOnly": false}, nil
 }
 func (e *Engine) readFileText(p model.Config) (model.Config, error) {
 	f, err := e.openFile(p.String("path"), true)
@@ -472,6 +473,10 @@ func stringPaths(p model.Config) []string {
 // Walk each directory via a pinned descriptor. Never follow links or descend
 // into a different device. Every path, including children, is policy checked.
 func (e *Engine) walkFiles(ctx context.Context, path string, visit func(string, os.FileInfo) error) error {
+	visibility, err := e.fileVisibility(ctx)
+	if err != nil {
+		return err
+	}
 	start, err := e.filePath(path, false)
 	if err != nil {
 		return err
@@ -500,6 +505,9 @@ func (e *Engine) walkFiles(ctx context.Context, path string, visit func(string, 
 		st, err := f.root.Lstat(f.name)
 		if err != nil {
 			return err
+		}
+		if !visibility.visible(f.path, st) {
+			return nil
 		}
 		if st.Mode()&os.ModeSymlink != 0 {
 			return nil

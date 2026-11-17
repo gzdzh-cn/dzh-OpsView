@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import DataList from "../components/DataList.vue"
-import { onMounted, ref } from 'vue'
+import { usePageState } from '../composables/pageState'
+import DataList from '../components/DataList.vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, put, post, errorText, size, type Config } from '../lib/api'
 import { usePanel } from '../stores/panel'
+const reads = new AbortController()
+onBeforeUnmount(() => reads.abort())
+const settingsLoading = ref(true)
 const certificateStatus = ref<Config>({})
 const panel = usePanel(),
-  tab = ref('common'),
+  tab = usePageState('tab', 'common'),
   settings = ref<Config>({
     name: 'OpsView',
     allowedCIDRs: '',
@@ -39,14 +43,14 @@ async function save() {
     window.dispatchEvent(new CustomEvent('opsview:preferences', { detail: settings.value }))
     ElMessage.success('设置已保存')
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
   } finally {
     busy.value = false
   }
 }
 async function loadRuntime() {
   try {
-    const result = await api('/settings/runtime')
+    const result = await api('/settings/runtime', { signal: reads.signal })
     runtime.value = {
       ...runtime.value,
       ...result.config,
@@ -56,7 +60,7 @@ async function loadRuntime() {
     acme.value.host = runtime.value.publicHost
     runtimeError.value = ''
   } catch (e) {
-    runtimeError.value = errorText(e)
+    if (!reads.signal.aborted) runtimeError.value = errorText(e)
   }
 }
 async function changeRuntime() {
@@ -79,7 +83,7 @@ async function changePassword() {
     await panel.session()
     ElMessage.success('密码已更新，请重新登录')
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
   }
 }
 async function changeUsername() {
@@ -88,7 +92,7 @@ async function changeUsername() {
     await panel.session()
     ElMessage.success('用户名已更新，请重新登录')
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
   }
 }
 async function totp(action: string) {
@@ -100,7 +104,7 @@ async function totp(action: string) {
       ElMessage.success('双因素认证已更新，请重新登录')
     }
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
   }
 }
 async function certificate() {
@@ -122,14 +126,14 @@ async function issue() {
     await post('/settings/certificate/issue', acme.value)
     ElMessage.success('证书申请任务已提交，请在任务中心查看')
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
   }
 }
 async function loadBackups() {
   try {
-    metadataBackups.value = await api('/settings/backups')
+    metadataBackups.value = await api('/settings/backups', { signal: reads.signal })
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
   }
 }
 async function backup() {
@@ -138,16 +142,22 @@ async function backup() {
     await panel.refresh()
     ElMessage.success('加密备份任务已提交')
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
   }
 }
+watch(tab, (value) => {
+  if (value === 'backup') void loadBackups()
+  if (['panel', 'security'].includes(value)) void loadRuntime()
+})
 onMounted(async () => {
   try {
-    settings.value = { ...settings.value, ...(await api('/settings')) }
-    await loadBackups()
-    await loadRuntime()
+    settings.value = { ...settings.value, ...(await api('/settings', { signal: reads.signal })) }
+    if (tab.value === 'backup') await loadBackups()
+    if (['common', 'panel', 'security'].includes(tab.value)) await loadRuntime()
   } catch (e) {
-    ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) ElMessage.error(errorText(e))
+  } finally {
+    settingsLoading.value = false
   }
 })
 </script>
@@ -159,7 +169,7 @@ onMounted(async () => {
     <el-tab-pane label="界面设置" name="appearance" />
     <el-tab-pane label="备份恢复" name="backup" />
   </el-tabs>
-  <div class="surface settings-surface">
+  <div v-loading="settingsLoading" class="surface settings-surface">
     <template v-if="tab === 'common'">
       <div class="setting-row">
         <div>
@@ -369,7 +379,7 @@ onMounted(async () => {
         <el-button type="primary" @click="backup">立即备份面板配置</el-button>
         <el-button @click="loadBackups">刷新备份</el-button>
       </div>
-      <DataList :rows="metadataBackups">
+      <DataList state-key="Settings-1" :rows="metadataBackups">
         <el-table-column label="备份文件">
           <template #default="{ row }">
             <a :href="row.url">{{ row.name }}</a>

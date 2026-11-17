@@ -74,6 +74,14 @@ func TestLinuxProtectedBindMountAliases(t *testing.T) {
 	if _, err := e.readFileText(model.Config{"path": alias}); err == nil {
 		t.Fatal("bind-mounted private inode exposed")
 	}
+	listing, err := e.listFiles(context.Background(), model.Config{"path": dir, "hidden": true})
+	if err != nil || listing.Int("total") != 0 {
+		t.Fatal("bind-mounted secret listed", listing, err)
+	}
+	search, err := e.fileSearch(context.Background(), model.Config{"path": dir, "query": "alias"}, func(string) {})
+	if err != nil || search.Int("total") != 0 {
+		t.Fatal("bind-mounted secret searchable", search, err)
+	}
 	if _, err := e.trashFile(alias); err == nil {
 		t.Fatal("mountpoint was deleted")
 	}

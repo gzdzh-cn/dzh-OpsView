@@ -1,34 +1,27 @@
 <script setup lang="ts">
+import { usePageState } from '../composables/pageState'
+import { usePageQuery } from '../composables/pageQuery'
 import DataList from '../components/DataList.vue'
-import { onMounted, ref } from 'vue'
-import { api, post, errorText } from '../lib/api'
+import { ref } from 'vue'
+import { post, errorText } from '../lib/api'
 import { ElMessage } from 'element-plus'
 import Resources from './Resources.vue'
-const tab = ref('firewall'),
-  data = ref<any>(),
-  error = ref(''),
-  audits = ref<any[]>([]),
-  unit = ref(''),
-  logs = ref(''),
-  busy = ref(false)
-async function load() {
-  busy.value = true
-  error.value = ''
-  try {
-    data.value = await api('/system')
-  } catch (e) {
-    error.value = errorText(e)
-  } finally {
-    busy.value = false
-  }
-}
-async function audit() {
-  try {
-    audits.value = await api('/audit')
-  } catch (e) {
-    ElMessage.error(errorText(e))
-  }
-}
+const tab = usePageState('tab', 'firewall')
+const {
+  data,
+  error,
+  busy,
+  load: loadSystem,
+} = usePageQuery<any>(() => (['firewall', 'services'].includes(tab.value) ? '/system' : ''), null)
+const {
+  data: audits,
+  error: auditError,
+  load: loadAudit,
+} = usePageQuery<any[]>(() => (tab.value === 'audit' ? '/audit' : ''), [])
+const unit = ref(''),
+  logs = ref('')
+const load = () => loadSystem(true)
+const audit = () => loadAudit(true)
 async function readLogs() {
   try {
     logs.value = (await post('/system/actions/logs', { unit: unit.value })).content
@@ -36,10 +29,6 @@ async function readLogs() {
     ElMessage.error(errorText(e))
   }
 }
-onMounted(() => {
-  void load()
-  void audit()
-})
 </script>
 <template>
   <el-tabs v-model="tab" class="panel-tabs">
@@ -54,21 +43,25 @@ onMounted(() => {
       秒内确认，否则自动回退；已有不兼容的防火墙体系只提供诊断。
     </div>
     <Resources kind="firewall" />
-    <div class="split-heading">
-      <h3>当前实际规则</h3>
-      <el-button :loading="busy" @click="load">重新检查</el-button>
-    </div>
-    <div v-if="error" class="notice warn">{{ error }}</div>
-    <div class="system-grid">
-      <section class="surface system-detail">
-        <h3>宿主机 · UFW</h3>
-        <pre class="log-box">{{ data?.firewall || '等待执行器返回状态' }}</pre>
-      </section>
-      <section class="surface system-detail">
-        <h3>Docker · DOCKER-USER</h3>
-        <pre class="log-box">{{ data?.dockerRules || '等待执行器返回状态' }}</pre>
-      </section>
-    </div>
+    <el-collapse class="system-diagnostics">
+      <el-collapse-item title="当前实际规则与诊断">
+        <div class="split-heading">
+          <h3>当前实际规则</h3>
+          <el-button :loading="busy" @click="load">重新检查</el-button>
+        </div>
+        <div v-if="error" class="notice warn">{{ error }}</div>
+        <div class="system-grid">
+          <section class="surface system-detail">
+            <h3>宿主机 · UFW</h3>
+            <pre class="log-box">{{ data?.firewall || '等待执行器返回状态' }}</pre>
+          </section>
+          <section class="surface system-detail">
+            <h3>Docker · DOCKER-USER</h3>
+            <pre class="log-box">{{ data?.dockerRules || '等待执行器返回状态' }}</pre>
+          </section>
+        </div>
+      </el-collapse-item>
+    </el-collapse>
   </template>
   <template v-if="tab === 'services'">
     <div v-if="error" class="notice warn">{{ error }}</div>
@@ -80,7 +73,12 @@ onMounted(() => {
         <h3>监听端口</h3>
         <el-button :loading="busy" @click="load">刷新</el-button>
       </div>
-      <DataList :rows="data?.portItems || []" searchable>
+      <DataList
+        :key="'System-1' + ':' + tab"
+        :state-key="'System-1' + ':' + tab"
+        :rows="data?.portItems || []"
+        searchable
+      >
         <el-table-column prop="protocol" label="协议" width="90" />
         <el-table-column prop="local" label="监听地址" min-width="200" />
         <el-table-column prop="state" label="状态" width="110" />
@@ -94,7 +92,12 @@ onMounted(() => {
     </section>
     <section class="surface">
       <div class="page-toolbar"><h3>系统服务</h3></div>
-      <DataList :rows="data?.serviceItems || []" searchable>
+      <DataList
+        :key="'System-2' + ':' + tab"
+        :state-key="'System-2' + ':' + tab"
+        :rows="data?.serviceItems || []"
+        searchable
+      >
         <el-table-column prop="unit" label="服务" min-width="220" />
         <el-table-column prop="active" label="状态" width="110" />
         <el-table-column prop="state" label="运行状态" width="120" />
@@ -123,7 +126,8 @@ onMounted(() => {
       <h3>操作审计</h3>
       <el-button @click="audit">刷新</el-button>
     </div>
-    <DataList :rows="audits">
+    <el-alert v-if="auditError" :title="auditError" type="error" />
+    <DataList :key="'System-3' + ':' + tab" :state-key="'System-3' + ':' + tab" :rows="audits">
       <el-table-column label="操作" prop="action" min-width="180" />
       <el-table-column label="资源" prop="resourceId" min-width="180" />
       <el-table-column label="来源 IP" prop="ip" width="140" />

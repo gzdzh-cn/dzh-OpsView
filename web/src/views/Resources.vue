@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageState } from '../composables/pageState'
 import DataList from '../components/DataList.vue'
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -20,7 +21,7 @@ const props = defineProps<{ kind: string; embedded?: boolean }>(),
   panel = usePanel(),
   dialog = ref(false),
   editing = ref<Resource>(),
-  filter = ref(''),
+  filter = usePageState(() => 'filter:' + props.kind, ''),
   details = ref<Resource>(),
   logs = ref(''),
   logTitle = ref(''),
@@ -241,7 +242,7 @@ async function configuration(row: Resource) {
 async function sync(row: Resource) {
   try {
     await post(`/repositories/${row.id}/refresh`)
-    await panel.refresh()
+    await panel.refresh(['resources', 'tasks', 'catalog'])
     ElMessage.success('仓库已同步')
   } catch (e) {
     ElMessage.error(errorText(e))
@@ -252,7 +253,6 @@ async function sync(row: Resource) {
   <section class="surface">
     <div class="page-toolbar">
       <div class="page-toolbar-left">
-        <h3>{{ titles[kind] }}</h3>
         <span class="count-badge">{{ panel.kind(kind).length }}</span>
       </div>
       <div class="page-toolbar-right">
@@ -268,7 +268,13 @@ async function sync(row: Resource) {
         </el-button>
       </div>
     </div>
-    <DataList v-if="rows.length" :rows="rows" row-key="id">
+    <DataList
+      :key="'Resources-1' + ':' + props.kind"
+      :state-key="'Resources-1' + ':' + props.kind"
+      v-if="rows.length"
+      :rows="rows"
+      row-key="id"
+    >
       <el-table-column label="名称" min-width="180">
         <template #default="{ row }">
           <div class="resource-identity">

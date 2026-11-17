@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isAbort } from '../lib/query'
+import { usePageState } from '../composables/pageState'
 import DataList from '../components/DataList.vue'
 import { ElMessage } from 'element-plus'
 import { computed, onUnmounted, ref } from 'vue'
@@ -7,11 +9,13 @@ import { usePanel } from '../stores/panel'
 import { post, api, date, errorText, type Task } from '../lib/api'
 import StatusBadge from '../components/StatusBadge.vue'
 const panel = usePanel(),
-  filter = ref('all'),
+  filter = usePageState('filter', 'all'),
   selected = ref<Task>(),
   events = ref<any[]>([]),
   error = ref('')
-let stream: EventSource | undefined
+let stream: EventSource | undefined,
+  reader: AbortController | undefined,
+  sequence = 0
 const fileResult = ref<any>(),
   resultOpen = ref(false)
 async function viewResult(id: string) {
@@ -26,12 +30,17 @@ const tasks = computed(() =>
   panel.tasks.filter((t) => filter.value === 'all' || t.state === filter.value),
 )
 async function open(task: Task) {
+  const id = ++sequence
+  reader?.abort()
+  reader = new AbortController()
   stream?.close()
   selected.value = task
   events.value = []
   error.value = ''
   try {
-    events.value = await api(`/tasks/${task.id}/events`)
+    const result = await api(`/tasks/${task.id}/events`, { signal: reader.signal })
+    if (id !== sequence) return
+    events.value = result
     {
       const after = events.value.at(-1)?.sequence || 0
       stream = new EventSource(`/api/v1/tasks/${task.id}/events?stream=true&after=${after}`)
@@ -51,14 +60,16 @@ async function open(task: Task) {
       }
     }
   } catch (e) {
-    error.value = errorText(e)
+    if (!isAbort(e) && id === sequence) error.value = errorText(e)
   }
 }
 function close() {
+  sequence++
+  reader?.abort()
   stream?.close()
   selected.value = undefined
 }
-onUnmounted(() => stream?.close())
+onUnmounted(close)
 async function cancelInstall(id: string) {
   try {
     await post(`/tasks/${id}/cancel`)
@@ -113,7 +124,13 @@ async function cancelInstall(id: string) {
         />
       </el-select>
     </div>
-    <DataList v-if="tasks.length" :rows="tasks" @row-click="open" style="cursor: pointer">
+    <DataList
+      state-key="Tasks-1"
+      v-if="tasks.length"
+      :rows="tasks"
+      @row-click="open"
+      style="cursor: pointer"
+    >
       <el-table-column label="操作" min-width="200">
         <template #default="{ row }">
           <span class="task-operation">{{ row.operation }}</span>

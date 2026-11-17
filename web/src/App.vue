@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { version as panelVersion } from '../package.json'
 import { useRoute } from 'vue-router'
 import {
@@ -14,19 +14,20 @@ import {
   Setting,
   Bell,
   ArrowRight,
-  RefreshRight,
   List,
   Menu,
   Close,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { navigating, prefetchPage, navigationError, reloadFailedPage } from './router'
+import type { Dataset } from './stores/panel'
+import PageContent from './components/PageContent.vue'
 import { usePanel } from './stores/panel'
 import { api, post, errorText } from './lib/api'
 import Login from './views/Login.vue'
 const panel = usePanel(),
   route = useRoute(),
   collapsed = ref(false),
-  refreshing = ref(false),
   fatal = ref('')
 const nav = [
   { path: '/', label: '概览', icon: Monitor },
@@ -42,17 +43,28 @@ const nav = [
 const running = computed(
   () => panel.tasks.filter((t) => ['queued', 'running'].includes(t.state)).length,
 )
-async function refresh() {
-  refreshing.value = true
-  try {
-    await panel.refresh()
-    fatal.value = ''
-  } catch (e) {
-    fatal.value = errorText(e)
-  } finally {
-    refreshing.value = false
-  }
+const datasets = computed<Dataset[]>(() => {
+  if (route.path === '/') return ['resources', 'tasks', 'overview']
+  if (route.path === '/software') return ['resources', 'tasks', 'catalog']
+  if (['/files', '/settings', '/tasks'].includes(route.path)) return ['tasks']
+  return ['resources', 'tasks']
+})
+const pageErrors = computed(() => datasets.value.filter((k) => panel.errors[k]))
+const pageLoading = computed(() => datasets.value.some((k) => panel.pending[k]))
+function refresh(force = false) {
+  if (!panel.auth.authenticated || document.hidden) return
+  panel.retain(datasets.value)
+  void panel.refresh(
+    datasets.value.filter((k) => k !== 'catalog'),
+    force,
+  )
+  if (datasets.value.includes('catalog')) void panel.refresh(['catalog'], false)
+  if (force) window.dispatchEvent(new Event('opsview:refresh-page'))
 }
+watch(
+  () => route.path,
+  () => refresh(),
+)
 async function ready() {
   const confirmToken = new URLSearchParams(location.hash.slice(1)).get('runtime-confirm')
   if (confirmToken) {
@@ -61,7 +73,13 @@ async function ready() {
   }
 
   await panel.session()
-  if (panel.auth.authenticated) await refresh()
+  fatal.value = ''
+  if (panel.auth.authenticated) {
+    refresh()
+    void api('/settings')
+      .then((prefs) => setRefresh(prefs.refreshSeconds || 15))
+      .catch(() => {})
+  }
 }
 async function logout() {
   try {
@@ -72,19 +90,24 @@ async function logout() {
   }
 }
 function unauthorized() {
+  panel.clear()
   panel.auth.authenticated = false
 }
 let timer: ReturnType<typeof setInterval>
 function setRefresh(seconds: number) {
   clearInterval(timer)
   timer = setInterval(() => {
-    if (panel.auth.authenticated) void refresh()
+    refresh(true)
   }, seconds * 1000)
+}
+function visible() {
+  if (!document.hidden) refresh(true)
 }
 function preferences(e: Event) {
   setRefresh((e as CustomEvent).detail.refreshSeconds || 15)
 }
 onMounted(async () => {
+  document.addEventListener('visibilitychange', visible)
   window.addEventListener('opsview:unauthorized', unauthorized)
   window.addEventListener('opsview:preferences', preferences)
   try {
@@ -93,11 +116,11 @@ onMounted(async () => {
     fatal.value = errorText(e)
     panel.loaded = true
   }
-  const prefs = panel.auth.authenticated ? await api('/settings').catch(() => ({})) : {}
-  setRefresh(prefs.refreshSeconds || 15)
+  if (!timer) setRefresh(15)
 })
 onUnmounted(() => {
   clearInterval(timer)
+  document.removeEventListener('visibilitychange', visible)
   window.removeEventListener('opsview:unauthorized', unauthorized)
   window.removeEventListener('opsview:preferences', preferences)
 })
@@ -116,10 +139,8 @@ onUnmounted(() => {
         <span>
           OpsView
           <span class="brand-dot">.</span>
-          <small>SERVER CONTROL PANEL</small>
         </span>
       </a>
-      <div class="sidebar-label">工作空间</div>
       <nav>
         <router-link
           v-for="item in nav"
@@ -127,20 +148,37 @@ onUnmounted(() => {
           :to="item.path"
           :class="{ active: route.path === item.path }"
           @click="collapsed = false"
+          @mouseenter="prefetchPage(item.path)"
+          @focus="prefetchPage(item.path)"
         >
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
-          <span v-if="item.path === '/software'" class="new-badge">NEW</span>
+
           <span v-if="route.path === item.path" class="active-dot"></span>
         </router-link>
       </nav>
       <div class="sidebar-bottom">
-        <router-link to="/tasks">
+        <router-link
+          to="/tasks"
+          @mouseenter="prefetchPage('/tasks')"
+          @focus="prefetchPage('/tasks')"
+        >
           <el-icon><List /></el-icon>
           <span>任务中心</span>
           <b v-if="running">{{ running }}</b>
           <el-icon v-else><ArrowRight /></el-icon>
         </router-link>
+        <el-dropdown class="sidebar-account" @command="logout">
+          <button class="account-button" aria-label="账号菜单">
+            <span>{{ panel.auth.username }}</span>
+            <span>⌄</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <div class="sidebar-server">
           <span class="status-dot"></span>
           <div>
@@ -152,18 +190,7 @@ onUnmounted(() => {
       </div>
     </aside>
     <div class="main-shell">
-      <header class="topbar">
-        <div class="breadcrumb">
-          <button class="mobile-menu icon-button" @click="collapsed = !collapsed">
-            <el-icon>
-              <Close v-if="collapsed" />
-              <Menu v-else />
-            </el-icon>
-          </button>
-          <span>工作空间</span>
-          <el-icon><ArrowRight /></el-icon>
-          <strong>{{ route.meta.title }}</strong>
-        </div>
+      <header v-if="route.path === '/'" class="topbar">
         <div class="topbar-right">
           <span class="server-chip">
             <span class="status-dot"></span>
@@ -187,20 +214,53 @@ onUnmounted(() => {
           </el-dropdown>
         </div>
       </header>
-      <main class="main-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">
-              {{ route.path === '/' ? 'YOUR SERVER, AT A GLANCE' : 'OPSVIEW WORKSPACE' }}
-            </div>
-            <h1>{{ route.meta.title }}</h1>
-            <p>{{ route.meta.caption }}</p>
-          </div>
-          <button class="secondary-button" :disabled="refreshing" @click="refresh">
-            <el-icon :class="{ spinning: refreshing }"><RefreshRight /></el-icon>
-            <span>刷新状态</span>
-          </button>
-        </div>
+      <main
+        class="main-content"
+        :aria-label="String(route.meta.title || '')"
+        :aria-busy="pageLoading || navigating"
+      >
+        <button
+          class="mobile-menu icon-button"
+          aria-label="打开导航菜单"
+          @click="collapsed = !collapsed"
+        >
+          <el-icon>
+            <Close v-if="collapsed" />
+            <Menu v-else />
+          </el-icon>
+        </button>
+        <div
+          v-if="navigating"
+          class="navigation-progress"
+          role="status"
+          aria-label="正在切换页面"
+        ></div>
+        <el-alert
+          v-if="navigationError"
+          :title="navigationError"
+          type="error"
+          :closable="false"
+          class="page-alert"
+        >
+          <el-button link @click="reloadFailedPage">重新加载页面</el-button>
+        </el-alert>
+        <el-alert
+          v-for="key in pageErrors"
+          :key="key"
+          :title="panel.errors[key]"
+          type="error"
+          :closable="false"
+          class="page-alert"
+        >
+          <el-button link @click="panel.refresh([key])">重试</el-button>
+        </el-alert>
+        <el-skeleton
+          v-if="pageLoading"
+          :rows="2"
+          animated
+          class="page-skeleton"
+          aria-label="正在加载页面数据"
+        />
         <el-alert
           v-if="fatal"
           :title="fatal"
@@ -216,19 +276,9 @@ onUnmounted(() => {
             资源配置与任务真实保存；Linux 执行器未连接时，系统操作会明确报错。
           </span>
         </div>
-        <router-view :key="route.path" />
-        <footer class="page-footer">
-          <span>
-            OpsView
-            <span class="muted">/</span>
-            让部署简单一点
-          </span>
-          <span>
-            GoFrame + Vue 3
-            <span class="muted">·</span>
-            v{{ panelVersion }}
-          </span>
-        </footer>
+        <router-view v-slot="{ Component }">
+          <PageContent :key="route.path"><component :is="Component" /></PageContent>
+        </router-view>
       </main>
     </div>
   </div>

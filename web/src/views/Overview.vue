@@ -16,18 +16,15 @@ import {
 } from '@element-plus/icons-vue'
 import { size, date } from '../lib/api'
 import StatusBadge from '../components/StatusBadge.vue'
-import * as echarts from 'echarts/core'
-import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
+import type * as ECharts from 'echarts/core'
+let echarts: Pick<typeof ECharts, 'init' | 'graphic'>
+let alive = true
 const panel = usePanel(),
   graph = ref<HTMLElement>(),
   interval = ref('实时'),
   samples = ref<{ time: string; cpu: number; memory: number }[]>([])
-let chart: echarts.ECharts
-const overview = computed(() => panel.overview),
-  info = computed(() => overview.value?.host)
+let chart: ECharts.ECharts
+const overview = computed(() => panel.overview)
 const healthy = computed(() => panel.resources.filter((r) => r.status === 'ready').length)
 const cards = computed(() => [
   {
@@ -158,7 +155,9 @@ watch(
 function resize() {
   chart?.resize()
 }
-onMounted(() => {
+onMounted(async () => {
+  echarts = await import('../lib/chart')
+  if (!alive) return
   if (graph.value) {
     chart = echarts.init(graph.value)
     draw()
@@ -166,61 +165,12 @@ onMounted(() => {
   }
 })
 onUnmounted(() => {
+  alive = false
   chart?.dispose()
   window.removeEventListener('resize', resize)
 })
 </script>
 <template>
-  <section class="welcome-card">
-    <div>
-      <div class="welcome-kicker">
-        <span class="status-dot"></span>
-        工作空间已连接
-      </div>
-      <h2>
-        一切，从这里开始
-        <span>。</span>
-      </h2>
-      <p>你的服务、数据与运行环境，在一个地方清晰管理。</p>
-      <div class="welcome-tags">
-        <span>{{ info?.platform || '本地环境' }} {{ info?.platformVersion }}</span>
-        <i></i>
-        <span>{{ info?.kernelArch || '—' }}</span>
-        <i></i>
-        <span>
-          运行 {{ Math.floor((info?.uptime || 0) / 86400) }} 天
-          {{ Math.floor(((info?.uptime || 0) % 86400) / 3600) }} 小时
-        </span>
-      </div>
-    </div>
-    <div class="welcome-art" aria-hidden="true">
-      <div class="server-stack">
-        <div>
-          <i></i>
-          <i></i>
-          <b></b>
-          <b></b>
-          <b></b>
-        </div>
-        <div>
-          <i></i>
-          <i></i>
-          <b></b>
-          <b></b>
-          <b></b>
-        </div>
-        <div>
-          <i></i>
-          <i></i>
-          <b></b>
-          <b></b>
-          <b></b>
-        </div>
-      </div>
-      <span class="orbit-dot"></span>
-      <span class="orbit-dot second"></span>
-    </div>
-  </section>
   <div class="metrics-grid">
     <article v-for="card in cards" :key="card.title" class="metric-card">
       <div class="metric-title">
@@ -287,7 +237,7 @@ onUnmounted(() => {
           <i></i>
           内存使用率
         </span>
-        <small>每 15 秒采样 · 当前会话</small>
+        <small>当前会话</small>
       </div>
       <div ref="graph" class="resource-chart"></div>
     </section>
@@ -320,10 +270,6 @@ onUnmounted(() => {
         </div>
         <el-icon><ArrowRight /></el-icon>
       </router-link>
-      <div class="quick-tip">
-        <el-icon><CircleCheck /></el-icon>
-        配置修改经过校验后，再应用到服务。
-      </div>
     </section>
   </div>
   <div class="resource-shortcuts">
@@ -353,7 +299,12 @@ onUnmounted(() => {
           <el-icon><ArrowRight /></el-icon>
         </router-link>
       </div>
-      <DataList v-if="panel.tasks.length" :rows="panel.tasks.slice(0, 5)" style="width: 100%">
+      <DataList
+        state-key="Overview-1"
+        v-if="panel.tasks.length"
+        :rows="panel.tasks.slice(0, 5)"
+        style="width: 100%"
+      >
         <el-table-column label="操作">
           <template #default="{ row }">
             <span class="task-operation">{{ row.operation }}</span>
@@ -393,11 +344,7 @@ onUnmounted(() => {
         </span>
         <strong>{{ overview?.failedTasks ? '有任务需要关注' : '当前没有失败任务' }}</strong>
         <p>
-          {{
-            overview?.failedTasks
-              ? '查看任务日志，定位并处理执行异常。'
-              : '持续关注服务状态，让每次部署更从容。'
-          }}
+          {{ overview?.failedTasks ? '查看任务日志，定位并处理执行异常。' : '' }}
         </p>
       </div>
       <div class="health-line">

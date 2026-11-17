@@ -1,10 +1,18 @@
+import { queries } from './query'
 import type { components } from './api.generated'
 export type Resource = Omit<components['schemas']['Resource'], 'config'> & { config: Config }
 export type Task = components['schemas']['Task']
 export type Config = Record<string, any>
 let csrf = ''
 export class APIError extends Error {
-  constructor(message: string, public status: number, public code?: string, public revision?: string) {super(message)}
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+    public revision?: string,
+  ) {
+    super(message)
+  }
 }
 export function setCSRF(token: string) {
   csrf = token
@@ -18,7 +26,33 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
   const data = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
   if (!response.ok) {
     if (response.status === 401) window.dispatchEvent(new Event('opsview:unauthorized'))
-    throw new APIError(data.error || '请求失败',response.status,data.code,data.revision)
+    throw new APIError(data.error || '请求失败', response.status, data.code, data.revision)
+  }
+  if (
+    options.method &&
+    !['GET', 'HEAD'].includes(options.method.toUpperCase()) &&
+    !path.startsWith('/auth') &&
+    !path.startsWith('/files')
+  ) {
+    queries.invalidate(
+      (key) =>
+        key === '/resources' ||
+        key === '/tasks' ||
+        key === '/overview' ||
+        (path.startsWith('/resources')
+          ? key.startsWith('/sites/') && key.endsWith('/traffic')
+          : false) ||
+        (path.startsWith('/docker') || path.includes('docker')
+          ? key.startsWith('/docker')
+          : false) ||
+        (path.startsWith('/plugins') ||
+        path.startsWith('/resources') ||
+        path.startsWith('/repositories')
+          ? ['/catalog', '/plugins'].includes(key)
+          : false) ||
+        (path.startsWith('/system') ? key === '/system' || key === '/audit' : false) ||
+        (path.startsWith('/settings') ? key === '/settings/backups' : false),
+    )
   }
   return data as T
 }

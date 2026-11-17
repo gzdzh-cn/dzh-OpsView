@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { queries, isAbort } from '../lib/query'
+import { usePageState } from '../composables/pageState'
 import DataList from '../components/DataList.vue'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePanel } from '../stores/panel'
@@ -9,9 +11,11 @@ import ResourceForm from '../components/ResourceForm.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import SiteRuntimeOptions from '../components/SiteRuntimeOptions.vue'
 const route = useRoute()
+const reads = new AbortController()
+onBeforeUnmount(() => reads.abort())
 const panel = usePanel(),
-  tab = ref(String(route.query.tab || 'php')),
-  filter = ref(''),
+  tab = usePageState('tab', String(route.query.tab || 'php')),
+  filter = usePageState('filter', ''),
   createOpen = ref(false),
   editing = ref<Resource>(),
   selected = ref<Resource>(),
@@ -23,6 +27,7 @@ const panel = usePanel(),
   logs = ref(''),
   trafficPeriod = ref('24h'),
   cert = ref({ certificate: '', privateKey: '' })
+if (route.query.tab) tab.value = String(route.query.tab)
 const nginx = computed(() =>
   panel
     .kind('instance')
@@ -79,8 +84,9 @@ const chart = computed(() => {
 watch(
   () => rows.value.map((r) => r.id).join(','),
   async () => {
-    for (let i = 0; i < rows.value.length; i += 4)
-      await Promise.all(rows.value.slice(i, i + 4).map(loadTraffic))
+    const current = [...rows.value]
+    for (let i = 0; i < current.length && !reads.signal.aborted; i += 4)
+      await Promise.all(current.slice(i, i + 4).map(loadTraffic))
   },
   { immediate: true },
 )
@@ -102,9 +108,14 @@ async function open(row: Resource) {
 }
 async function loadTraffic(row: Resource) {
   try {
-    traffic.value[row.id] = await api(`/sites/${row.id}/traffic`)
+    traffic.value[row.id] = await queries.read(
+      `/sites/${row.id}/traffic`,
+      (signal) => api(`/sites/${row.id}/traffic`, { signal }),
+      15000,
+      reads.signal,
+    )
   } catch (e) {
-    error.value = errorText(e)
+    if (!isAbort(e)) error.value = errorText(e)
   }
 }
 function backupSummary(row: Resource) {
@@ -203,7 +214,13 @@ async function loadLogs() {
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <div class="surface site-table">
-      <DataList :rows="rows" row-key="id" @row-dblclick="open">
+      <DataList
+        :key="'Sites-1' + ':' + tab"
+        :state-key="'Sites-1' + ':' + tab"
+        :rows="rows"
+        row-key="id"
+        @row-dblclick="open"
+      >
         <el-table-column
           :label="tab === 'php' ? '网站名' : tab === 'proxy' ? '域名' : '项目名称'"
           min-width="150"

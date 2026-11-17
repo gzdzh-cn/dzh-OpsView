@@ -1,25 +1,27 @@
 <script setup lang="ts">
+import { usePageState } from '../composables/pageState'
+import { isAbort } from '../lib/query'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Folder, Document, ArrowLeft, RefreshRight, Star } from '@element-plus/icons-vue'
+import { Folder, Document, ArrowLeft, RefreshRight } from '@element-plus/icons-vue'
 import { api, post, errorText, size, date, type Config } from '../lib/api'
 import ListPanel from '../components/ListPanel.vue'
 import DataList from '../components/DataList.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 const route = useRoute(),
-  path = ref('/'),
+  path = usePageState('path', '/'),
   address = ref('/'),
   items = ref<Config[]>([]),
   selection = ref<Config[]>([]),
   metadata = ref<Config>({}),
   total = ref(0),
-  page = ref(1),
-  pageSize = ref(50),
-  filter = ref(''),
-  hidden = ref(false),
-  sort = ref('name'),
-  descending = ref(false),
+  page = usePageState('page', 1),
+  pageSize = usePageState('pageSize', 50),
+  filter = usePageState('filter', ''),
+  hidden = usePageState('hidden', false),
+  sort = usePageState('sort', 'name'),
+  descending = usePageState('descending', false),
   busy = ref(false),
   error = ref(''),
   readOnly = ref(false)
@@ -33,7 +35,7 @@ function savedRecent(): string[] {
     return []
   }
 }
-const recent = ref<string[]>(savedRecent())
+const recent = ref<string[]>([])
 const breadcrumb = computed(() =>
   path.value
     .split('/')
@@ -78,25 +80,40 @@ let controller: AbortController | undefined,
   alive = true
 const join = (base: string, name: string) => (base === '/' ? '' : base) + '/' + name
 const parent = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/'
-const op = (action: string, params: Config = {}) =>
-  post('/files', { scope: 'server', action, ...params })
+const op = (action: string, params: Config = {}, signal?: AbortSignal) =>
+  api('/files', {
+    method: 'POST',
+    body: JSON.stringify({ scope: 'server', action, ...params }),
+    signal,
+  })
+let listing: AbortController | undefined,
+  listSequence = 0
+const metadataController = new AbortController()
 function remember(p: string) {
   recent.value = [p, ...recent.value.filter((x) => x !== p)].slice(0, 15)
   localStorage.setItem('opsview:file-recent', JSON.stringify(recent.value))
 }
 async function load() {
+  const id = ++listSequence
+  listing?.abort()
+  listing = new AbortController()
   busy.value = true
   error.value = ''
   try {
-    const data = await op('list', {
-      path: path.value,
-      page: page.value,
-      pageSize: pageSize.value,
-      filter: filter.value,
-      hidden: hidden.value,
-      sort: sort.value,
-      descending: descending.value,
-    })
+    const data = await op(
+      'list',
+      {
+        path: path.value,
+        page: page.value,
+        pageSize: pageSize.value,
+        filter: filter.value,
+        hidden: hidden.value,
+        sort: sort.value,
+        descending: descending.value,
+      },
+      listing.signal,
+    )
+    if (!alive || id !== listSequence) return
     items.value = data.items
     total.value = data.total
     path.value = data.path
@@ -105,10 +122,12 @@ async function load() {
     selection.value = []
     remember(path.value)
   } catch (e) {
-    error.value = errorText(e)
-    items.value = []
+    if (alive && id === listSequence && !isAbort(e)) {
+      error.value = errorText(e)
+      items.value = []
+    }
   } finally {
-    busy.value = false
+    if (alive && id === listSequence) busy.value = false
   }
 }
 async function navigate(p: string) {
@@ -118,7 +137,11 @@ async function navigate(p: string) {
 }
 async function refreshMeta() {
   try {
-    metadata.value = await op('metadata')
+    metadata.value = await op('metadata', { recentPaths: savedRecent() }, metadataController.signal)
+    recent.value = [
+      ...new Set<string>([...recent.value, ...(metadata.value.recentPaths || [])]),
+    ].slice(0, 15)
+    localStorage.setItem('opsview:file-recent', JSON.stringify(recent.value))
   } catch (e) {
     error.value = errorText(e)
   }
@@ -544,28 +567,26 @@ async function discardUpload() {
   }
 }
 onMounted(async () => {
-  path.value = String(route.query.path || '/')
+  path.value = String(route.query.path || path.value)
   address.value = path.value
   await Promise.all([load(), refreshMeta()])
 })
 onUnmounted(() => {
   alive = false
+  listing?.abort()
+  metadataController.abort()
   controller?.abort()
 })
 </script>
 <template>
-  <ListPanel title="服务器文件" :count="total" :busy="busy" :error="error" @retry="load">
-    <template #actions>
-      <el-button :icon="Star" @click="favorite(path)">收藏当前目录</el-button>
-      <el-button @click="loadTrash">回收站</el-button>
-    </template>
+  <ListPanel :busy="busy" :error="error" @retry="load">
     <div class="file-navigation">
       <el-button :icon="ArrowLeft" :disabled="path === '/'" @click="navigate(parent(path))">
         上级
       </el-button>
       <el-input v-model="address" aria-label="服务器路径" @keyup.enter="navigate(address)" />
       <el-button @click="navigate(address)">前往</el-button>
-      <el-button :icon="RefreshRight" @click="load">刷新</el-button>
+      <el-button :icon="RefreshRight" aria-label="刷新目录" title="刷新目录" @click="load" />
       <el-dropdown @command="navigate">
         <el-button>快捷目录</el-button>
         <template #dropdown>
@@ -594,7 +615,6 @@ onUnmounted(() => {
         取消收藏
       </el-button>
     </div>
-    <div v-if="readOnly" class="notice">运行时或设备目录只显示基础信息。</div>
     <div class="file-actions">
       <el-button :disabled="readOnly || uploadBusy" type="primary" @click="uploadInput?.click()">
         上传文件
@@ -616,19 +636,34 @@ onUnmounted(() => {
       <el-button :disabled="!clipboard || readOnly || taskBusy" @click="paste">
         粘贴 {{ clipboard?.paths.length || '' }}
       </el-button>
-      <el-button :disabled="!selection.length || readOnly" @click="permissions()">权限</el-button>
-      <el-button :disabled="!selection.length || readOnly || taskBusy" @click="archive('compress')">
-        压缩
-      </el-button>
-      <el-button
-        :disabled="!selection.length || readOnly"
-        type="danger"
-        plain
-        @click="batch('delete')"
-      >
-        删除
-      </el-button>
-      <el-button :disabled="taskBusy || readOnly" @click="calculate()">计算大小</el-button>
+      <el-dropdown>
+        <el-button>更多操作</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item :disabled="!selection.length || readOnly" @click="permissions()">
+              修改权限
+            </el-dropdown-item>
+            <el-dropdown-item
+              :disabled="!selection.length || readOnly || taskBusy"
+              @click="archive('compress')"
+            >
+              压缩
+            </el-dropdown-item>
+            <el-dropdown-item :disabled="taskBusy || readOnly" @click="calculate()">
+              计算大小
+            </el-dropdown-item>
+            <el-dropdown-item @click="favorite(path)">收藏当前目录</el-dropdown-item>
+            <el-dropdown-item @click="loadTrash">回收站</el-dropdown-item>
+            <el-dropdown-item
+              :disabled="!selection.length || readOnly"
+              divided
+              @click="batch('delete')"
+            >
+              删除所选项目
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
     <input ref="uploadInput" type="file" multiple hidden @change="uploadFiles" />
     <div v-if="uploadBusy || uploadPaused" class="file-toolbar-filter">
@@ -705,7 +740,6 @@ onUnmounted(() => {
               </el-icon>
               <span>{{ row.name }}{{ row.symlink ? ' → ' + row.target : '' }}</span>
             </el-button>
-            <small v-if="row.protected" class="cell-subtext">受保护</small>
           </template>
         </el-table-column>
         <el-table-column label="权限 / 所有者" min-width="170">
@@ -853,7 +887,7 @@ onUnmounted(() => {
       <p>默认保留 30 天，恢复时不会覆盖已有文件。</p>
       <el-button type="danger" @click="trashAction('empty')">清空回收站</el-button>
     </div>
-    <DataList :rows="trash" searchable>
+    <DataList state-key="Files-1" :rows="trash" searchable>
       <el-table-column prop="original" label="原路径" min-width="260" show-overflow-tooltip />
       <el-table-column label="删除时间" min-width="170">
         <template #default="{ row }">{{ date(row.deletedAt) }}</template>
@@ -871,6 +905,7 @@ onUnmounted(() => {
   </el-dialog>
   <el-dialog v-model="resultOpen" :title="resultTitle" width="85%">
     <DataList
+      state-key="Files-2"
       v-if="taskResult?.items?.length && typeof taskResult.items[0] === 'object'"
       :rows="taskResult.items"
     >

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { usePageState } from '../composables/pageState'
 import Resources from './Resources.vue'
-const tab = ref('backup')
+const tab = usePageState('tab', 'backup')
 </script>
 <template>
   <div class="notice">

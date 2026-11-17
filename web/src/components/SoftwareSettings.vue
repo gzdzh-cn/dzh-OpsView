@@ -636,6 +636,7 @@ const documentGlobal = window.document
           />
           <pre v-if="metrics.content">{{ metrics.content }}</pre>
           <DataList
+            state-key="SoftwareSettings-1"
             v-if="metrics.metrics"
             :rows="Object.entries(metrics.metrics).map(([name, value]) => ({ name, value }))"
             max-height="480"
@@ -648,7 +649,7 @@ const documentGlobal = window.document
         </template>
         <template v-else-if="page === 'extensions'">
           <p class="form-help">扩展绑定当前 PHP 版本。内置扩展以实际运行时结果为准。</p>
-          <DataList :rows="extensions">
+          <DataList state-key="SoftwareSettings-2" :rows="extensions">
             <el-table-column prop="name" label="扩展" width="140" />
             <el-table-column prop="status" label="状态" width="110" />
             <el-table-column prop="reason" label="说明" />

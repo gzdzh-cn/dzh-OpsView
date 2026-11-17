@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { usePageQuery } from '../composables/pageQuery'
+import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePanel } from '../stores/panel'
 import { api, post, put, action, errorText, type Config } from '../lib/api'
@@ -8,12 +9,10 @@ import ListPanel from './ListPanel.vue'
 import CodeEditor from './CodeEditor.vue'
 const props = defineProps<{ category: 'application' | 'operations' }>()
 const panel = usePanel(),
-  plugins = ref<any[]>([]),
   selected = ref<any>(),
   pluginForm = ref<Config>({}),
   pluginOpen = ref(false),
   busy = ref(false),
-  error = ref(''),
   details = ref<any>(),
   importOpen = ref(false),
   importText = ref('')
@@ -22,15 +21,13 @@ const rows = computed(() =>
     props.category === 'application' ? p.type === 'application' : p.type !== 'application',
   ),
 )
-async function load() {
-  error.value = ''
-  try {
-    plugins.value = await api('/plugins')
-  } catch (e) {
-    error.value = errorText(e)
-  }
-}
-onMounted(load)
+const {
+  data: plugins,
+  error,
+  busy: loading,
+  load: loadPlugins,
+} = usePageQuery<any[]>('/plugins', [], 300000)
+const load = () => loadPlugins(true)
 function openPlugin(p: any) {
   selected.value = p
   pluginForm.value = { ...(installed(p)?.config.values || {}) }
@@ -64,7 +61,7 @@ async function installPlugin() {
       : await post('/resources', { kind: 'plugin', name: p.id, config })
     await action(resource.id, 'install')
     pluginOpen.value = false
-    await panel.refresh()
+    await panel.refresh(['resources', 'tasks', 'catalog'])
     ElMessage.success('已提交插件安装任务')
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
@@ -87,7 +84,7 @@ async function removePlugin(p: any) {
         await api('/resources/' + resource.id, { method: 'DELETE' })
       }
     } else await action(resource.id, 'uninstall')
-    await panel.refresh()
+    await panel.refresh(['resources', 'tasks', 'catalog'])
     ElMessage.success('已提交卸载任务')
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
@@ -98,7 +95,7 @@ async function checkPlugin(p: any) {
   if (!resource) return
   try {
     await action(resource.id, 'check')
-    await panel.refresh()
+    await panel.refresh(['resources', 'tasks', 'catalog'])
     ElMessage.success('插件检查已提交，结果显示在任务中心与资源配置中')
   } catch (e) {
     ElMessage.error(errorText(e))
@@ -113,7 +110,7 @@ async function importPackage() {
     const resource = await post('/plugins/import', { envelope: JSON.parse(importText.value) })
     await action(resource.id, 'install')
     importOpen.value = false
-    await panel.refresh()
+    await panel.refresh(['resources', 'tasks', 'catalog'])
     await load()
   } catch (e) {
     ElMessage.error(errorText(e))
@@ -121,17 +118,12 @@ async function importPackage() {
 }
 </script>
 <template>
-  <ListPanel
-    :title="category === 'application' ? '容器应用模板' : '插件市场'"
-    :count="rows.length"
-    :error="error"
-    @retry="load"
-  >
+  <ListPanel :count="rows.length" :busy="loading" :error="error" @retry="load">
     <template #actions>
       <el-button @click="load">刷新</el-button>
       <el-button @click="importOpen = true">导入签名插件</el-button>
     </template>
-    <DataList :rows="rows" searchable>
+    <DataList state-key="PluginMarket-1" :rows="rows" searchable>
       <el-table-column prop="name" label="名称" width="170" />
       <el-table-column label="简介" min-width="250">
         <template #default="{ row }">

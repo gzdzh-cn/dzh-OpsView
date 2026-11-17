@@ -1,0 +1,340 @@
+/* Management-only density. Login deliberately keeps its own layout. */
+.app-shell {
+  --el-component-size: 32px;
+  --el-font-size-base: 13px;
+}
+.app-shell .main-content {
+  padding: 16px;
+  max-width: none;
+  width: 100%;
+  min-width: 0;
+}
+.app-shell .main-shell {
+  min-width: 0;
+}
+.app-shell .topbar {
+  height: 48px;
+  padding: 0 16px;
+  justify-content: flex-end;
+}
+.app-shell .topbar-right {
+  gap: 16px;
+}
+.app-shell .sidebar .brand {
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+.app-shell .sidebar nav a {
+  min-height: 40px;
+}
+.sidebar-account {
+  display: block;
+  width: 100%;
+}
+.account-button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.account-button span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell .sidebar-server {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.app-shell .page-content {
+  min-width: 0;
+}
+.app-shell .page-content > .el-tabs {
+  margin-bottom: 12px;
+}
+.app-shell .el-tabs__header {
+  margin-bottom: 0;
+}
+.app-shell .el-tabs__item {
+  height: 36px;
+}
+.app-shell .page-toolbar,
+.app-shell .list-panel .page-toolbar {
+  padding: 8px 12px;
+  min-height: 48px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-shell .page-toolbar-left,
+.app-shell .page-toolbar-right {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-shell .page-toolbar-right {
+  margin-left: auto;
+}
+.app-shell .page-toolbar .el-input {
+  min-width: 160px;
+}
+.app-shell .data-list .el-table th.el-table__cell,
+.app-shell .data-list .el-table td.el-table__cell {
+  padding: 8px 0;
+}
+.app-shell .data-list .el-table .cell {
+  padding: 0 12px;
+  line-height: 24px;
+}
+.app-shell .data-list .el-table {
+  font-size: 13px;
+}
+.app-shell .cell-subtext {
+  margin-top: 0;
+  font-size: 11px;
+}
+.app-shell .row-actions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-shell .row-actions button {
+  font-size: 12px;
+  min-height: 24px;
+}
+.app-shell .list-pagination {
+  padding: 8px 12px;
+}
+.app-shell .list-filter {
+  padding: 8px 12px;
+}
+.app-shell .surface:has(> .page-toolbar):has(> .data-list > .list-filter) {
+  display: flex;
+  flex-wrap: wrap;
+}
+.app-shell .surface:has(> .page-toolbar) > .data-list {
+  flex-basis: 100%;
+}
+.app-shell .notice,
+.app-shell .page-alert,
+.app-shell .development-banner {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.app-shell .development-banner .muted {
+  display: none;
+}
+.app-shell .metrics-grid,
+.app-shell .dashboard-middle,
+.app-shell .dashboard-bottom,
+.app-shell .resource-shortcuts,
+.app-shell .system-grid {
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.app-shell .metric-card,
+.app-shell .chart-panel,
+.app-shell .quick-panel,
+.app-shell .health-panel,
+.app-shell .system-detail {
+  padding: 12px;
+}
+.app-shell .metric-value {
+  margin: 8px 0;
+  font-size: 28px;
+}
+.app-shell .metric-meta {
+  margin-top: 8px;
+}
+.app-shell .section-heading {
+  margin-bottom: 12px;
+  padding: 0;
+}
+.app-shell .recent-tasks > .section-heading {
+  padding: 12px 12px 0;
+}
+.app-shell .resource-chart {
+  height: 220px;
+}
+.app-shell .quick-action {
+  padding: 10px 0;
+}
+.app-shell .quick-action small,
+.app-shell .section-caption {
+  display: none;
+}
+.app-shell .resource-shortcut {
+  padding: 12px;
+}
+.app-shell .empty-page,
+.app-shell .compact-empty {
+  padding: 24px 12px;
+  min-height: 120px;
+}
+.app-shell .empty-page .empty-symbol,
+.app-shell .compact-empty .empty-symbol {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 8px;
+}
+.app-shell .health-summary {
+  padding: 12px 0;
+}
+.app-shell .health-summary p:empty {
+  display: none;
+}
+.app-shell .engine-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  flex-wrap: wrap;
+}
+.app-shell .engine-message h3 {
+  font-size: 13px;
+  margin-right: auto;
+}
+.app-shell .main-content .nginx-required {
+  padding: 16px;
+}
+.app-shell .main-content .nginx-required h2 {
+  font-size: 14px;
+}
+.app-shell .main-content .site-toolbar {
+  margin-bottom: 12px;
+  gap: 8px;
+}
+.app-shell .main-content .settings-surface {
+  padding: 0 12px 12px;
+}
+.app-shell .main-content .setting-row {
+  min-height: 64px;
+  padding: 10px 0;
+  gap: 12px;
+}
+.app-shell .main-content .setting-row > div:first-child {
+  width: 280px;
+}
+.app-shell .main-content .setting-row p {
+  margin: 4px 0 0;
+}
+.app-shell .main-content .settings-surface h3 {
+  margin-top: 16px;
+}
+.app-shell .main-content .settings-actions {
+  margin: 12px 0;
+}
+.app-shell .software-logo {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+.app-shell .software-description {
+  margin: 0;
+}
+.app-shell .file-navigation,
+.app-shell .file-actions,
+.app-shell .file-toolbar-filter {
+  padding: 8px 12px;
+  gap: 8px;
+}
+.app-shell .file-navigation .el-input {
+  min-width: 120px;
+}
+.app-shell .file-navigation .el-breadcrumb {
+  min-width: 0;
+  overflow: auto;
+  flex: 1;
+  white-space: nowrap;
+}
+.app-shell .file-path-note {
+  padding: 0 12px 8px;
+}
+.app-shell .el-button + .el-button {
+  margin-left: 0;
+}
+.app-shell .system-diagnostics {
+  margin-top: 12px;
+}
+.app-shell .page-skeleton {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.navigation-progress {
+  position: fixed;
+  z-index: 3000;
+  height: 3px;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: linear-gradient(90deg, #39866b 0%, #9ed9bd 50%, #39866b 100%);
+}
+.app-shell .mobile-menu {
+  display: none;
+}
+@media (max-width: 700px) {
+  .app-shell .main-content {
+    padding: 12px;
+  }
+  .app-shell .main-content .setting-row > div:first-child {
+    width: 100%;
+  }
+  .app-shell .mobile-menu {
+    display: inline-flex;
+    float: left;
+    position: relative;
+    z-index: 3;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    margin-right: 8px;
+  }
+  .app-shell .page-content::after {
+    content: '';
+    display: block;
+    clear: both;
+  }
+  .app-shell .el-button:not(.is-link),
+  .app-shell .el-tabs__item,
+  .app-shell .row-actions button,
+  .app-shell .file-name,
+  .app-shell .account-button {
+    min-height: 44px;
+  }
+  .app-shell .page-toolbar-right {
+    flex: 1;
+  }
+  .app-shell .page-toolbar .el-input {
+    max-width: none;
+    flex: 1;
+  }
+  .app-shell .file-navigation .el-input {
+    flex-basis: 55%;
+  }
+  .app-shell .list-pagination {
+    justify-content: flex-start;
+  }
+}
+
+.app-shell .page-toolbar .list-filter {
+  padding: 0;
+  border: 0;
+  flex: 1;
+  min-width: 160px;
+}
+.app-shell .page-toolbar:has(.list-filter) .page-toolbar-left {
+  flex: 1;
+}
+
+@media (min-width: 701px) {
+  .app-shell .page-toolbar-right {
+    flex-wrap: nowrap;
+  }
+  .app-shell .page-toolbar .el-input {
+    width: 220px;
+    flex: 0 1 220px;
+  }
+}

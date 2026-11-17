@@ -1,28 +1,42 @@
 <script setup lang="ts">
 import PluginMarket from '../components/PluginMarket.vue'
 import DataList from '../components/DataList.vue'
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed } from 'vue'
+import { usePageState } from '../composables/pageState'
+import { usePageQuery } from '../composables/pageQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Box, RefreshRight, Plus } from '@element-plus/icons-vue'
-import { api, post, errorText, size } from '../lib/api'
+import { post, errorText, size } from '../lib/api'
 import { usePanel } from '../stores/panel'
 import Resources from './Resources.vue'
-const engine = ref<any>(),
-  engineBusy = ref(false)
+const tab = usePageState('tab', 'containers')
+const {
+  data: engine,
+  busy: engineBusy,
+  error: engineError,
+  load: checkEngine,
+} = usePageQuery<any>('/docker/status', null, 30000)
+const {
+  data: result,
+  busy,
+  error,
+  load: loadItems,
+} = usePageQuery<any>(
+  () =>
+    engine.value?.status === 'ready' && !['compose', 'templates'].includes(tab.value)
+      ? '/docker/' + tab.value
+      : '',
+  {},
+)
+const items = computed(() =>
+  Array.isArray(result.value.items) ? result.value.items : result.value.items?.Volumes || [],
+)
 async function inspect() {
-  engineBusy.value = true
-  error.value = ''
-  try {
-    engine.value = await api('/docker/status')
-    if (engine.value.status === 'ready') await load()
-  } catch (e) {
-    error.value = errorText(e)
-    engine.value = { status: 'error', reason: error.value }
-    items.value = []
-  } finally {
-    engineBusy.value = false
-  }
+  const ready = engine.value?.status === 'ready'
+  await checkEngine(true)
+  if (ready) await loadItems(true)
 }
+const load = () => loadItems(true)
 async function startEngine() {
   try {
     await post('/system/actions/start-docker')
@@ -32,28 +46,10 @@ async function startEngine() {
     ElMessage.error(errorText(e))
   }
 }
-const tab = ref('containers'),
-  items = ref<any[]>([]),
-  busy = ref(false),
-  error = ref(''),
-  content = ref(''),
+const content = ref(''),
   showLog = ref(false),
   logTitle = ref('容器日志'),
   panel = usePanel()
-async function load() {
-  if (['compose', 'templates'].includes(tab.value) || engine.value?.status !== 'ready') return
-  busy.value = true
-  error.value = ''
-  try {
-    const data = await api('/docker/' + tab.value)
-    items.value = Array.isArray(data.items) ? data.items : data.items?.Volumes || []
-  } catch (e) {
-    error.value = errorText(e)
-    items.value = []
-  } finally {
-    busy.value = false
-  }
-}
 async function run(id: string, action: string) {
   try {
     if (!['logs', 'stats'].includes(action))
@@ -132,17 +128,18 @@ async function install() {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
   }
 }
-watch(tab, load)
-onMounted(inspect)
 </script>
 <template>
-  <div class="notice" v-if="engine?.status === 'ready'">
-    Docker {{ engine.engineVersion }} · API {{ engine.apiVersion }} · Compose
-    {{ engine.composeAvailable ? engine.composeVersion : '未安装' }}
-    <el-button link @click="inspect">重新检测</el-button>
-  </div>
-  <section v-if="!engine || engine.status !== 'ready'" class="surface empty-page">
-    <h3>{{ engine?.reason || '正在检测 Docker 引擎…' }}</h3>
+  <el-alert
+    v-if="engineError && engine?.status === 'ready'"
+    :title="engineError"
+    type="error"
+    :closable="false"
+  >
+    <el-button link @click="inspect">重试检测</el-button>
+  </el-alert>
+  <section v-if="!engine || engine.status !== 'ready'" class="surface engine-message">
+    <h3>{{ engineError || engine?.reason || '正在检测 Docker 引擎…' }}</h3>
     <p v-if="engine?.status === 'incompatible'">面板支持 API 1.41–1.47，请手动配置兼容引擎。</p>
     <el-button :loading="engineBusy" @click="inspect">重新检测</el-button>
     <el-button v-if="engine?.status === 'not_installed'" type="primary" @click="install">
@@ -168,13 +165,16 @@ onMounted(inspect)
   >
     <div class="page-toolbar">
       <div class="page-toolbar-left">
-        <h3>
-          {{ { containers: '容器', images: '镜像', networks: '网络', volumes: '数据卷' }[tab] }}
-        </h3>
         <span class="count-badge">{{ items.length }}</span>
       </div>
       <div class="page-toolbar-right">
-        <el-button :icon="RefreshRight" :loading="busy" @click="load">刷新</el-button>
+        <el-button
+          :icon="RefreshRight"
+          :loading="busy"
+          aria-label="刷新 Docker 列表"
+          title="刷新"
+          @click="load"
+        />
         <el-button
           v-if="tab !== 'containers'"
           :icon="Plus"
@@ -185,7 +185,12 @@ onMounted(inspect)
       </div>
     </div>
     <div v-if="error" class="notice warn" style="margin: 0 20px 20px">{{ error }}</div>
-    <DataList v-if="items.length" :rows="items">
+    <DataList
+      :key="'Docker-1' + ':' + tab"
+      :state-key="'Docker-1' + ':' + tab"
+      v-if="items.length"
+      :rows="items"
+    >
       <el-table-column label="名称 / ID" min-width="200">
         <template #default="{ row }">
           <span class="task-operation">
