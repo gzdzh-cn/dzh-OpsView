@@ -230,7 +230,7 @@ func (e *Engine) load(id string) (model.Resource, error) {
 	}
 	b, err := os.ReadFile(filepath.Join(e.Root, "state", id+".json"))
 	if err != nil {
-		return r, errors.New("执行器未登记此资源，请先安装或应用配置")
+		return r, fmt.Errorf("执行器未登记此资源，请先安装或应用配置：%w", err)
 	}
 	if e.Vault == nil {
 		return r, errors.New("执行器密钥尚未初始化")

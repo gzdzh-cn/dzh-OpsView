@@ -163,8 +163,19 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 		return result, nil
 	}
 	var err error
+	requested := r
 	r, err = e.load(r.ID)
 	if err != nil {
+		if action == "uninstall" && errors.Is(err, os.ErrNotExist) {
+			// Preflight failures have a reserved version but no executor state.
+			// Release only the service lifecycle; retained files stay untouched.
+			unit := filepath.Join("/etc/systemd/system", serviceName(requested))
+			if _, unitErr := os.Lstat(unit); !os.IsNotExist(unitErr) {
+				return nil, errors.New("存在未登记的服务文件，请先诊断现场后清理")
+			}
+			log("此安装尚未创建服务，保留现有文件；可在面板清理记录后重试")
+			return model.Config{}, nil
+		}
 		return nil, err
 	}
 	if action == "uninstall" {

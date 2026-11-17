@@ -621,5 +621,9 @@ test('server file page navigates root, shows revisions, recovers conflicts and s
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
     false,
   )
+  await page.locator('.el-table__body-wrapper .el-scrollbar__wrap').evaluate((el) => {
+    el.scrollLeft = 0
+  })
+  await expect(page.getByRole('button', { name: '.env', exact: true })).toBeInViewport()
   await page.screenshot({ path: '../.opsview/screenshots/files-mobile.png', fullPage: true })
 })

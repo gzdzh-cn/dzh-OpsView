@@ -68,3 +68,20 @@ func TestArchiveRejectsExternalSymlink(t *testing.T) {
 		t.Fatal("archived external symlink")
 	}
 }
+
+func TestPreflightFailedInstanceCanReleaseRetainedRecord(t *testing.T) {
+	e, _ := fileFixture(t)
+	r := model.Resource{ID: "preflight12345", Kind: "instance", Config: model.Config{"software": "redis", "version": "8.10.3", "mode": "native"}}
+	if _, err := e.instance(context.Background(), model.Operation{Name: "instance.uninstall", Resource: r}, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(e.Root, "state"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(e.Root, "state", r.ID+".json"), []byte("corrupt"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.instance(context.Background(), model.Operation{Name: "instance.uninstall", Resource: r}, func(string) {}); err == nil {
+		t.Fatal("corrupt state silently abandoned")
+	}
+}
