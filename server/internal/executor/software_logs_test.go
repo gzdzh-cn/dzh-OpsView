@@ -207,6 +207,14 @@ func TestNginxLogReopenFailureRestoresOriginal(t *testing.T) {
 	if !os.SameFile(before, after) || before.Mode().Perm() != after.Mode().Perm() || !strings.Contains(string(content), "original") {
 		t.Fatal("original file was not restored")
 	}
+	archives := e.softwareLogArchives(r, r.ID, "error")
+	if len(archives) != 1 {
+		t.Fatal("replacement inode was not retained on rollback", archives)
+	}
+	archived, err := os.Stat(filepath.Join(e.logArchiveDir(r, r.ID, "error"), archives[0].String("name")))
+	if err != nil || archived.Mode().Perm() != 0600 {
+		t.Fatal("partial reopen log archive is not private", err)
+	}
 }
 
 func TestPHPLogScopeAndJournalFilters(t *testing.T) {

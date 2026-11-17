@@ -473,18 +473,18 @@ func (e *Engine) manageSoftwareLog(ctx context.Context, r model.Resource, p mode
 	// Keep the inode for writers until Nginx reopens it. Never copytruncate.
 	var newInfo os.FileInfo
 	rollback := func(cause error) (model.Config, error) {
+		var partialErr error
 		if current, er := os.Lstat(path); er == nil {
 			if newInfo == nil || !os.SameFile(newInfo, current) {
 				return nil, errors.Join(cause, errors.New("日志路径已被外部程序替换；归档已保留，请手工核对"))
 			}
-			// A partially successful reopen can already have written new records. Keep them.
-			if current.Size() > 0 {
-				if er = os.Rename(path, filepath.Join(dir, time.Now().UTC().Format("20060102T150405.000000000Z")+"-"+security.ID()+".log")); er != nil {
-					return nil, errors.Join(cause, er)
-				}
-			} else if er = os.Remove(path); er != nil {
+			// Even a file that is empty now may receive a concurrent write before
+			// workers reopen it. Always retain the replacement inode on rollback.
+			partial := filepath.Join(dir, time.Now().UTC().Format("20060102T150405.000000000Z")+"-"+security.ID()+".log")
+			if er = os.Rename(path, partial); er != nil {
 				return nil, errors.Join(cause, er)
 			}
+			partialErr = os.Chmod(partial, 0600)
 		}
 		restoreErr := os.Rename(archive, path)
 		if active && restoreErr == nil {
@@ -492,7 +492,7 @@ func (e *Engine) manageSoftwareLog(ctx context.Context, r model.Resource, p mode
 			defer cancel()
 			restoreErr = e.reopenNginxLog(recovery, r)
 		}
-		return nil, errors.Join(cause, restoreErr)
+		return nil, errors.Join(cause, restoreErr, partialErr)
 	}
 	created, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, st.Mode().Perm())
 	if err != nil {
