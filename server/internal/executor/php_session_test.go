@@ -44,6 +44,9 @@ func TestMemcachedSessionSettingsAndPrivateNamespace(t *testing.T) {
 	if prefix, isolated := phpSessionNamespace(sitePHPIni(legacy, "/managed/site"), "redis", "/managed/site/sessions", "site"); prefix != "ov.site." || !isolated {
 		t.Fatal("managed site prefix not detected")
 	}
+	if prefix, isolated := phpSessionNamespace("session.save_path=private-connection-string", "custom", "/managed/site/sessions", "site"); prefix != "" || isolated {
+		t.Fatal("unknown handler exposed its opaque connection string")
+	}
 	old := "[Session]\nmemcached.sess_sasl_password = \"keep-this-password\"\n"
 	p := model.Config{"memcachedPort": 11212, "saslEnabled": true, "saslUsername": "local-user", "saslPassword": "••••••••"}
 	settings, err := memcachedSessionSettings(p, old, "site-one")

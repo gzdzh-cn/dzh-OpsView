@@ -255,7 +255,10 @@ func (a *App) runNext(ctx context.Context) {
 		}
 	}
 	r, er := a.Store.Resource(op.Resource.ID)
-	if er == nil && op.Name != "instance.rotate-log" && op.Name != "instance.delete-log-archive" {
+	// Session changes persist only their explicitly linked instance/site. Cleanup
+	// and site-scoped changes must not mark the whole PHP version running or
+	// replace its configuration revision with a site's revision.
+	if er == nil && op.Name != "instance.rotate-log" && op.Name != "instance.delete-log-archive" && op.Name != "instance.session" {
 		if strings.HasSuffix(op.Name, ".delete") || strings.HasSuffix(op.Name, ".uninstall") {
 			er = a.Store.Delete(r.ID)
 		} else {

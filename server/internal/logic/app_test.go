@@ -13,8 +13,9 @@ import (
 )
 
 type testExecutor struct {
-	calls int
-	fail  bool
+	calls  int
+	fail   bool
+	result model.Config
 }
 
 func (e *testExecutor) Execute(_ context.Context, op model.Operation, log func(string)) (model.Config, error) {
@@ -22,6 +23,9 @@ func (e *testExecutor) Execute(_ context.Context, op model.Operation, log func(s
 	log("configured password=" + op.Resource.Config.String("password"))
 	if e.fail {
 		return nil, errors.New("failure with " + op.Resource.Config.String("password"))
+	}
+	if e.result != nil {
+		return e.result, nil
 	}
 	return model.Config{"workingDirectory": "/managed/apps/test"}, nil
 }
@@ -191,5 +195,68 @@ func TestLogMaintenancePreservesInstanceStateAndMetadata(t *testing.T) {
 		if err != nil || current.Status != "stopped" || current.Revision != r.Revision || current.Config.String("workingDirectory") != "" {
 			t.Fatal("log maintenance changed instance state", current, err)
 		}
+	}
+}
+
+func TestSessionTasksUpdateOnlyTheirLinkedScope(t *testing.T) {
+	for _, scope := range []string{"site", "default", "clean"} {
+		t.Run(scope, func(t *testing.T) {
+			store, err := dao.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.DB.Close()
+			inst := model.Resource{Kind: "instance", Name: "paused-php", Config: model.Config{"software": "php", "configurationRevision": "version-revision"}}
+			if err = store.Create(&inst); err != nil {
+				t.Fatal(err)
+			}
+			inst.Status = "stopped"
+			if err = store.Update(&inst); err != nil {
+				t.Fatal(err)
+			}
+			site := model.Resource{Kind: "site", Name: "php-site", Config: model.Config{"phpInstanceId": inst.ID}}
+			if err = store.Create(&site); err != nil {
+				t.Fatal(err)
+			}
+			data := model.Config{"handler": "memcached", "configurationRevision": "site-revision", "removed": 1}
+			params := model.Config{"operation": "save", "confirmed": true}
+			switch scope {
+			case "site":
+				params["siteId"] = site.ID
+				site.Config["sessionMemcachedPassword"] = "private-session-password"
+				data["linkedResources"] = []model.Resource{site}
+			case "default":
+				inst.Config["sessionMemcachedPassword"] = "private-session-password"
+				data["linkedResources"] = []model.Resource{inst}
+			case "clean":
+				params["operation"] = "clean"
+			}
+			app := &App{Store: store, Executor: &testExecutor{result: data}}
+			if _, err = app.Queue(inst, "session", params); err != nil {
+				t.Fatal(err)
+			}
+			app.runNext(context.Background())
+			current, err := store.Resource(inst.ID)
+			if err != nil || current.Status != "stopped" || current.Config.String("configurationRevision") != "version-revision" || current.Config.String("handler") != "" {
+				t.Fatal("session task changed unrelated instance state", current, err)
+			}
+			expectedRevision := inst.Revision
+			if scope == "default" {
+				expectedRevision++
+			}
+			if current.Revision != expectedRevision {
+				t.Fatal("unexpected version revision update", current.Revision, expectedRevision)
+			}
+			if scope == "site" {
+				updated, _ := store.Resource(site.ID)
+				if updated.Config.String("sessionMemcachedPassword") != "private-session-password" || updated.Revision != site.Revision+1 {
+					t.Fatal("site dependency not persisted")
+				}
+			}
+			tasks, _ := store.Tasks()
+			if len(tasks) != 1 || tasks[0].State != "succeeded" {
+				t.Fatal(tasks)
+			}
+		})
 	}
 }

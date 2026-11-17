@@ -204,6 +204,9 @@ func (e *Engine) phpSession(ctx context.Context, r model.Resource, p model.Confi
 }
 
 func phpSessionNamespace(text, handler, directory, id string) (string, bool) {
+	if handler != "files" && handler != "redis" && handler != "memcached" {
+		return "", false
+	}
 	value := phpIniValue(text, "session.save_path", "")
 	if handler == "files" {
 		return value, value == directory
