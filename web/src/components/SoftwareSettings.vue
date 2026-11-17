@@ -29,7 +29,8 @@ const diffVisible = ref(false),
 const targetVersion = ref(''),
   scopeSite = ref(''),
   session = ref<Config>({ handler: 'files' }),
-  sessionRedis = ref('')
+  sessionRedis = ref(''),
+  sessionMemcached = ref({ port: 11211, saslEnabled: false, saslUsername: '', saslPassword: '' })
 const memoryBudget = ref<Config>({}),
   memoryTier = ref(1024)
 const logResult = ref<Config>({}),
@@ -263,6 +264,13 @@ async function load() {
     if (page.value === 'session') {
       session.value = await api(url('session') + '?siteId=' + scopeSite.value)
       sessionRedis.value = session.value.instanceId || ''
+      sessionMemcached.value = {
+        port: 11211,
+        saslEnabled: false,
+        saslUsername: '',
+        saslPassword: '',
+        ...session.value.memcached,
+      }
     }
     if (page.value === 'metrics') metrics.value = await api(url('metrics'))
     if (page.value === 'performance' && sw.value === 'mysql') await estimateMemory()
@@ -412,12 +420,23 @@ async function moveStorage() {
 }
 async function saveSession() {
   try {
-    await ElMessageBox.confirm('切换会话存储可能使现有用户退出登录，确认应用？', 'Session 配置')
+    await ElMessageBox.confirm('切换会话存储可能使现有用户退出登录，确认应用？', 'Session 配置', {
+      confirmButtonText: '确认保存',
+      cancelButtonText: '取消',
+    })
     await submit('session', {
       operation: 'save',
       siteId: scopeSite.value,
       handler: session.value.handler,
       instanceId: sessionRedis.value,
+      ...(session.value.handler === 'memcached'
+        ? {
+            memcachedPort: sessionMemcached.value.port,
+            saslEnabled: sessionMemcached.value.saslEnabled,
+            saslUsername: sessionMemcached.value.saslUsername,
+            saslPassword: sessionMemcached.value.saslPassword,
+          }
+        : {}),
       baseRevision: session.value.revision,
       confirmed: true,
     })
@@ -777,13 +796,14 @@ const documentGlobal = window.document
         <template v-else-if="page === 'session'">
           <h3>Session 配置</h3>
           <p class="form-help">
-            切换可能使已有会话失效。只使用已验证的本机 Redis 连接；凭据保存在受限配置文件中。
+            切换可能使已有会话失效。保存前验证扩展与实际会话读写，失败恢复原配置。版本默认配置由新网站继承。
           </p>
           <el-form label-width="150px">
             <el-form-item label="存储方式">
-              <el-select v-model="session.handler">
+              <el-select v-model="session.handler" aria-label="Session 存储方式">
                 <el-option label="文件" value="files" />
                 <el-option label="Redis" value="redis" />
+                <el-option label="memcached" value="memcached" />
               </el-select>
             </el-form-item>
             <el-form-item v-if="session.handler === 'redis'" label="Redis 实例">
@@ -798,8 +818,56 @@ const documentGlobal = window.document
                 />
               </el-select>
             </el-form-item>
+            <template v-if="session.handler === 'memcached'">
+              <el-form-item label="本机端口">
+                <el-input-number
+                  v-model="sessionMemcached.port"
+                  :min="1"
+                  :max="65535"
+                  aria-label="memcached 端口"
+                />
+              </el-form-item>
+              <el-form-item label="SASL 认证">
+                <el-switch
+                  v-model="sessionMemcached.saslEnabled"
+                  aria-label="memcached SASL 认证"
+                />
+              </el-form-item>
+              <template v-if="sessionMemcached.saslEnabled">
+                <el-form-item label="SASL 用户名">
+                  <el-input
+                    v-model="sessionMemcached.saslUsername"
+                    autocomplete="off"
+                    aria-label="memcached SASL 用户名"
+                  />
+                </el-form-item>
+                <el-form-item label="SASL 密码">
+                  <el-input
+                    v-model="sessionMemcached.saslPassword"
+                    type="password"
+                    show-password
+                    autocomplete="new-password"
+                    aria-label="memcached SASL 密码"
+                  />
+                </el-form-item>
+              </template>
+              <p class="form-help">
+                连接已安装的本机 127.0.0.1 服务，需要 PHP memcached 扩展；使用二进制协议。 SASL
+                需服务端和扩展均支持。密码占位符保留已有凭据，关闭认证会清除凭据。
+              </p>
+            </template>
           </el-form>
-          <el-button type="primary" @click="saveSession">验证连接并保存</el-button>
+          <p class="form-help">
+            当前目录或前缀：{{ session.namespace || '存储默认值' }}。
+            {{
+              session.isolated
+                ? '已使用该范围独立目录或前缀。'
+                : '显式保存后使用该范围独立目录或前缀。'
+            }}
+          </p>
+          <el-button type="primary" :disabled="loading || !editable" @click="saveSession">
+            验证连接并保存
+          </el-button>
           <p>超过 24 小时未更新的文件：{{ session.expiredFiles || 0 }} 个</p>
           <el-button @click="cleanSession">清理过期会话</el-button>
         </template>
@@ -1012,12 +1080,16 @@ const documentGlobal = window.document
 .software-settings-layout {
   display: grid;
   grid-template-columns: 170px minmax(0, 1fr);
-  min-height: 560px;
+  grid-template-rows: minmax(0, 1fr);
+  height: min(720px, calc(100dvh - 180px));
+  min-height: 0;
 }
 .software-settings-layout aside {
   background: #f5f7fa;
   padding: 12px 0;
   border-right: 1px solid #e8edf2;
+  min-height: 0;
+  overflow: auto;
 }
 .software-settings-layout aside button {
   display: block;
@@ -1037,7 +1109,7 @@ const documentGlobal = window.document
 }
 .software-settings-content {
   padding: 0 26px 24px;
-  max-height: 75vh;
+  min-height: 0;
   overflow: auto;
 }
 .software-context {

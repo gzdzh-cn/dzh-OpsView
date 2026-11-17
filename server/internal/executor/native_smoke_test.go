@@ -127,6 +127,13 @@ func TestNativePackageSmoke(t *testing.T) {
 		}
 		if realSystemd {
 			testPHPIndependentSites(t, e, r)
+			if err = run(ctx, func(s string) { t.Log(s) }, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "install", "-y", "--no-install-recommends", "memcached", "sasl2-bin", "libsasl2-modules"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = e.phpExtension(ctx, r, model.Config{"name": "memcached", "operation": "install"}, true, func(s string) { t.Log(s) }); err != nil {
+				t.Fatal("memcached extension recipe failed", err)
+			}
+			testPHPMemcachedSessions(t, e, r)
 		}
 	case "nginx":
 		probe := r

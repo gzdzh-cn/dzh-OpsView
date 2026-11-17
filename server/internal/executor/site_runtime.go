@@ -63,6 +63,10 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 	if err != nil {
 		return err
 	}
+	// Register inherited credentials for log redaction without exposing the ini file.
+	if phpIniValue(string(ini), "session.save_handler", "files") == "memcached" {
+		r.Config["sessionMemcachedPassword"] = phpIniValue(string(ini), "memcached.sess_sasl_password", "")
+	}
 	if v, ok := r.Config["phpOverrides"]; ok {
 		raw, _ := json.Marshal(v)
 		values := map[string]string{}

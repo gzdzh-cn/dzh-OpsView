@@ -108,14 +108,18 @@ func (e *Engine) phpExtension(ctx context.Context, r model.Resource, p model.Con
 		if err = build(base + "/runtime/bin/phpize"); err != nil {
 			return nil, err
 		}
-		if err = build("./configure", "--with-php-config="+base+"/runtime/bin/php-config"); err != nil {
+		configure := []string{"./configure", "--with-php-config=" + base + "/runtime/bin/php-config"}
+		if name == "memcached" {
+			configure = append(configure, "--enable-memcached-session", "--enable-memcached-sasl", "--disable-memcached-igbinary", "--disable-memcached-msgpack")
+		}
+		if err = build(configure...); err != nil {
 			return nil, err
 		}
 		if err = build("make", "-j2"); err != nil {
 			return nil, err
 		}
 		so := filepath.Join(stage, "modules", name+".so")
-		if err = regularManagedFile(so, stage); err != nil {
+		if err = regularManagedLimit(so, stage, 64<<20); err != nil {
 			return nil, err
 		}
 		b, er := os.ReadFile(so)
@@ -127,6 +131,29 @@ func (e *Engine) phpExtension(ctx context.Context, r model.Resource, p model.Con
 		}
 		if err = security.WriteAtomic(library, b, 0644); err != nil {
 			return nil, err
+		}
+	}
+	// Builds do not delay independent website expiry; lock only the config handoff.
+	e.siteMu.Lock()
+	defer e.siteMu.Unlock()
+	if (operation == "disable" || operation == "uninstall") && (name == "redis" || name == "memcached") {
+		paths := []string{base + "/conf/php.ini"}
+		for _, site := range e.states() {
+			if site.Kind == "site" && site.Config.String("phpInstanceId") == r.ID {
+				paths = append(paths, filepath.Join(e.Root, "sites", site.ID, "conf", "php.ini"))
+			}
+		}
+		for _, path := range paths {
+			if err := regularManagedFile(path, filepath.Dir(path)); err != nil {
+				return nil, errors.New("无法核对关联站点的会话配置，请先修复")
+			}
+			ini, err := os.ReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			if phpIniValue(string(ini), "session.save_handler", "files") == name {
+				return nil, errors.New("扩展仍被版本默认配置或关联网站的 Session 使用，请先切换存储方式")
+			}
 		}
 	}
 	if operation == "install" || operation == "enable" {

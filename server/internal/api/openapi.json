@@ -2349,8 +2349,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true
+                  "$ref": "#/components/schemas/PHPSession"
                 }
               }
             }
@@ -2537,6 +2536,80 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/resources/{id}/actions/session": {
+      "post": {
+        "operationId": "post_resources_id_actions_session",
+        "summary": "验证并修改所选 PHP 范围的 Session，或清理过期文件",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PHPSessionSave"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PHPSessionClean"
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/instances/{id}/validate": {
@@ -3545,6 +3618,154 @@
         },
         "required": [
           "content"
+        ]
+      },
+      "PHPSession": {
+        "type": "object",
+        "properties": {
+          "handler": {
+            "type": "string",
+            "enum": [
+              "files",
+              "redis",
+              "memcached"
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "expiredFiles": {
+            "type": "integer"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "isolated": {
+            "type": "boolean",
+            "description": "当前目录或前缀是否为该范围独立值，旧配置不会自动替换"
+          },
+          "memcached": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "saslEnabled": {
+                "type": "boolean"
+              },
+              "saslUsername": {
+                "type": "string"
+              },
+              "saslPassword": {
+                "type": "string",
+                "description": "已有密码仅返回遮盖占位符，保存时原样提交可保留凭据"
+              }
+            },
+            "required": [
+              "port",
+              "saslEnabled",
+              "saslUsername",
+              "saslPassword"
+            ]
+          }
+        },
+        "required": [
+          "handler",
+          "revision",
+          "expiredFiles",
+          "directory",
+          "instanceId",
+          "namespace",
+          "isolated",
+          "memcached"
+        ]
+      },
+      "PHPSessionSave": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "save"
+            ]
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "handler": {
+            "type": "string",
+            "enum": [
+              "files",
+              "redis",
+              "memcached"
+            ]
+          },
+          "baseRevision": {
+            "type": "string"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "memcachedPort": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "仅连接本机 127.0.0.1，需已安装对应服务"
+          },
+          "saslEnabled": {
+            "type": "boolean"
+          },
+          "saslUsername": {
+            "type": "string"
+          },
+          "saslPassword": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "operation",
+          "handler",
+          "baseRevision",
+          "confirmed"
+        ]
+      },
+      "PHPSessionClean": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "clean"
+            ]
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "confirmed"
         ]
       }
     },

@@ -395,3 +395,91 @@ test('software logs filter, download and confirm archive scope', async ({ page }
   await expect(dialog.locator('.service-log')).toContainText('current record')
   await page.screenshot({ path: '../.opsview/screenshots/software-logs.png', fullPage: true })
 })
+
+test('PHP Session memcached settings preserve masked credentials and confirm scope', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const php = {
+    ...nginxFixture,
+    id: 'php-session-fixture',
+    name: 'php-main',
+    config: { software: 'php', version: '8.4.27', mode: 'native' },
+  }
+  const site = {
+    ...nginxFixture,
+    id: 'php-session-site',
+    name: 'private-php-site',
+    kind: 'site',
+    config: { phpInstanceId: php.id },
+  }
+  let mutation: any
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [php, site] }))
+  await page.route(`**/api/v1/instances/${php.id}/settings`, (route) =>
+    route.fulfill({ json: { state: 'active', editable: true, associated: [site] } }),
+  )
+  await page.route(`**/api/v1/instances/${php.id}/session?*`, (route) => {
+    const scoped = new URL(route.request().url()).searchParams.get('siteId') === site.id
+    return route.fulfill({
+      json: {
+        handler: 'memcached',
+        revision: scoped ? 'site-session-revision' : 'default-session-revision',
+        expiredFiles: 0,
+        namespace: scoped ? 'ov.php-session-site.' : 'ov.php-session-fixture.',
+        memcached: {
+          port: 11212,
+          saslEnabled: true,
+          saslUsername: 'cache-user',
+          saslPassword: '••••••••',
+        },
+      },
+    })
+  })
+  await page.route(`**/api/v1/resources/${php.id}/actions/session`, (route) => {
+    mutation = route.request().postDataJSON()
+    return route.fulfill({ status: 202, json: { id: 'session-change-task' } })
+  })
+  await page.goto('/software')
+  await page
+    .locator('.software-list .el-table__body tr')
+    .filter({ hasText: 'PHP' })
+    .getByRole('button', { name: '设置', exact: true })
+    .click()
+  const dialog = page.locator('.software-settings')
+  await dialog.locator('aside').getByRole('button', { name: 'Session 配置', exact: true }).click()
+  await expect(dialog.getByRole('spinbutton', { name: 'memcached 端口' })).toHaveValue('11212')
+  await expect(dialog.getByRole('textbox', { name: 'memcached SASL 用户名' })).toHaveValue(
+    'cache-user',
+  )
+  await expect(dialog.getByRole('textbox', { name: 'memcached SASL 密码' })).toHaveValue('••••••••')
+  await dialog.locator('.settings-toolbar .el-select').click()
+  await page.getByRole('option', { name: site.name, exact: true }).click()
+  await expect(dialog).toContainText('ov.php-session-site.')
+  await dialog.getByRole('button', { name: '验证连接并保存', exact: true }).click()
+  await page.locator('.el-message-box').getByRole('button', { name: '取消', exact: true }).click()
+  expect(mutation).toBeUndefined()
+  await dialog.getByRole('button', { name: '验证连接并保存', exact: true }).click()
+  await page
+    .locator('.el-message-box')
+    .getByRole('button', { name: '确认保存', exact: true })
+    .click()
+  await expect.poll(() => mutation?.handler).toBe('memcached')
+  expect(mutation).toMatchObject({
+    operation: 'save',
+    siteId: site.id,
+    baseRevision: 'site-session-revision',
+    memcachedPort: 11212,
+    saslEnabled: true,
+    saslUsername: 'cache-user',
+    saslPassword: '••••••••',
+    confirmed: true,
+  })
+  await expect(page.locator('.el-message-box')).toBeHidden()
+  const bounds = await dialog.boundingBox()
+  expect(bounds!.y).toBeGreaterThanOrEqual(0)
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(1000)
+  await page.screenshot({
+    path: '../.opsview/screenshots/php-session-memcached.png',
+    fullPage: true,
+  })
+})

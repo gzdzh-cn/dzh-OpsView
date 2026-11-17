@@ -687,6 +687,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/resources/{id}/actions/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 验证并修改所选 PHP 范围的 Session，或清理过期文件 */
+        post: operations["post_resources_id_actions_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instances/{id}/validate": {
         parameters: {
             query?: never;
@@ -956,6 +973,47 @@ export interface components {
                 size: number;
                 createdAt: string;
             }[];
+        };
+        PHPSession: {
+            /** @enum {string} */
+            handler: "files" | "redis" | "memcached";
+            revision: string;
+            expiredFiles: number;
+            directory: string;
+            instanceId: string;
+            namespace: string;
+            /** @description 当前目录或前缀是否为该范围独立值，旧配置不会自动替换 */
+            isolated: boolean;
+            memcached: {
+                port: number;
+                saslEnabled: boolean;
+                saslUsername: string;
+                /** @description 已有密码仅返回遮盖占位符，保存时原样提交可保留凭据 */
+                saslPassword: string;
+            };
+        };
+        PHPSessionSave: {
+            /** @enum {string} */
+            operation: "save";
+            siteId?: string;
+            /** @enum {string} */
+            handler: "files" | "redis" | "memcached";
+            baseRevision: string;
+            /** @enum {boolean} */
+            confirmed: true;
+            instanceId?: string;
+            /** @description 仅连接本机 127.0.0.1，需已安装对应服务 */
+            memcachedPort?: number;
+            saslEnabled?: boolean;
+            saslUsername?: string;
+            saslPassword?: string;
+        };
+        PHPSessionClean: {
+            /** @enum {string} */
+            operation: "clean";
+            siteId?: string;
+            /** @enum {boolean} */
+            confirmed: true;
         };
     };
     responses: never;
@@ -2967,9 +3025,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PHPSession"];
                 };
             };
             /** @description 校验失败 */
@@ -3071,6 +3127,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigurationDocument"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_resources_id_actions_session: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PHPSessionSave"] | components["schemas"]["PHPSessionClean"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
                 };
             };
             /** @description 校验失败 */

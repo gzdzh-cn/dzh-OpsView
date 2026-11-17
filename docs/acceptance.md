@@ -97,4 +97,26 @@
 
 本地已通过：Go 全量 race 测试及 vet、前端类型检查/构建与 Vitest、10 个 Playwright 用例、16 项安装器检查、四系统各 10 个 Go 测试包。新增用例覆盖时区（内嵌 zoneinfo）、查询窗口与参数校验、多行慢查询、先脱敏再搜索、符号/硬链接及归档路径拒绝、站点隔离、归档权限、服务运行保护、重开失败恢复和维护任务不改变实例状态。
 
-`./scripts/test-log-rotation.sh` 使用目录中固定摘要的 Nginx 镜像，在无外部网络的临时 Linux 容器中连续执行两次在线轮转，验证实际进程描述符、新日志继续写入及原日志留存，已通过。该验证不等于给新的原生安装版本或系统组合放行。真实 Ubuntu 24.04 原生 Nginx systemd 验证加入同一流程，待 GitHub 本次运行结果补记。没有更新生产服务器或发布正式版本。
+`./scripts/test-log-rotation.sh` 使用目录中固定摘要的 Nginx 镜像，在无外部网络的临时 Linux 容器中连续执行两次在线轮转，验证实际进程描述符、新日志继续写入及原日志留存，已通过。该验证不等于给新的原生安装版本或系统组合放行。真实 Ubuntu 24.04 原生 Nginx systemd 验证加入同一流程，GitHub 结果见下节。没有更新生产服务器或发布正式版本。
+
+### 日志功能 GitHub 验证
+
+功能提交 `c54731c1ea1afa16d6463f41adf7aa06afebbe97`（包含重开失败时保留替换 inode 的修复）：
+
+| 工作流 | 结果 |
+| --- | --- |
+| [常规检查及部署](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44006641163) | 通过，含 Go race/vet、前端、10 个 Playwright、Docker、四系统包、真实 Nginx 轮转及面板部署回退 |
+| [候选构建](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44006641181) | 通过；候选附件 `opsview-candidate-c54731c1ea1afa16d6463f41adf7aa06afebbe97`，没有创建 Release |
+| [原生软件验证](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44006641198) | 全部通过，包含 Ubuntu 24.04 原生 Nginx 的实际 systemd 在线轮转 |
+
+以上为日志功能提交的验证，后续 PHP Session 代码独立记录，不能借用这些结果宣称通过。
+
+## 2026-11-17 PHP Session 续作
+
+新增已有本机 memcached 连接及可选 SASL、密码占位符保留、站点独立前缀、扩展依赖保护。Session 应用增加候选真实读写、预检后外部修改检测、FPM 有效配置及读写检查；配置或服务失败恢复原文件、权限并检查服务。软件设置左右两栏限制在视口内并独立滚动。
+
+本地通过 Go 全量 race/vet、前端类型检查和构建、Vitest、11 个 Playwright（新增 Session 范围/密码遮盖/取消/提交及弹窗边界）、16 项安装器检查。Go 回归覆盖无效端口和 INI 注入拒绝、凭据只经私有通道、候选/重载/FPM 验证失败回退、外部漂移、停止网站的扩展依赖保护及检查文件清理。
+
+Ubuntu 22.04/24.04、Debian 12/13 各 10 个 Go 测试包全部通过。旧 Redis 配置仍显示其实际前缀，不会在未保存时显示为已经隔离；更新面板不会自动更改旧网站的会话前缀。
+
+`./scripts/test-php-session.sh` 在临时 Ubuntu 24.04 容器使用发行版 PHP 8.3/FPM、memcached 扩展及真实 memcached 验证：无认证 Session、实际 FPM 生效检查、停服失败保持配置、SASL、错误密码拒绝、遮盖密码保留和两个站点命名空间隔离，已通过。此协议测试不放行任何新的目录版本或系统组合；推荐 PHP 8.4.27 的固定扩展配方和真实 systemd 验证另由 GitHub 原生工作流执行，结果待补记。

@@ -16,6 +16,20 @@ import (
 
 // The status request stays on loopback/Unix sockets and never exposes a diagnostic route on a site.
 func fpmStatus(ctx context.Context, address string) (model.Config, error) {
+	body, err := fpmRequest(ctx, address, map[string]string{"REQUEST_METHOD": "GET", "SCRIPT_NAME": "/opsview-fpm-status", "SCRIPT_FILENAME": "/opsview-fpm-status", "REQUEST_URI": "/opsview-fpm-status?json", "QUERY_STRING": "json"}, nil)
+	if err != nil {
+		return nil, err
+	}
+	var result model.Config
+	if err = json.Unmarshal(body, &result); err != nil {
+		return nil, errors.New("FPM 状态暂不可用")
+	}
+	return result, nil
+}
+
+// Only executor-generated requests use this private protocol client. It accepts
+// no browser-supplied FastCGI parameters or public diagnostic script paths.
+func fpmRequest(ctx context.Context, address string, request map[string]string, input []byte) ([]byte, error) {
 	network := "tcp"
 	if strings.HasPrefix(address, "/") {
 		network = "unix"
@@ -25,8 +39,17 @@ func fpmStatus(ctx context.Context, address string) (model.Config, error) {
 		return nil, err
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	deadline := time.Now().Add(3 * time.Second)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	_ = conn.SetDeadline(deadline)
 	record := func(typ byte, payload []byte) error {
+		if len(payload) > 65535 {
+			return errors.New("FPM 请求过大")
+		}
 		header := []byte{1, typ, 0, 1, 0, 0, 0, 0}
 		binary.BigEndian.PutUint16(header[4:6], uint16(len(payload)))
 		if _, er := conn.Write(header); er != nil {
@@ -39,16 +62,25 @@ func fpmStatus(ctx context.Context, address string) (model.Config, error) {
 		return nil, err
 	}
 	params := []byte{}
-	for _, p := range [][2]string{{"REQUEST_METHOD", "GET"}, {"SCRIPT_NAME", "/opsview-fpm-status"}, {"SCRIPT_FILENAME", "/opsview-fpm-status"}, {"REQUEST_URI", "/opsview-fpm-status?json"}, {"QUERY_STRING", "json"}, {"SERVER_PROTOCOL", "HTTP/1.1"}, {"SERVER_NAME", "localhost"}, {"REMOTE_ADDR", "127.0.0.1"}, {"SERVER_ADDR", "127.0.0.1"}, {"SERVER_PORT", "80"}} {
-		params = append(params, byte(len(p[0])), byte(len(p[1])))
-		params = append(params, p[0]...)
-		params = append(params, p[1]...)
+	for k, v := range map[string]string{"SERVER_PROTOCOL": "HTTP/1.1", "SERVER_NAME": "localhost", "REMOTE_ADDR": "127.0.0.1", "SERVER_ADDR": "127.0.0.1", "SERVER_PORT": "80"} {
+		request[k] = v
+	}
+	for key, value := range request {
+		params = appendFCGILength(params, len(key))
+		params = appendFCGILength(params, len(value))
+		params = append(params, key...)
+		params = append(params, value...)
 	}
 	if err = record(4, params); err != nil {
 		return nil, err
 	}
 	if err = record(4, nil); err != nil {
 		return nil, err
+	}
+	if len(input) > 0 {
+		if err = record(5, input); err != nil {
+			return nil, err
+		}
 	}
 	if err = record(5, nil); err != nil {
 		return nil, err
@@ -65,6 +97,9 @@ func fpmStatus(ctx context.Context, address string) (model.Config, error) {
 			return nil, err
 		}
 		if header[1] == 6 {
+			if stdout.Len()+n > 1<<20 {
+				return nil, errors.New("FPM 响应过大")
+			}
 			stdout.Write(payload[:n])
 		}
 		if header[1] == 3 {
@@ -75,11 +110,14 @@ func fpmStatus(ctx context.Context, address string) (model.Config, error) {
 	if !ok {
 		return nil, errors.New("FPM 状态响应格式无效")
 	}
-	var result model.Config
-	if err = json.Unmarshal([]byte(body), &result); err != nil {
-		return nil, errors.New("FPM 状态暂不可用")
+	return []byte(body), nil
+}
+
+func appendFCGILength(dst []byte, n int) []byte {
+	if n < 128 {
+		return append(dst, byte(n))
 	}
-	return result, nil
+	return binary.BigEndian.AppendUint32(dst, uint32(n)|0x80000000)
 }
 func phpStatusAddress(r model.Resource) string {
 	return "127.0.0.1:" + strconv.Itoa(r.Config.Int("port"))

@@ -64,7 +64,7 @@ func regularManagedLimit(path, base string, limit int64) error {
 	return nil
 }
 
-var secretConfigLine = regexp.MustCompile(`(?im)^[ \t]*(?:requirepass|masterauth|user\s+default|session\.save_path|password)\b[^\r\n]*`)
+var secretConfigLine = regexp.MustCompile(`(?im)^[ \t]*(?:requirepass|masterauth|user\s+default|session\.save_path|memcached\.sess_sasl_(?:username|password)|password)\b[^\r\n]*`)
 
 func maskConfig(text string) string {
 	return secretConfigLine.ReplaceAllStringFunc(text, func(line string) string {
