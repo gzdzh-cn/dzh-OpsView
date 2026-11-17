@@ -241,3 +241,16 @@ rc.3 将 HTTP 会话改为 `opsview_session_http`，HTTPS 保留原名及 Secure
 - 22 项 Playwright 浏览器回归全部通过，覆盖路由代码加载失败重试、HTTP/HTTPS Cookie 兼容、全部侧栏菜单和资源、桌面/移动布局、文件修订冲突、标签/筛选保留、慢接口独立加载、后台暂停轮询和旧历史清理。
 - 本机生产构建连续 20 次已缓存页面切换 P95 约 50ms（目标 ≤300ms）；模拟两秒接口延迟仍可导航。这是本机测试证据，不等同于公网首次加载耗时。
 - 截图保存在 `.opsview/screenshots/compact-*.png`、`overview-desktop.png` 和 `overview-mobile.png`。本版无数据库迁移，未连接或自动更新用户服务器。实际 Linux 发布包导航和安装/回退以 GitHub 发布运行结果补充。
+
+
+### rc.4 GitHub 发布证据
+
+代码提交 `bdfc58c`、标签 `v0.1.3-rc.4`：[发布运行 44123553761](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44123553761) 全部成功。
+
+- `build`：Go race/vet、7 项前端单元测试、16 项安装器检查、Linux 文件/挂载别名检查、22 项浏览器流程、Nginx 日志轮转与 PHP Session smoke 通过；生成发布包后再次使用包内 Linux 二进制通过 22 项浏览器流程，并完成真实 systemd 安装、更新及故障回退。
+- `publish`：发布 `install.sh`、`opsview-linux-amd64.tar.gz` 和 `SHA256SUMS`，标记 prerelease。
+- `verify-public-install`：从公开固定标签地址安装、登录、改端口并执行 `ov update` 通过。
+
+未连接或自动更新用户服务器；用户可按根目录安装教程显式更新或退回 rc.3。
+
+公开下载复核：安装脚本和 Linux 发布包均与公开 `SHA256SUMS` 一致；发布包 23,769,696 字节，SHA-256 为 `29aa87fde577bdda0eef3a0a99cecb4d7e12468427bfba5d5697b8a11ec3b3ab`。`releases/latest` 仍指向 v0.1.1，测试版需显式指定版本。
