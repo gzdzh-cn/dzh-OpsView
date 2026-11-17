@@ -240,11 +240,13 @@ func runtimePackages(ctx context.Context, root string) ([]string, error) {
 				if er != nil {
 					continue
 				}
-				pkg, _, ok := strings.Cut(strings.Split(owner, "\n")[0], ": ")
-				if !ok {
+				owners := runtimePackageOwners(owner)
+				if len(owners) == 0 {
 					continue
 				}
-				packages[pkg] = true
+				for _, pkg := range owners {
+					packages[pkg] = true
+				}
 				found = true
 				break
 			}
@@ -260,4 +262,36 @@ func runtimePackages(ctx context.Context, root string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, err
+}
+
+// dpkg-query can put diversion notices before the owning package on t64
+// systems. Notices are diagnostic text, never apt package arguments.
+func runtimePackageOwners(text string) []string {
+	valid := regexp.MustCompile(`^[a-z0-9][a-z0-9+.-]*(?::amd64)?$`)
+	for _, line := range strings.Split(text, "\n") {
+		prefix, _, ok := strings.Cut(line, ": ")
+		if !ok {
+			continue
+		}
+		owners := []string{}
+		for _, name := range strings.Split(prefix, ", ") {
+			if valid.MatchString(name) {
+				owners = append(owners, name)
+			}
+		}
+		if len(owners) > 0 {
+			return owners
+		}
+	}
+	return nil
+}
+func TestRuntimePackageOwnersIgnoreDiversions(t *testing.T) {
+	out := "diversion by libssl3t64 from: /lib/libssl.so.3\ndiversion by libssl3t64 to: /lib/libssl.so.3.usr-is-merged\nlibssl3t64:amd64: /lib/libssl.so.3\n"
+	names := runtimePackageOwners(out)
+	if len(names) != 1 || names[0] != "libssl3t64:amd64" {
+		t.Fatal(names)
+	}
+	if len(runtimePackageOwners("local diversion from: /lib/libc.so.6")) != 0 {
+		t.Fatal("notice accepted as package")
+	}
 }
