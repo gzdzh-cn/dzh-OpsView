@@ -10,8 +10,8 @@
 make check
 ./scripts/test-installer.sh
 git push github HEAD
-git tag -a v0.1.2-rc.2 -m 'OpsView 0.1.2-rc.2 test release'
-git push github v0.1.2-rc.2
+git tag -a v0.1.3-rc.1 -m 'OpsView 0.1.3-rc.1 test release'
+git push github v0.1.3-rc.1
 ```
 
 GitHub Actions 的 `Publish Linux release` 工作流会执行 Go race 测试与 vet、前端测试与构建、安装器检查和 Playwright，再构建四个 Linux 二进制，并在临时 Ubuntu 24.04 主机以真实 systemd 验证首次安装、正常更新和失败回退。`scripts/test-deployment.sh` 仅允许在隔离 CI 主机执行。构建 Job 只有读权限，发布 Job 使用仓库自动提供的 `GITHUB_TOKEN` 写 Release，无需额外保存个人 Token。需要仓库启用 Actions，且组织策略允许工作流写 Release。
@@ -54,9 +54,11 @@ bash opsview-linux-amd64/deploy/install.sh
 
 ## 候选与原生配方验证
 
-本轮功能以 `v0.1.2-rc.2` 预发布测试版交付，固定版本安装和更新命令见根目录安装教程。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
+本轮功能以 `v0.1.3-rc.1` 预发布测试版交付，固定版本安装和更新命令见根目录安装教程。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
 
-**Validate native packages** 按推荐版本或完整源码目录，在四系统的独立容器编译、启动并探测 Nginx/PHP/Redis，输出归档及 SHA-256/构建前缀/验证信息。源码容器中的 systemctl 为夹具；另有 Ubuntu 24.04 原生 systemd 任务，实际安装并启动三个推荐软件服务后生成 `systemdVerified: true` 报告。其他系统的原生 systemd、扩展矩阵及公网验收仍必须另外完成。旧 PHP 配方会按目录原因拒绝；未通过的任务不能作为发布依据。MySQL 官方二进制及 PostgreSQL 仍需补充相应矩阵。
+**Publish verified native packages** 覆盖六个推荐准确版本 × 四系统，包含 24 个构建及 24 个独立干净系统复验，均以真实 systemd 启动和协议探测验收。Nginx/PHP/Redis/PostgreSQL 构建自有包，MySQL/Node.js 使用官方包；二进制复验更换安装目录，目标机不编译主软件。只有通过的组合才能进入固定 URL/SHA-256 的受信任目录。旧 PHP 和其余未验收版本保持不可安装；常用扩展完整矩阵和公网验收仍单独进行。
+
+软件包与面板分别发布，不覆盖既有软件 Release。维护者先推送与验收提交一致的 `software-<run-id>` 标签；若集成令牌创建 Release 时返回 403，可推送 `software-publish-<run-id>` 触发 **Publish accepted software artifacts**，它核对原始工作流的 24 个构建、24 个复验、报告及标签后复用原产物发布。首批已发布为 `software-44057101979`，原始报告随仓库保存。
 
 全部功能和矩阵未验收前只作为开发候选或预发布测试版；不得将带待实现项的构建标记为完整首版。发布工作流额外执行真实 Nginx 轮转和 PHP Session 协议 smoke，发布后在临时 Ubuntu 24.04 主机从公开固定标签下载、安装、登录、改端口并运行 ov 更新。
 

@@ -189,3 +189,17 @@ GitHub 公开附件元数据中，发布包大小为 23,625,366 字节，SHA-256
 原工作流的上传步骤因 GitHub 集成令牌创建发布时返回 403 而失败；已预先推送与验收提交一致的不可变软件标签，通过 [产物发布工作流](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44062049151) 重新验证原始任务和报告后发布成功，没有重建或替换报告。独立软件 Release 为 [software-44057101979](https://github.com/gzdzh-cn/dzh-OpsView/releases/tag/software-44057101979)，包含 16 个自建软件包及目录/报告，MySQL、Node.js 引用官方包。公开附件摘要与目录逐项核对，24 个组合已提升到两个目录副本；[原始报告](releases/v0.1.3-rc.1-native-acceptance.json) 随仓库保存。
 
 日志页历史浏览器超时已从完整调用记录定位为时间范围弹层拦截点击；测试改为显式提交时间并断言弹层关闭。读取期间禁用下载和归档，等待当前响应后才操作。最终面板和公开安装发布结果另行追加，不能用软件包验收替代。
+
+### v0.1.3-rc.1 公开发布结果
+
+发布提交 `dad4f12`，标签 `v0.1.3-rc.1`，已公开为 [GitHub 预发布测试版](https://github.com/gzdzh-cn/dzh-OpsView/releases/tag/v0.1.3-rc.1)。以下最终检查全部通过：
+
+| 工作流 | 结果及范围 |
+| --- | --- |
+| [常规检查及部署](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44063442564) | Go race/vet、前端类型/构建/Vitest、16 项安装器检查、Linux 文件传输/跨文件系统/bind mount、日志页连续 5 次和全部 14 个浏览器流程、Docker、四系统测试、真实日志/Session 协议、systemd 安装更新回退 |
+| [候选构建](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44063442534) | 通过；实际打包 Linux 二进制再跑全部 14 个浏览器流程，包括逐个点击侧栏及内嵌静态资源检查，候选附件已生成 |
+| [发布与公开安装](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44064471974) | build、publish、verify-public-install 全部通过；公开下载及校验、首次随机账号登录、ov、端口修改/重新连接、改端口后在线更新、再次登录及日志无明文密码 |
+
+发布包为 23,754,246 字节，SHA-256 为 `9c802fb1217493c01d432b0a09d957d033ee7d44f830f0272103516b4729dee6`。本机额外下载 bootstrap 与 SHA256SUMS 并校验，通过 GitHub 公开附件摘要核对包摘要；完整包的公开下载和安装由上述 CI 完成，本机未额外完整下载。正式 latest 经公开 API 核对仍为 `v0.1.1`。
+
+本轮没有更新用户服务器。使用 `ov backup` 后执行 `ov update --version v0.1.3-rc.1` 可选择测试。成功升级后降级需要升级前完整快照，不能只替换二进制；详细步骤见运维手册。后续验收文档追加不修改已公开标签和附件，完整首版及公网验收边界仍保留。
