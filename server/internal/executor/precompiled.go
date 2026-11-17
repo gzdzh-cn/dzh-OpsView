@@ -32,7 +32,7 @@ func (e *Engine) installPrecompiled(ctx context.Context, r model.Resource, entry
 		}
 	}
 	if artifact.Source == "" {
-		return errors.New("此版本没有经过当前系统验证的预编译包，请选择源码安装")
+		return errors.New("此版本没有经过当前系统验证的极速安装包，请选择编译安装")
 	}
 	if err := catalog.Validate(entry); err != nil {
 		return err
@@ -40,10 +40,8 @@ func (e *Engine) installPrecompiled(ctx context.Context, r model.Resource, entry
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "update"); err != nil {
 		return err
 	}
-	deps := []string{"install", "-y", "--no-install-recommends", "ca-certificates", "libssl-dev", "zlib1g-dev", "libpcre2-dev", "libreadline-dev", "libicu-dev"}
-	if entry.Software == "php" {
-		deps = append(deps, "libxml2-dev", "libsqlite3-dev", "libcurl4-openssl-dev", "libonig-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "libpq-dev")
-	}
+	deps := []string{"install", "-y", "--no-install-recommends", "ca-certificates"}
+	deps = append(deps, artifact.RuntimePackages...)
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", deps...); err != nil {
 		return err
 	}

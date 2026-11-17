@@ -50,11 +50,11 @@ func InstallationReason(e Entry, mode, method, system string) string {
 			}
 		}
 		if !found {
-			return "当前系统尚无已验证且发布的预编译包"
+			return "当前系统尚无已验证且发布的极速安装包"
 		}
 	}
 	if method == "source" && (e.Software == "mysql" || e.Software == "nodejs") {
-		return "此软件仅提供预编译安装"
+		return "此软件仅提供极速安装"
 	}
 	if e.RecipeRevision != "" {
 		for _, verified := range e.VerifiedSystems[method] {
@@ -75,7 +75,7 @@ func ForSystem(system string) []Entry {
 		for _, method := range []string{"source", "binary"} {
 			e.Availability[method] = InstallationReason(*e, "native", method, system)
 		}
-		if e.DisabledReason == "" && e.Image == "" && e.Availability["source"] != "" && e.Availability["binary"] != "" {
+		if e.DisabledReason == "" && e.Availability["source"] != "" && e.Availability["binary"] != "" {
 			e.DisabledReason = strings.TrimSpace(e.Availability["source"] + "；" + e.Availability["binary"])
 		}
 	}

@@ -30,6 +30,9 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 	action := strings.TrimPrefix(op.Name, "instance.")
 	r := op.Resource
 	if action == "install" {
+		if r.Config.String("mode") != "native" {
+			return nil, errors.New("软件市场仅支持原生安装")
+		}
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		if previous, err := e.load(r.ID); err == nil {
@@ -57,6 +60,9 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 			return nil, errors.New("数据库管理员密码至少 12 位且不得包含换行")
 		}
 		for _, other := range e.states() {
+			if other.Kind == "instance" && other.Config.String("software") == entry.Software && other.Config.String("version") == entry.Version {
+				return nil, errors.New("该软件的准确版本已存在")
+			}
 			if entry.Software != "nodejs" && other.Kind == "instance" && other.Config.Int("port") == r.Config.Int("port") && !(entry.Software == "nginx" && other.Config.String("software") == "nginx") {
 				return nil, errors.New("端口已被其他实例使用")
 			}
@@ -337,6 +343,12 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 		return e.installSource(ctx, r, entry, base, log)
 	}
 	if entry.Software == "nodejs" {
+		if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "update"); err != nil {
+			return err
+		}
+		if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "install", "-y", "--no-install-recommends", "ca-certificates", "xz-utils", "libstdc++6", "libatomic1"); err != nil {
+			return err
+		}
 		archive := filepath.Join(e.Root, "downloads", entry.ID+".archive")
 		if err := download(ctx, entry.Source, entry.SHA256, archive, log); err != nil {
 			return err
@@ -349,9 +361,9 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "update"); err != nil {
 		return err
 	}
-	deps := []string{"install", "-y", "--no-install-recommends", "build-essential", "ca-certificates", "xz-utils", "libpcre2-dev", "libssl-dev", "zlib1g-dev", "libreadline-dev", "libicu-dev", "pkg-config", "bison", "flex", "libaio1t64", "libnuma1"}
+	deps := []string{"install", "-y", "--no-install-recommends", "ca-certificates", "xz-utils", "libaio1t64", "libnuma1", "libncurses6"}
 	if strings.Contains(readText("/etc/os-release"), `VERSION_ID="22.04"`) || strings.Contains(readText("/etc/os-release"), `VERSION_ID="12"`) {
-		deps[len(deps)-2] = "libaio1"
+		deps[len(deps)-3] = "libaio1"
 	}
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", deps...); err != nil {
 		return err

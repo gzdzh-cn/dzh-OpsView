@@ -1,47 +1,32 @@
-name: Validate native packages
+name: Publish verified native packages
 on:
   push:
     branches: [codex/software-management]
     paths:
-      - 'server/**'
-      - 'packages/**'
+      - 'server/internal/executor/native.go'
+      - 'server/internal/executor/install.go'
+      - 'server/internal/executor/precompiled.go'
+      - 'server/internal/executor/fast_package_test.go'
+      - 'packages/catalog/versions.json'
+      - '.github/native/**'
+      - 'scripts/native-package*'
       - '.github/workflows/native-packages.yml'
   workflow_dispatch:
-    inputs:
-      versions:
-        description: 'recommended or all (legacy combinations may fail validation)'
-        type: choice
-        options: [recommended, all]
-        default: recommended
 permissions:
   contents: read
+concurrency:
+  group: native-packages-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  matrix:
-    runs-on: ubuntu-24.04
-    outputs:
-      versions: ${{ steps.matrix.outputs.versions }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: matrix
-        env:
-          SCOPE: ${{ inputs.versions }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          entries=json.load(open('packages/catalog/versions.json'))
-          ids=[e['id'] for e in entries if e['software'] in ['nginx','php','redis'] and (os.environ['SCOPE']=='all' or e.get('recommended')) and e.get('recipeRevision')]
-          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write('versions='+json.dumps(ids)+'\n')
-          PY
   build:
-    needs: matrix
     runs-on: ubuntu-24.04
-    timeout-minutes: 65
+    timeout-minutes: 100
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 6
       matrix:
         image: [ubuntu:22.04, ubuntu:24.04, debian:bookworm-slim, debian:trixie-slim]
-        entry: ${{ fromJSON(needs.matrix.outputs.versions) }}
+        entry: [nginx-1.30.6, php-8.4.27, redis-8.10.3, postgresql-18.0, mysql-8.4.13, nodejs-22.23.5]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -51,42 +36,92 @@ jobs:
       - run: mkdir -p dist/native
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -o ../dist/native-smoke.test ./internal/executor
         working-directory: server
-      - name: Compile and probe in disposable target system
+      - name: Build and run real systemd service
+        run: ./scripts/native-package-ci.sh
         env:
           NATIVE_IMAGE: ${{ matrix.image }}
           NATIVE_ENTRY: ${{ matrix.entry }}
-        run: docker run --rm --platform linux/amd64 -e OPSVIEW_NATIVE_ENTRY="$NATIVE_ENTRY" -e OPSVIEW_NATIVE_OUTPUT=/output -v "$PWD/dist/native:/output" -v "$PWD/dist/native-smoke.test:/native-smoke.test:ro" "$NATIVE_IMAGE" /native-smoke.test -test.run '^TestNativePackageSmoke$' -test.v -test.timeout=55m
+          PACKAGE_MODE: build
       - uses: actions/upload-artifact@v4
         with:
-          name: native-${{ strategy.job-index }}
+          name: native-build-${{ strategy.job-index }}
           path: dist/native/*
           if-no-files-found: error
-          retention-days: 14
-
-  systemd:
+          retention-days: 7
+  verify:
+    needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 6
       matrix:
-        entry: [nginx-1.30.6, php-8.4.27, redis-8.10.3]
+        image: [ubuntu:22.04, ubuntu:24.04, debian:bookworm-slim, debian:trixie-slim]
+        entry: [nginx-1.30.6, php-8.4.27, redis-8.10.3, postgresql-18.0, mysql-8.4.13, nodejs-22.23.5]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
-      - run: mkdir -p dist/native-systemd
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-build-*
+          path: dist/native
+          merge-multiple: true
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -o ../dist/native-smoke.test ./internal/executor
         working-directory: server
-      - name: Build and probe a real native systemd service
+      - name: Install binary on clean target, verify service and relocation
+        run: ./scripts/native-package-ci.sh
+        env:
+          NATIVE_IMAGE: ${{ matrix.image }}
+          NATIVE_ENTRY: ${{ matrix.entry }}
+          PACKAGE_MODE: verify
+      - name: Select acceptance report
         env:
           NATIVE_ENTRY: ${{ matrix.entry }}
-        run: sudo env GITHUB_ACTIONS=true OPSVIEW_NATIVE_ENTRY="$NATIVE_ENTRY" OPSVIEW_NATIVE_SYSTEMD=true OPSVIEW_NATIVE_OUTPUT="$PWD/dist/native-systemd" "$PWD/dist/native-smoke.test" -test.run '^TestNativePackageSmoke$' -test.v -test.timeout=50m
+          NATIVE_IMAGE: ${{ matrix.image }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib,shutil
+          system={'ubuntu:22.04':'ubuntu-22.04','ubuntu:24.04':'ubuntu-24.04','debian:bookworm-slim':'debian-12','debian:trixie-slim':'debian-13'}[os.environ['NATIVE_IMAGE']]
+          dest=pathlib.Path('dist/verified');dest.mkdir()
+          name=f"{os.environ['NATIVE_ENTRY']}-{system}.tar.gz.json"
+          shutil.copyfile(pathlib.Path('dist/native')/name,dest/name)
+          PY
       - uses: actions/upload-artifact@v4
         with:
-          name: systemd-${{ matrix.entry }}-ubuntu-24.04
-          path: dist/native-systemd/*
+          name: native-verified-${{ strategy.job-index }}
+          path: dist/verified/*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-build-*
+          path: dist/packages
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-verified-*
+          path: dist/reports
+          merge-multiple: true
+      - name: Generate catalog from all verified reports
+        env:
+          SOFTWARE_TAG: software-${{ github.run_id }}
+        run: python3 scripts/native-package-catalog.py
+      - name: Publish immutable software package release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOFTWARE_TAG: software-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if gh release view "$SOFTWARE_TAG" >/dev/null 2>&1; then echo 'Software release already exists; refusing overwrite'; exit 1; fi
+          gh release create "$SOFTWARE_TAG" dist/packages/*.tar.gz dist/verified-catalog.json dist/native-acceptance.json --target "$GITHUB_SHA" --title "OpsView verified software $SOFTWARE_TAG" --notes '24 Linux amd64 system/software combinations verified with real systemd and protocol probes. Binary verification uses a fresh target system.' --prerelease --latest=false

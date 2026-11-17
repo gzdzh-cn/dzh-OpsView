@@ -22,10 +22,11 @@ var data []byte
 var pluginData []byte
 
 type BinaryArtifact struct {
-	System      string `json:"system"` // ubuntu:24.04, etc.; cross-distro artifacts are rejected.
-	Source      string `json:"source"`
-	SHA256      string `json:"sha256"`
-	BuildPrefix string `json:"buildPrefix"`
+	RuntimePackages []string `json:"runtimePackages,omitempty"`
+	System          string   `json:"system"` // ubuntu:24.04, etc.; cross-distro artifacts are rejected.
+	Source          string   `json:"source"`
+	SHA256          string   `json:"sha256"`
+	BuildPrefix     string   `json:"buildPrefix"`
 }
 type Entry struct {
 	VerifiedSystems map[string][]string `json:"verifiedSystems,omitempty"`
@@ -151,6 +152,11 @@ func Validate(e Entry) error {
 		}
 	}
 	for _, artifact := range e.Binaries {
+		for _, pkg := range artifact.RuntimePackages {
+			if !regexp.MustCompile(`^[a-z0-9][a-z0-9+.-]*(?::amd64)?$`).MatchString(pkg) {
+				return errors.New("运行依赖包名称无效")
+			}
+		}
 		switch artifact.System {
 		case "ubuntu:22.04", "ubuntu:24.04", "debian:12", "debian:13":
 		default:
