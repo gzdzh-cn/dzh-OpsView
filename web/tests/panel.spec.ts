@@ -361,7 +361,13 @@ test('software logs filter, download and confirm archive scope', async ({ page }
     .filter({ has: page.getByRole('combobox', { name: '日志级别', exact: true }) })
     .click()
   await page.getByRole('option', { name: '错误', exact: true }).click()
+  const filteredLogs = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return url.pathname.endsWith('/nginx-fixture/logs') && url.searchParams.get('level') === 'error'
+  })
   await dialog.getByRole('button', { name: '读取', exact: true }).click()
+  await filteredLogs
+  await expect(dialog.locator('.el-loading-mask')).toBeHidden()
   await expect.poll(() => requests.at(-1)?.searchParams.get('level')).toBe('error')
   expect(requests.at(-1)?.searchParams.get('search')).toBe('current')
   expect(requests.at(-1)?.searchParams.get('since')).toMatch(/^2026-11-1[67]T.*Z$/)
@@ -369,7 +375,11 @@ test('software logs filter, download and confirm archive scope', async ({ page }
   const downloaded = page.waitForEvent('download')
   await dialog.getByRole('button', { name: '下载当前结果', exact: true }).click()
   expect((await downloaded).suggestedFilename()).toBe('nginx-error.log')
-  await dialog.getByRole('button', { name: '归档并清理', exact: true }).click()
+  await test.step('打开当前日志归档确认', async () => {
+    const archiveButton = dialog.getByRole('button', { name: '归档并清理', exact: true })
+    await expect(archiveButton).toBeEnabled()
+    await archiveButton.click({ timeout: 10000 })
+  })
   await expect(page.locator('.el-message-box')).toContainText('其他软件须先停止对应服务')
   await page.locator('.el-message-box').getByRole('button', { name: '取消', exact: true }).click()
   expect(mutation).toBeUndefined()

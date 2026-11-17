@@ -27,6 +27,9 @@ jobs:
       - run: make api check
       - run: npx playwright install --with-deps chromium
         working-directory: web
+      - name: Verify log actions repeatedly in Chromium
+        run: npm run test:e2e -- --grep 'software logs filter' --repeat-each=5
+        working-directory: web
       - run: npm run test:e2e
         working-directory: web
       - run: node scripts/container-smoke.mjs

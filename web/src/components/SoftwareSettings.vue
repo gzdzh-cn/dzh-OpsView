@@ -967,8 +967,8 @@ const documentGlobal = window.document
                 placeholder="搜索日志"
                 @keyup.enter="load"
               />
-              <el-button @click="load">读取</el-button>
-              <el-button @click="download">下载当前结果</el-button>
+              <el-button :loading="loading" @click="load">读取</el-button>
+              <el-button :disabled="loading" @click="download">下载当前结果</el-button>
             </div>
             <template v-if="fileLog">
               <div class="settings-toolbar">
@@ -1016,7 +1016,7 @@ const documentGlobal = window.document
                 <el-checkbox v-model="logBottom">滚动到底部</el-checkbox>
                 <el-button
                   v-if="logResult.canRotate"
-                  :disabled="!editable || !logResult.size"
+                  :disabled="loading || !editable || !logResult.size"
                   @click="manageLog()"
                 >
                   归档并清理
@@ -1024,7 +1024,7 @@ const documentGlobal = window.document
                 <el-button
                   v-if="logArchive"
                   type="danger"
-                  :disabled="!editable"
+                  :disabled="loading || !editable"
                   @click="manageLog(true)"
                 >
                   删除归档
