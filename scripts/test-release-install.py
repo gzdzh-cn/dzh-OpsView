@@ -85,4 +85,4 @@ with tempfile.TemporaryDirectory() as folder:
     for log in Path('/var/log/opsview').glob('*.log'):
         assert password not in log.read_text()
     assert password not in run(['journalctl','-u','opsview-panel','-u','opsview-executor','--no-pager'])
-    print('PASS: public latest installer checksum, all eight stages, random login, ov, changed-port network update')
+    print('PASS: public release installer checksum, all eight stages, random login, ov, changed-port network update')

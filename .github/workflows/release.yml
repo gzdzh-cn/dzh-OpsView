@@ -37,7 +37,10 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib, re
           expected = os.environ['RELEASE_TAG'].removeprefix('v')
+          assert pathlib.Path(f'docs/releases/{os.environ["RELEASE_TAG"]}.md').is_file()
           assert json.loads(pathlib.Path('web/package.json').read_text())['version'] == expected
+          assert json.loads(pathlib.Path('web/package-lock.json').read_text())['version'] == expected
+          assert json.loads(pathlib.Path('server/internal/api/openapi.json').read_text())['info']['version'] == expected
           assert re.search(r'const Current = "([^"]+)"', pathlib.Path('server/internal/version/version.go').read_text()).group(1) == expected
           PY
       - run: npm ci
@@ -48,6 +51,8 @@ jobs:
         working-directory: web
       - run: npm run test:e2e
         working-directory: web
+      - run: ./scripts/test-log-rotation.sh
+      - run: ./scripts/test-php-session.sh
       - run: make release
       - name: Verify release checksums
         run: sha256sum --check SHA256SUMS
@@ -70,6 +75,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: opsview-release
@@ -87,7 +93,7 @@ jobs:
           if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > draft-state; then
             [ "$(cat draft-state)" = true ] || { echo 'Published releases are immutable in this workflow; use a new tag.' >&2; exit 1; }
           else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "OpsView $RELEASE_TAG" --notes 'Linux amd64 开发测试版本。新增 ov 中文终端菜单、真实安装进度、一次性随机登录账号、统一运行端口配置及更新失败回退。保留 v0.1.0 管理员及插件清单兼容；验证范围见仓库 docs/acceptance.md。'
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "OpsView $RELEASE_TAG" --notes-file "../docs/releases/$RELEASE_TAG.md"
           fi
           gh release upload "$RELEASE_TAG" opsview-linux-amd64.tar.gz SHA256SUMS install.sh --clobber
           if [[ "$RELEASE_TAG" == *-* ]]; then

@@ -9,12 +9,14 @@
 ```bash
 make check
 ./scripts/test-installer.sh
-git push github main
-git tag -a v0.1.1 -m 'OpsView 0.1.1 development release'
-git push github v0.1.1
+git push github HEAD
+git tag -a v0.1.2-rc.1 -m 'OpsView 0.1.2-rc.1 test release'
+git push github v0.1.2-rc.1
 ```
 
 GitHub Actions 的 `Publish Linux release` 工作流会执行 Go race 测试与 vet、前端测试与构建、安装器检查和 Playwright，再构建四个 Linux 二进制，并在临时 Ubuntu 24.04 主机以真实 systemd 验证首次安装、正常更新和失败回退。`scripts/test-deployment.sh` 仅允许在隔离 CI 主机执行。构建 Job 只有读权限，发布 Job 使用仓库自动提供的 `GITHUB_TOKEN` 写 Release，无需额外保存个人 Token。需要仓库启用 Actions，且组织策略允许工作流写 Release。
+
+发布说明保存在 `docs/releases/<标签>.md`，版本号必须与 Go、前端、锁文件及 OpenAPI 一致。
 
 构建成功后才创建草稿、上传完整产物、发布 Release。工作流失败时可修复后发布新标签；若失败发生在草稿上传中，可重跑同一工作流。已经公开的版本不被工作流覆盖。业务软件版本与面板版本独立，发布面板不会自动更新 Nginx 或数据库。
 
@@ -52,10 +54,10 @@ bash opsview-linux-amd64/deploy/install.sh
 
 ## 候选与原生配方验证
 
-本轮工作区功能变更尚未发布。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
+本轮功能以 `v0.1.2-rc.1` 预发布测试版交付，固定版本安装和更新命令见根目录安装教程。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
 
 **Validate native packages** 按推荐版本或完整源码目录，在四系统的独立容器编译、启动并探测 Nginx/PHP/Redis，输出归档及 SHA-256/构建前缀/验证信息。源码容器中的 systemctl 为夹具；另有 Ubuntu 24.04 原生 systemd 任务，实际安装并启动三个推荐软件服务后生成 `systemdVerified: true` 报告。其他系统的原生 systemd、扩展矩阵及公网验收仍必须另外完成。旧 PHP 配方会按目录原因拒绝；未通过的任务不能作为发布依据。MySQL 官方二进制及 PostgreSQL 仍需补充相应矩阵。
 
-全部功能和矩阵未验收前只作为开发候选；不得将带待实现项的构建标记为完整首版。
+全部功能和矩阵未验收前只作为开发候选或预发布测试版；不得将带待实现项的构建标记为完整首版。发布工作流额外执行真实 Nginx 轮转和 PHP Session 协议 smoke，发布后在临时 Ubuntu 24.04 主机从公开固定标签下载、安装、登录、改端口并运行 ov 更新。
 
 各功能的实现边界见根目录 [软件管理实现说明](../软件管理实现说明.md)。
