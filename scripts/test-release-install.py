@@ -21,6 +21,7 @@ tag = os.environ['RELEASE_TAG']
 assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?', tag)
 base = 'https://github.com/gzdzh-cn/dzh-OpsView/releases/download/' + tag
 port = 18790
+scheme = 'https'
 
 def report_failure(kind, error, tb):
     location = ' -> '.join(f'{Path(f.filename).name}:{f.lineno}' for f in traceback.extract_tb(tb))
@@ -38,11 +39,23 @@ def run(args):
     return result.stdout + result.stderr
 
 def login():
-    request=urllib.request.Request(f'https://127.0.0.1:{port}/api/v1/auth/login',
+    request=urllib.request.Request(f'{scheme}://127.0.0.1:{port}/api/v1/auth/login',
         data=json.dumps(dict(username=username,password=password,code='')).encode(),
         headers={'Content-Type':'application/json'})
     with urllib.request.urlopen(request,context=ssl._create_unverified_context()) as response:
         assert json.load(response)['csrf']
+
+def confirm_access(output):
+    token = re.search(r'#runtime-confirm=([a-f0-9]{64})',output).group(1)
+    for attempt in range(30):
+        try:
+            request=urllib.request.Request(f'{scheme}://127.0.0.1:{port}/api/v1/runtime/confirm',data=json.dumps({'token':token}).encode(),headers={'Content-Type':'application/json'})
+            with urllib.request.urlopen(request,context=ssl._create_unverified_context(),timeout=2) as response:
+                assert json.load(response)['confirmed']
+            return
+        except OSError:
+            time.sleep(1)
+    raise AssertionError('CLI reconnect confirmation failed')
 
 with tempfile.TemporaryDirectory() as folder:
     sums=download(base+'/SHA256SUMS').decode()
@@ -67,22 +80,20 @@ with tempfile.TemporaryDirectory() as folder:
     login()
     assert run(['opsview','version']).strip()==tag.removeprefix('v')
     info=run(['ov','info']);assert username in info and password not in info
+    assert 'ssl off' in run(['ov'])
     output=run(['ov','port','18882','--source','127.0.0.1','--yes']);port=18882
-    token=re.search(r'#runtime-confirm=([a-f0-9]{64})',output)
-    if token:
-        for attempt in range(30):
-            try:
-                request=urllib.request.Request(f'https://127.0.0.1:{port}/api/v1/runtime/confirm',data=json.dumps({'token':token.group(1)}).encode(),headers={'Content-Type':'application/json'})
-                with urllib.request.urlopen(request,context=ssl._create_unverified_context(),timeout=2) as response: assert json.load(response)['confirmed']
-                break
-            except OSError: time.sleep(1)
-        else: raise AssertionError('CLI port reconnect confirmation failed')
+    confirm_access(output)
+    del output
+    login()
+    output=run(['ov','ssl','off','--yes']);scheme='http'
+    confirm_access(output)
     del output
     login()
     run(['ov','update','--version',tag])
     assert json.loads(Path('/etc/opsview/panel.json').read_text())['port']==port
+    assert json.loads(Path('/etc/opsview/panel.json').read_text())['protocol']=='http'
     login()
     for log in Path('/var/log/opsview').glob('*.log'):
         assert password not in log.read_text()
     assert password not in run(['journalctl','-u','opsview-panel','-u','opsview-executor','--no-pager'])
-    print('PASS: public release installer checksum, all eight stages, random login, ov, changed-port network update')
+    print('PASS: public release installer checksum, all eight stages, random login, ov, HTTP and changed-port network update')

@@ -59,7 +59,11 @@ func (r *Runner) ssl(args []string) error {
 	if len(args) > 1 && !yes {
 		return errors.New("仅支持 --yes")
 	}
-	if err := r.confirm("切换面板协议将重启服务并改变登录地址，确认继续？", yes); err != nil {
+	prompt := "启用 SSL 将切换为 HTTPS 并重启面板，确认继续？"
+	if op == "off" {
+		prompt = "关闭 SSL 后将使用 HTTP 明文连接，证书文件保留，面板将重启，确认继续？"
+	}
+	if err := r.confirm(prompt, yes); err != nil {
 		return err
 	}
 	if err := CheckOverrides(); err != nil {
@@ -75,7 +79,14 @@ func (r *Runner) ssl(args []string) error {
 		next.Protocol = "http"
 	}
 	if next.Scheme() == old.Scheme() {
-		fmt.Fprintln(r.Out, "面板协议未变化。")
+		host := old.PublicHost
+		if old.AllowedHost != "" {
+			host = old.AllowedHost
+		}
+		if host == "" {
+			host = runtimeconfig.LocalHost()
+		}
+		fmt.Fprintf(r.Out, "面板已使用 %s，无需切换。\n登录地址：%s\n", old.Scheme(), old.URL(host))
 		return nil
 	}
 	return r.applyPanelAccess(next, "")

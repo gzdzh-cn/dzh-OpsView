@@ -51,8 +51,8 @@ def run(args, *, ok=True, data=None, user=None):
         raise AssertionError(f'command exit mismatch: {Path(args[0]).name}, status {result.returncode}, phase {phase}')
     return result.stdout + result.stderr
 
-def api(path, payload=None, opener=None):
-    req = urllib.request.Request(f'https://127.0.0.1:{PORT}/api/v1/{path}',
+def api(path, payload=None, opener=None, scheme='https'):
+    req = urllib.request.Request(f'{scheme}://127.0.0.1:{PORT}/api/v1/{path}',
         data=json.dumps(payload).encode() if payload is not None else None,
         headers={'Content-Type': 'application/json'})
     if opener:
@@ -62,14 +62,14 @@ def api(path, payload=None, opener=None):
     with response:
         return json.load(response)
 
-def login(username, password):
+def login(username, password, scheme='https'):
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=CTX), urllib.request.HTTPCookieProcessor(jar))
-    assert api('auth/login', dict(username=username, password=password, code=''), opener).get('csrf')
+    assert api('auth/login', dict(username=username, password=password, code=''), opener, scheme).get('csrf')
     return opener
 
-def authenticated(opener):
-    return api('auth', opener=opener)['authenticated']
+def authenticated(opener, scheme='https'):
+    return api('auth', opener=opener, scheme=scheme)['authenticated']
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -86,6 +86,43 @@ def confirm_access(output, scheme='https'):
             return
         except (OSError,urllib.error.HTTPError): time.sleep(1)
     raise AssertionError('new listener could not confirm access change')
+
+def ssl_off_menu(answer):
+    import pty
+    import select
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(['ov'], stdin=slave, stdout=slave, stderr=slave)
+    os.close(slave)
+    terminal = b''
+
+    def read_until(prompt):
+        nonlocal terminal
+        deadline = time.monotonic() + 15
+        while prompt not in terminal.decode(errors='ignore'):
+            assert time.monotonic() < deadline, 'SSL menu prompt timed out'
+            ready, _, _ = select.select([master], [], [], 1)
+            if ready:
+                terminal += os.read(master, 4096)
+
+    try:
+        read_until('请输入编号：')
+        assert '15. 关闭 SSL 证书（切换 HTTP）' in terminal.decode()
+        terminal = b''
+        os.write(master, b'15\n')
+        read_until('[y/N]：')
+        assert '关闭 SSL 后将使用 HTTP' in terminal.decode()
+        terminal = b''
+        os.write(master, (answer + '\n').encode())
+        read_until('请输入编号：')
+        assert '用法：ov ssl' not in terminal.decode()
+        os.write(master, b'0\n')
+        assert proc.wait(timeout=15) == 0
+        return terminal.decode()
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        os.close(master)
 
 with tempfile.TemporaryDirectory() as stage:
     stage = Path(stage)
@@ -191,9 +228,15 @@ with tempfile.TemporaryDirectory() as stage:
     confirm_access(output)
     del output
     login(username,password)
-    output=run(['ov','ssl','off','--yes'])
+    before = CONFIG.read_bytes()
+    assert '已取消' in ssl_off_menu('n')
+    assert CONFIG.read_bytes() == before
+    output=ssl_off_menu('y')
     confirm_access(output,'http')
     assert json.loads(CONFIG.read_text())['protocol']=='http'
+    assert digest(PANEL/'panel.pem') == cert
+    assert authenticated(login(username,password,'http'),'http')
+    print('PASS: menu 15 SSL off, cancellation, HTTP reconnect and authenticated login, certificate preserved')
     output=run(['ov','ssl','on','--yes'])
     confirm_access(output)
     del output

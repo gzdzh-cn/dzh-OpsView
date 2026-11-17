@@ -26,8 +26,8 @@ import (
 	"time"
 )
 
-var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl"}
-var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板", "SSL 证书与协议"}
+var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off"}
+var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板", "关闭 SSL 证书（切换 HTTP）"}
 
 const panelUnit = "opsview-panel.service"
 const executorUnit = "opsview-executor.service"
@@ -134,7 +134,7 @@ func (r *Runner) menu() error {
 			fmt.Fprintf(r.Out, "无效编号，请输入 0–%d\n", len(Commands))
 			continue
 		}
-		if e = r.command([]string{Commands[n-1]}); e != nil {
+		if e = r.command(strings.Fields(Commands[n-1])); e != nil {
 			if errors.Is(e, io.EOF) {
 				return nil
 			}

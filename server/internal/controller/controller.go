@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"github.com/robfig/cron/v3"
@@ -148,7 +150,46 @@ func (c *Controller) static(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(p, ".html"):
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	}
-	_, _ = w.Write(b)
+	// Only Vite's content-addressed assets are immutable; HTML and API responses
+	// must keep no-store so an update cannot strand clients on the previous build.
+	if strings.HasPrefix(p, "assets/") {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	}
+	if len(b) >= 1024 && (strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") || strings.HasSuffix(p, ".html") || strings.HasSuffix(p, ".svg")) {
+		w.Header().Add("Vary", "Accept-Encoding")
+		if acceptsGzip(r.Header.Get("Accept-Encoding")) {
+			var compressed bytes.Buffer
+			writer := gzip.NewWriter(&compressed)
+			_, _ = writer.Write(b)
+			if err := writer.Close(); err == nil && compressed.Len() < len(b) {
+				b = compressed.Bytes()
+				w.Header().Set("Content-Encoding", "gzip")
+			}
+		}
+	}
+	http.ServeContent(w, r, p, time.Time{}, bytes.NewReader(b))
+}
+
+func acceptsGzip(header string) bool {
+	for _, value := range strings.Split(header, ",") {
+		parts := strings.Split(value, ";")
+		if !strings.EqualFold(strings.TrimSpace(parts[0]), "gzip") {
+			continue
+		}
+		quality := 1.0
+		for _, parameter := range parts[1:] {
+			key, value, ok := strings.Cut(strings.TrimSpace(parameter), "=")
+			if ok && strings.EqualFold(key, "q") {
+				parsed, err := strconv.ParseFloat(value, 64)
+				if err != nil || !(parsed >= 0 && parsed <= 1) {
+					return false
+				}
+				quality = parsed
+			}
+		}
+		return quality > 0
+	}
+	return false
 }
 func (c *Controller) resources(w http.ResponseWriter, r *http.Request) {
 	rs, e := c.App.Store.Resources(r.URL.Query().Get("kind"))

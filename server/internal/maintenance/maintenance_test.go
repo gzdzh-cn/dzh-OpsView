@@ -10,7 +10,7 @@ import (
 )
 
 func TestMenuMapping(t *testing.T) {
-	want := []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl"}
+	want := []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off"}
 	if len(Commands) != 15 {
 		t.Fatal("menu count")
 	}
@@ -64,6 +64,9 @@ func TestNoninteractiveHelp(t *testing.T) {
 	r.help()
 	if !strings.Contains(out.String(), "ov <命令>") {
 		t.Fatal("missing help")
+	}
+	if !strings.Contains(out.String(), "ssl off") || !strings.Contains(out.String(), "关闭 SSL 证书") {
+		t.Fatal("SSL menu action missing from help")
 	}
 	if e = r.confirm("test", false); e == nil {
 		t.Fatal("noninteractive confirmation bypass")
