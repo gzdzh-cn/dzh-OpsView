@@ -57,6 +57,11 @@ jobs:
       - name: Verify release checksums
         run: sha256sum --check SHA256SUMS
         working-directory: dist
+      - name: Test navigation using the packaged panel binary
+        run: npm run test:e2e
+        working-directory: web
+        env:
+          OPSVIEW_E2E_RELEASE: 'true'
       - name: Exercise real systemd installation and rollback
         run: sudo env GITHUB_ACTIONS=true bash scripts/test-deployment.sh
       - uses: actions/upload-artifact@v4

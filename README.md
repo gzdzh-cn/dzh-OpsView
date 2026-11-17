@@ -2,9 +2,11 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.2-rc.1 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.2-rc.2 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
-本轮软件管理、网站和面板设置增量以 `v0.1.2-rc.1` 发布测试。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
+本轮软件管理、网站和面板设置增量以 `v0.1.2-rc.2` 发布测试。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
+
+`v0.1.2-rc.2` 修复 rc.1 发布包缺失 Vue 共享脚本导致菜单无法打开的问题；浏览器回归已改为测试内嵌资源及实际发布二进制。
 
 功能、架构、安装维护方式和当前限制的完整介绍见 [项目介绍](项目介绍.md)。
 
@@ -42,9 +44,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.2-rc.1/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.2-rc.1/install.sh; fi && bash install_opsview.sh --version v0.1.2-rc.1
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.2-rc.2/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.2-rc.2/install.sh; fi && bash install_opsview.sh --version v0.1.2-rc.2
 # 已安装面板：
-ov update --version v0.1.2-rc.1
+ov update --version v0.1.2-rc.2
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。

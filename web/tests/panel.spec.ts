@@ -20,9 +20,14 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: '进入控制台' }).click()
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible()
 })
-test('all management menus render without browser errors', async ({ page }) => {
+test('sidebar navigates all embedded management pages without missing assets', async ({ page }) => {
   const errors: string[] = []
+  const missingAssets: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname.startsWith('/assets/') && !response.ok())
+      missingAssets.push(`${response.status()} ${response.url()}`)
+  })
   for (const [url, title] of [
     ['/sites', '网站'],
     ['/databases', '数据库'],
@@ -35,10 +40,15 @@ test('all management menus render without browser errors', async ({ page }) => {
     ['/settings', '面板设置'],
     ['/tasks', '任务中心'],
   ]) {
-    await page.goto(url!)
+    await page.locator(`.sidebar a[href="${url}"]`).click()
+    await expect(page).toHaveURL(url!)
     await expect(page.getByRole('heading', { name: title, exact: true, level: 1 })).toBeVisible()
     await expect(page.locator('.surface').first()).toBeVisible()
   }
+  await page.locator('.sidebar').getByRole('link', { name: '概览', exact: true }).click()
+  await expect(page).toHaveURL('/')
+  await expect(page.getByRole('heading', { name: '概览', exact: true, level: 1 })).toBeVisible()
+  expect(missingAssets).toEqual([])
   expect(errors).toEqual([])
 })
 test('invalid site never becomes a deployed resource', async ({ page }) => {
@@ -70,6 +80,7 @@ test('queued installation reports executor unavailable instead of success', asyn
     })
   })
   await page.goto('/software')
+  await expect(page.locator('.software-list .el-select').first()).toContainText('1.30.6')
   await page
     .locator('.software-list .el-table__body tr')
     .first()

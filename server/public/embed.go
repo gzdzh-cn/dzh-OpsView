@@ -5,7 +5,9 @@ import (
 	"io/fs"
 )
 
-//go:embed dist
+// Include Vite's underscore-prefixed shared chunks in the standalone binary.
+//
+//go:embed all:dist
 var embedded embed.FS
 
 func Files() fs.FS {

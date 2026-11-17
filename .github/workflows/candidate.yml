@@ -32,6 +32,11 @@ jobs:
       - run: ./scripts/test-log-rotation.sh
       - run: ./scripts/test-php-session.sh
       - run: make release
+      - name: Test navigation using the packaged panel binary
+        run: npm run test:e2e
+        working-directory: web
+        env:
+          OPSVIEW_E2E_RELEASE: 'true'
       - run: sudo env GITHUB_ACTIONS=true bash scripts/test-deployment.sh
       - uses: actions/upload-artifact@v4
         with:
