@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +71,7 @@ func TestFastPackageAcceptance(t *testing.T) {
 		}
 	}
 	defer func() {
-		if !official || entry.Software == "mysql" {
+		{
 			_ = systemctl(context.Background(), func(string) {}, "stop", serviceName(r))
 			_ = systemctl(context.Background(), func(string) {}, "disable", serviceName(r))
 			_ = os.Remove("/etc/systemd/system/" + serviceName(r))
@@ -118,6 +119,25 @@ func TestFastPackageAcceptance(t *testing.T) {
 		if err = run(ctx, log, "", nil, nil, base+"/runtime/bin/node", "-e", "if(1+1!==2)process.exit(1)"); err != nil {
 			t.Fatal(err)
 		}
+		probe := fmt.Sprintf(`require('http').createServer((_,r)=>r.end('opsview-node-health')).listen(%d,'127.0.0.1');`, port)
+		if err = security.WriteAtomic(base+"/node-probe.js", []byte(probe), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err = installUnit(ctx, r, fmt.Sprintf("DynamicUser=yes\nExecStart=%s/runtime/bin/node %s/node-probe.js\n", base, base), log); err != nil {
+			t.Fatal(err)
+		}
+		if err = waitPort(ctx, port); err != nil {
+			t.Fatal(err)
+		}
+		response, er := http.Get(fmt.Sprintf("http://127.0.0.1:%d", port))
+		if er != nil {
+			t.Fatal(er)
+		}
+		data, er := io.ReadAll(response.Body)
+		response.Body.Close()
+		if er != nil || string(data) != "opsview-node-health" {
+			t.Fatal(string(data), er)
+		}
 	} else {
 		if err = waitPort(ctx, port); err != nil {
 			t.Fatal(err)
@@ -144,7 +164,7 @@ func TestFastPackageAcceptance(t *testing.T) {
 		if er != nil {
 			t.Fatal(er)
 		}
-		report = model.Config{"catalogId": entry.ID, "software": entry.Software, "version": entry.Version, "system": hostSystem(), "buildPrefix": base + "/runtime", "recipeRevision": entry.RecipeRevision, "runtimePackages": packages, "protocolVerified": true, "systemdVerified": entry.Software != "nodejs", "runtimeVerified": true, "binaryVerified": false, "official": official}
+		report = model.Config{"catalogId": entry.ID, "software": entry.Software, "version": entry.Version, "system": hostSystem(), "buildPrefix": base + "/runtime", "recipeRevision": entry.RecipeRevision, "runtimePackages": packages, "protocolVerified": true, "systemdVerified": true, "runtimeVerified": true, "binaryVerified": false, "official": official}
 		if !official {
 			archive := filepath.Join(outputDir, name)
 			if err = run(ctx, log, "", nil, nil, "tar", "--dereference", "--hard-dereference", "-czf", archive, "-C", base+"/runtime", "."); err != nil {
@@ -202,7 +222,7 @@ func runtimePackages(ctx context.Context, root string) ([]string, error) {
 			return nil
 		}
 		if strings.Contains(out, "not found") {
-			return fmt.Errorf("unresolved library: %s", path)
+			return fmt.Errorf("unresolved library: %s: %s", path, out)
 		}
 		for _, match := range library.FindAllStringSubmatch(out, -1) {
 			p := match[1]

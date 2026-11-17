@@ -11,7 +11,7 @@ for report in reports:
     key=(report['catalogId'],report['system'])
     assert key not in seen;seen.add(key)
     assert report['binaryVerified'] and report['protocolVerified'] and report['runtimeVerified']
-    assert report['systemdVerified'] or report['software']=='nodejs'
+    assert report['systemdVerified']
     entry=next(e for e in entries if e['id']==report['catalogId'])
     systems=entry.setdefault('verifiedSystems',{}).setdefault('binary',[])
     if report['system'] not in systems: systems.append(report['system'])
