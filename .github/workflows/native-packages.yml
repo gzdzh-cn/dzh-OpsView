@@ -125,4 +125,5 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$SOFTWARE_TAG" >/dev/null 2>&1; then echo 'Software release already exists; refusing overwrite'; exit 1; fi
-          gh release create "$SOFTWARE_TAG" dist/packages/*.tar.gz dist/verified-catalog.json dist/native-acceptance.json --target "$GITHUB_SHA" --title "OpsView verified software $SOFTWARE_TAG" --notes '24 Linux amd64 system/software combinations verified with real systemd and protocol probes. Binary verification uses a fresh target system.' --prerelease --latest=false
+          gh api "repos/$GH_REPO/git/ref/tags/$SOFTWARE_TAG" >/dev/null || { echo "Create and push tag $SOFTWARE_TAG at $GITHUB_SHA, then re-run the publish job."; exit 1; }
+          gh release create "$SOFTWARE_TAG" dist/packages/*.tar.gz dist/verified-catalog.json dist/native-acceptance.json --verify-tag --title "OpsView verified software $SOFTWARE_TAG" --notes '24 Linux amd64 system/software combinations verified with real systemd and protocol probes. Binary verification uses a fresh target system.' --prerelease --latest=false

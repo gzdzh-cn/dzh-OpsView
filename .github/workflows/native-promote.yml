@@ -1,0 +1,61 @@
+name: Publish accepted software artifacts
+on:
+  push:
+    tags: ['software-publish-*']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate original acceptance and immutable tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_id="${GITHUB_REF_NAME#software-publish-}"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$run_id" > /tmp/native-run.json
+          gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/attempts/1/jobs?per_page=100" > /tmp/native-jobs.json
+          gh api "repos/$GH_REPO/git/ref/tags/software-$run_id" > /tmp/native-tag.json
+          python3 - <<'PY'
+          import json,os
+          run=json.load(open('/tmp/native-run.json'))
+          jobs=json.load(open('/tmp/native-jobs.json'))['jobs']
+          tag=json.load(open('/tmp/native-tag.json'))
+          assert run['path']=='.github/workflows/native-packages.yml'
+          assert run['head_repository']['full_name']==os.environ['GH_REPO']
+          assert tag['object']['sha']==run['head_sha']
+          for prefix in ('build (','verify ('):
+              group=[j for j in jobs if j['name'].startswith(prefix)]
+              assert len(group)==24 and all(j['conclusion']=='success' for j in group)
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write(f"NATIVE_RUN={run['id']}\nSOFTWARE_TAG=software-{run['id']}\nNATIVE_SHA={run['head_sha']}\n")
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.NATIVE_RUN }}
+          pattern: native-build-*
+          path: dist/packages
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.NATIVE_RUN }}
+          pattern: native-verified-*
+          path: dist/reports
+          merge-multiple: true
+      - name: Generate accepted catalog and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          GITHUB_SHA="$NATIVE_SHA" python3 scripts/native-package-catalog.py
+          if gh release view "$SOFTWARE_TAG" >/dev/null 2>&1; then echo 'Software release already exists; refusing overwrite'; exit 1; fi
+          gh release create "$SOFTWARE_TAG" dist/packages/*.tar.gz dist/verified-catalog.json dist/native-acceptance.json --verify-tag --title "OpsView verified software $SOFTWARE_TAG" --notes '24 Linux amd64 combinations passed source/official installation and independent clean-system binary verification with real systemd and protocol probes.' --prerelease --latest=false
