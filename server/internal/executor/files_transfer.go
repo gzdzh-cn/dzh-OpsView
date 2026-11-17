@@ -112,7 +112,7 @@ func (e *Engine) fileUploadOperation(p model.Config, action string) (model.Confi
 		if err = target.root.Remove(filepath.Base(s.Temporary)); err != nil && !os.IsNotExist(err) {
 			return nil, err
 		}
-		return model.Config{}, os.Remove(filepath.Join(e.fileMetaDir(), "upload-"+s.ID+".json"))
+		return model.Config{"path": s.Path}, os.Remove(filepath.Join(e.fileMetaDir(), "upload-"+s.ID+".json"))
 	}
 	if action != "upload-finish" {
 		return nil, errors.New("上传操作无效")

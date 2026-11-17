@@ -79,6 +79,12 @@ func TestFastPackageAcceptance(t *testing.T) {
 		}
 	}()
 	log := func(s string) { t.Log(security.MaskLog(s, model.Operation{Resource: r})) }
+	defer func() {
+		if t.Failed() {
+			detail, _ := output(context.Background(), "journalctl", "-u", serviceName(r), "-n", "20", "--no-pager")
+			log(detail)
+		}
+	}()
 	name := entry.ID + "-" + strings.ReplaceAll(hostSystem(), ":", "-") + ".tar.gz"
 	reportPath := filepath.Join(outputDir, name+".json")
 	var report model.Config

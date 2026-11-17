@@ -454,7 +454,7 @@ func (e *Engine) validateSoftware(ctx context.Context, r model.Resource, file, c
 	var err error
 	switch r.Config.String("software") {
 	case "nginx":
-		_, err = output(ctx, base+"/runtime/sbin/nginx", "-t", "-c", candidate)
+		_, err = output(ctx, base+"/runtime/sbin/nginx", "-p", base+"/runtime/", "-t", "-c", candidate)
 	case "mysql":
 		args := []string{"--defaults-file=" + candidate, "--validate-config"}
 		if strings.HasPrefix(r.Config.String("version"), "5.7") {

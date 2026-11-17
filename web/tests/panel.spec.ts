@@ -625,5 +625,9 @@ test('server file page navigates root, shows revisions, recovers conflicts and s
     el.scrollLeft = 0
   })
   await expect(page.getByRole('button', { name: '.env', exact: true })).toBeInViewport()
+  await expect(page.locator('.el-table__body td.el-table-fixed-column--right').first()).toHaveCSS(
+    'position',
+    'static',
+  )
   await page.screenshot({ path: '../.opsview/screenshots/files-mobile.png', fullPage: true })
 })

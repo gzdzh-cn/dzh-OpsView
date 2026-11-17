@@ -46,10 +46,14 @@ func (c *Controller) files(w http.ResponseWriter, r *http.Request) {
 		send(w, 202, task)
 		return
 	}
+	auditAction := action
+	if action == "trash" {
+		auditAction += "." + p.String("action")
+	}
 	data, err := c.App.Executor.Execute(r.Context(), op, func(string) {})
 	if err != nil {
 		if action != "read" && action != "list" && action != "metadata" && action != "upload-status" {
-			c.auditFileOperation(action, "failed", p, r)
+			c.auditFileOperation(auditAction, "failed", p, r)
 		}
 		var conflict *model.RevisionConflict
 		if errors.As(err, &conflict) {
@@ -60,7 +64,13 @@ func (c *Controller) files(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action != "read" && action != "list" && action != "metadata" && action != "upload-status" {
-		c.auditFileOperation(action, "succeeded", p, r)
+		if p.String("path") == "" && data.String("path") != "" {
+			p["path"] = data.String("path")
+		}
+		if paths, ok := data["paths"]; ok {
+			p["paths"] = paths
+		}
+		c.auditFileOperation(auditAction, "succeeded", p, r)
 	}
 	send(w, 200, data)
 }

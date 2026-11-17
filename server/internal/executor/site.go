@@ -55,7 +55,7 @@ func (e *Engine) nginx(ctx context.Context, inst model.Resource, log func(string
 		all = append(all, args...)
 		return run(ctx, log, "", nil, nil, "docker", all...)
 	}
-	all := []string{"-c", base + "/conf/nginx.conf"}
+	all := []string{"-p", base + "/runtime/", "-c", base + "/conf/nginx.conf"}
 	return run(ctx, log, "", nil, nil, base+"/runtime/sbin/nginx", append(all, args...)...)
 }
 func (e *Engine) site(ctx context.Context, op model.Operation, log func(string)) (result model.Config, retErr error) {

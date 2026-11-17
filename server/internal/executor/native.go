@@ -137,7 +137,7 @@ func (e *Engine) configureNative(ctx context.Context, r model.Resource, base str
 		if err := e.save(r); err != nil {
 			return err
 		}
-		return installUnit(ctx, r, fmt.Sprintf("Type=forking\nPIDFile=%s/logs/nginx.pid\nExecStart=%s/sbin/nginx -c %s/conf/nginx.conf\nExecReload=%s/sbin/nginx -c %s/conf/nginx.conf -s reload\nExecStop=%s/sbin/nginx -c %s/conf/nginx.conf -s quit\n", base, runtimePath, base, runtimePath, base, runtimePath, base), log)
+		return installUnit(ctx, r, fmt.Sprintf("Type=forking\nPIDFile=%s/logs/nginx.pid\nExecStart=%s/sbin/nginx -p %s/ -c %s/conf/nginx.conf\nExecReload=%s/sbin/nginx -p %s/ -c %s/conf/nginx.conf -s reload\nExecStop=%s/sbin/nginx -p %s/ -c %s/conf/nginx.conf -s quit\n", base, runtimePath, runtimePath, base, runtimePath, runtimePath, base, runtimePath, runtimePath, base), log)
 	case "postgresql":
 		data := filepath.Join(base, "data")
 		if err := run(ctx, log, "", nil, nil, "chown", "-R", user+":"+user, data); err != nil {

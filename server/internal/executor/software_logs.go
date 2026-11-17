@@ -536,7 +536,7 @@ func (e *Engine) manageSoftwareLog(ctx context.Context, r model.Resource, p mode
 
 func (e *Engine) reopenNginxLog(ctx context.Context, r model.Resource) error {
 	base := filepath.Join(e.Root, "instances", r.ID)
-	_, err := output(ctx, base+"/runtime/sbin/nginx", "-c", base+"/conf/nginx.conf", "-s", "reopen")
+	_, err := output(ctx, base+"/runtime/sbin/nginx", "-p", base+"/runtime/", "-c", base+"/conf/nginx.conf", "-s", "reopen")
 	if err != nil {
 		return errors.New("Nginx 重开日志失败，已尝试恢复原文件")
 	}

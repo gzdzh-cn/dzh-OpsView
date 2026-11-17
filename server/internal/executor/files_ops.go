@@ -123,11 +123,13 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 		}
 		return model.Config{"items": items}, nil
 	}
+	paths := []string{}
 	if p.String("action") == "empty" {
 		if !p.Bool("confirmed") {
 			return nil, errors.New("永久清空需要明确确认")
 		}
 		for id, item := range index {
+			paths = append(paths, item.Original)
 			if err = removeTrashEntry(item); err != nil {
 				return nil, err
 			}
@@ -138,6 +140,7 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 		if !ok {
 			return nil, errors.New("回收站记录不存在")
 		}
+		paths = append(paths, item.Original)
 		switch p.String("action") {
 		case "purge":
 			if !p.Bool("confirmed") {
@@ -150,6 +153,9 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 			target := item.Original
 			if p.String("target") != "" {
 				target = p.String("target")
+			}
+			if target != item.Original {
+				paths = append(paths, target)
 			}
 			f, er := e.filePath(target, false)
 			if er != nil {
@@ -175,7 +181,7 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 		}
 		delete(index, item.ID)
 	}
-	return model.Config{}, e.writeFileMeta("trash", index)
+	return model.Config{"paths": paths}, e.writeFileMeta("trash", index)
 }
 func removeTrashEntry(item trashEntry) error {
 	if filepath.Base(filepath.Dir(item.Stored)) != ".opsview-trash" || filepath.Base(item.Stored) != item.ID {

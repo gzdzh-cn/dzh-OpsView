@@ -42,6 +42,9 @@ func (e *Engine) installPrecompiled(ctx context.Context, r model.Resource, entry
 	}
 	deps := []string{"install", "-y", "--no-install-recommends", "ca-certificates"}
 	deps = append(deps, artifact.RuntimePackages...)
+	if entry.Software == "postgresql" {
+		deps = append(deps, "patchelf")
+	}
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", deps...); err != nil {
 		return err
 	}
@@ -59,6 +62,24 @@ func (e *Engine) installPrecompiled(ctx context.Context, r model.Resource, entry
 	}
 	if err = extractArchive(ctx, archive, artifact.Source, runtimePath, false); err != nil {
 		return err
+	}
+	if entry.Software == "postgresql" {
+		// Upstream tools contain the build prefix in RUNPATH. Resolve libpq
+		// from this instance after relocating the verified package.
+		if err = filepath.WalkDir(filepath.Join(runtimePath, "bin"), func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() || d.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if _, er := output(ctx, "patchelf", "--print-rpath", path); er != nil {
+				return nil
+			}
+			return run(ctx, log, "", nil, nil, "patchelf", "--set-rpath", "$ORIGIN/../lib", path)
+		}); err != nil {
+			return err
+		}
 	}
 	if entry.Software == "php" {
 		// The binaries use explicit ini/FPM paths. Relocate the two upstream build helper scripts for PECL.
