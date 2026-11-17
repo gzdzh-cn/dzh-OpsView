@@ -161,3 +161,15 @@ Ubuntu 22.04/24.04、Debian 12/13 各 10 个 Go 测试包全部通过。旧 Redi
 rc.1 的浏览器测试使用 `--web ../web/dist`，所以验证的是磁盘文件，不能证明内嵌发布资源完整；原先菜单测试主要通过直接访问 URL，也没有覆盖全部实际菜单点击。rc.1 的流水线通过记录保留，已补充此验证缺口，不应继续推荐 rc.1。
 
 rc.2 改为 `//go:embed all:dist`，加入构建目录与内嵌目录逐文件比较。该回归在修复前准确报出缺失 Vue helper，修复后通过。Playwright 默认移除 `--web`，逐个点击全部菜单并检查资源失败；发布和候选流水线增加 `OPSVIEW_E2E_RELEASE=true`，直接启动打包后的 Linux 二进制重复完整浏览器验证。其他软件及生产验收边界继续保留。
+
+修复提交 `4355d80f760379a452694a5f3d298fbf336132a7` 已发布为 [v0.1.2-rc.2](https://github.com/gzdzh-cn/dzh-OpsView/releases/tag/v0.1.2-rc.2)，保持 prerelease，latest 仍为 v0.1.1。以下检查全部通过：
+
+| 工作流 | 结果 |
+| --- | --- |
+| [发布与公开安装](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44016838633) | build、publish、verify-public-install 全部成功；内嵌文件完整性、Go race/vet、前端、11 个浏览器测试、实际 Linux 发布二进制的另一次 11 个浏览器测试、安装器、日志/Session 协议、systemd 安装更新回退及公开下载安装更新 |
+| [常规检查](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44016811589) | 通过 |
+| [候选构建](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44016811636) | 通过，包括实际打包二进制的浏览器回归 |
+
+GitHub 公开附件元数据中，发布包大小为 23,625,366 字节，SHA-256 为 `b7f451db6eba9dd47f041b57f121613dd0dab692e7d0c24c0f6c1f0302766cca`；工作流内下载及校验通过。本机额外直连 GitHub Release 下载暂时超时，未记为本机独立下载验证通过。原生软件矩阵另行运行，未借此修复扩大安装放行范围。
+
+此次仅通过 SSH 读取用户服务器状态和在 Edge 中复现，没有自动更新现有服务器。已有面板使用 `ov update --version v0.1.2-rc.2`，完成后重新加载页面。rc.1 已公开附件保留，不覆盖已有标签。
