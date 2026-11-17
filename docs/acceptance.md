@@ -217,3 +217,19 @@ GitHub 公开附件元数据中，发布包大小为 23,625,366 字节，SHA-256
 - Linux systemd 安装、访问配置事务、失败回退，以及公开发布包安装和通过 `ov update` 更新后保留 HTTP 与自定义端口。
 
 已发布为预发布测试版，保留 rc.1 的标签及附件。用户可运行 `ov backup`、`ov update --version v0.1.3-rc.2` 获取菜单修复；现有证书文件无需删除。
+
+## 2026-11-17 v0.1.3-rc.3 关闭 SSL 后的登录循环
+
+用户更新 rc.2 后，点击登录返回登录页。只读检查确认服务运行、HTTP 配置保留，审计连续记录 `auth.login` 成功且会话已创建。因此没有重置密码或改写管理员。通过 Chromium 在非 localhost 地址保留旧 Secure Cookie，复现 HTTP 登录响应 200，但同名的新 Cookie 被浏览器拒绝写入。
+
+根因是 HTTPS/HTTP 共用 `opsview_session`。rc.2 的 Linux HTTP 登录测试使用新 Cookie Jar，本地浏览器主要使用 localhost，未覆盖普通公网地址中遗留 Secure Cookie 的行为。
+
+rc.3 将 HTTP 会话改为 `opsview_session_http`，HTTPS 保留原名及 Secure 保护；读取会话、接口鉴权、退出统一按协议选择。登录页在收到成功响应后再次检查会话，Cookie 被禁用或拦截时显示明确错误。本地完整 Go race、go vet、前端构建和 Vitest 通过，16 项浏览器测试全部通过，包括：
+
+- 使用映射到本机的非 localhost 域名，保留旧 Secure Cookie，真实登录、刷新及侧栏导航成功。
+- 登录成功但浏览器无法保存会话时明确报错，避免静默返回。
+- HTTP/HTTPS Cookie 名称与属性、接口鉴权、双 Cookie 并存及退出清理对应会话。
+
+旧 HTTP 会话在更新后需要重新登录；管理员、密码、业务数据与当前访问协议保留。更新前可使用无痕窗口或清除此面板站点的 Cookie 临时登录。
+
+发布提交 `d356dfc`，标签 `v0.1.3-rc.3`。[发布流水线 44106709383](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44106709383) 的 build、publish、verify-public-install 全部成功；实际发布二进制的 16 项浏览器流程、systemd 安装与失败回退，以及公开下载安装、HTTP/自定义端口下 `ov update` 后登录均通过。已独立下载公开安装脚本并核对 SHA-256，发布包摘要为 `b3732ae215b4f6530625e7ac64008ba1bf09a163f32301745884e1b75d172d00`。本次未自动更新用户服务器。
