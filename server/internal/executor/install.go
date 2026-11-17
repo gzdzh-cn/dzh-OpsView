@@ -51,6 +51,7 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 		if err := checkOS(); err != nil {
 			return nil, err
 		}
+		r.Name = entry.Software + "-" + entry.Version
 		if !e.allowUnverifiedNative {
 			if reason := catalog.InstallationReason(entry, r.Config.String("mode"), r.Config.String("installMethod"), hostSystem()); reason != "" {
 				return nil, errors.New(reason)
@@ -361,10 +362,11 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "update"); err != nil {
 		return err
 	}
-	deps := []string{"install", "-y", "--no-install-recommends", "ca-certificates", "xz-utils", "libaio1t64", "libnuma1", "libncurses6"}
+	aio := "libaio1t64"
 	if strings.Contains(readText("/etc/os-release"), `VERSION_ID="22.04"`) || strings.Contains(readText("/etc/os-release"), `VERSION_ID="12"`) {
-		deps[len(deps)-3] = "libaio1"
+		aio = "libaio1"
 	}
+	deps := []string{"install", "-y", "--no-install-recommends", "ca-certificates", "xz-utils", aio, "libnuma1", "libncurses6", "libkeyutils1", "libsasl2-2"}
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", deps...); err != nil {
 		return err
 	}

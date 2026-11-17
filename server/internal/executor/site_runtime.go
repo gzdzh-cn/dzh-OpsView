@@ -318,15 +318,4 @@ func (e *Engine) stopSiteProcesses(ctx context.Context, r model.Resource) {
 		_ = systemctl(ctx, func(string) {}, "disable", phpSiteUnit(r))
 		_ = systemctl(ctx, func(string) {}, "stop", phpSiteUnit(r))
 	}
-	if id := r.Config.String("appId"); id != "" {
-		for _, s := range e.states() {
-			if s.Kind == "site" && s.ID != r.ID && s.Config.String("appId") == id && !siteUnavailable(s) {
-				return
-			}
-		}
-		if app, err := e.load(id); err == nil {
-			_ = systemctl(ctx, func(string) {}, "disable", serviceName(app))
-			_ = systemctl(ctx, func(string) {}, "stop", serviceName(app))
-		}
-	}
 }

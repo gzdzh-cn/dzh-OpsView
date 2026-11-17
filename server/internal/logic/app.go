@@ -112,6 +112,9 @@ func (a *App) ReloadSchedules() {
 	})
 }
 func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task, error) {
+	if r.Kind == "app" {
+		return model.Task{}, errors.New("应用进程功能已下线，已有服务与数据保留")
+	}
 	if p == nil {
 		p = model.Config{}
 	}
@@ -202,11 +205,24 @@ func (a *App) runNext(ctx context.Context) {
 			state = "cancelled"
 		}
 		_ = a.Store.Finish(t.ID, state, msg)
+		if strings.HasPrefix(op.Name, "files.") {
+			a.auditFileTask(op, state)
+		}
 		a.Store.Event(t.ID, "失败："+msg)
 		if r, err := a.Store.Resource(op.Resource.ID); err == nil && (strings.HasSuffix(op.Name, ".install") || strings.HasSuffix(op.Name, ".apply") || strings.HasSuffix(op.Name, ".start")) {
 			r.Status = "error"
 			_ = a.Store.Update(&r)
 		}
+		return
+	}
+	if strings.HasPrefix(op.Name, "files.") {
+		if e = a.Store.Set("task-result:"+t.ID, data); e != nil {
+			_ = a.Store.Finish(t.ID, "failed", "文件操作完成，但结果保存失败")
+			return
+		}
+		_ = a.Store.Finish(t.ID, "succeeded", "")
+		a.auditFileTask(op, "succeeded")
+		a.Store.Event(t.ID, "任务完成")
 		return
 	}
 	if linked, ok := data["linkedResources"]; ok {
@@ -259,7 +275,11 @@ func (a *App) runNext(ctx context.Context) {
 	// and site-scoped changes must not mark the whole PHP version running or
 	// replace its configuration revision with a site's revision.
 	if er == nil && op.Name != "instance.rotate-log" && op.Name != "instance.delete-log-archive" && op.Name != "instance.session" {
-		if strings.HasSuffix(op.Name, ".delete") || strings.HasSuffix(op.Name, ".uninstall") {
+		if strings.HasSuffix(op.Name, ".uninstall") && r.Kind == "instance" {
+			r.Status = "uninstalled"
+			r.Config["retainedData"] = true
+			er = a.Store.Update(&r)
+		} else if strings.HasSuffix(op.Name, ".delete") || strings.HasSuffix(op.Name, ".uninstall") {
 			er = a.Store.Delete(r.ID)
 		} else {
 			if r.Config == nil {
@@ -284,4 +304,24 @@ func (a *App) runNext(ctx context.Context) {
 	}
 	_ = a.Store.Finish(t.ID, "succeeded", "")
 	a.Store.Event(t.ID, "任务完成")
+}
+
+func (a *App) auditFileTask(op model.Operation, result string) {
+	paths := []string{}
+	if path := op.Params.String("path"); path != "" {
+		paths = append(paths, path)
+	}
+	if batch, ok := op.Params["paths"].([]any); ok {
+		for _, v := range batch {
+			if path, ok := v.(string); ok {
+				paths = append(paths, path)
+			}
+		}
+	}
+	if len(paths) == 0 {
+		paths = []string{""}
+	}
+	for _, path := range paths {
+		a.Store.Audit(op.Name+":"+result+":"+path, "files-host", "task")
+	}
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DataList from '../components/DataList.vue'
 import { onMounted, ref } from 'vue'
 import { api, post, errorText } from '../lib/api'
 import { ElMessage } from 'element-plus'
@@ -74,13 +75,39 @@ onMounted(() => {
     <div class="notice">
       监听端口与防火墙放行是不同状态。云厂商安全组需单独检查；已有服务只检测，不自动接管。
     </div>
-    <section class="surface system-detail" style="margin-bottom: 20px">
-      <h3>监听端口</h3>
-      <pre class="log-box">{{ data?.ports || '执行器尚未返回状态' }}</pre>
+    <section class="surface" style="margin-bottom: 20px">
+      <div class="page-toolbar">
+        <h3>监听端口</h3>
+        <el-button :loading="busy" @click="load">刷新</el-button>
+      </div>
+      <DataList :rows="data?.portItems || []" searchable>
+        <el-table-column prop="protocol" label="协议" width="90" />
+        <el-table-column prop="local" label="监听地址" min-width="200" />
+        <el-table-column prop="state" label="状态" width="110" />
+        <el-table-column prop="process" label="进程" min-width="240" show-overflow-tooltip />
+      </DataList>
+      <el-collapse>
+        <el-collapse-item title="原始端口诊断">
+          <pre class="log-box">{{ data?.ports }}</pre>
+        </el-collapse-item>
+      </el-collapse>
     </section>
-    <section class="surface system-detail">
-      <h3>系统服务</h3>
-      <pre class="log-box">{{ data?.services || '执行器尚未返回状态' }}</pre>
+    <section class="surface">
+      <div class="page-toolbar"><h3>系统服务</h3></div>
+      <DataList :rows="data?.serviceItems || []" searchable>
+        <el-table-column prop="unit" label="服务" min-width="220" />
+        <el-table-column prop="active" label="状态" width="110" />
+        <el-table-column prop="state" label="运行状态" width="120" />
+        <el-table-column prop="description" label="说明" min-width="250" show-overflow-tooltip />
+        <el-table-column label="归属" width="110">
+          <template #default="{ row }">{{ row.managed ? 'OpsView' : '外部服务' }}</template>
+        </el-table-column>
+      </DataList>
+      <el-collapse>
+        <el-collapse-item title="原始服务诊断">
+          <pre class="log-box">{{ data?.services }}</pre>
+        </el-collapse-item>
+      </el-collapse>
     </section>
   </template>
   <section v-if="tab === 'logs'" class="surface system-detail">
@@ -96,11 +123,11 @@ onMounted(() => {
       <h3>操作审计</h3>
       <el-button @click="audit">刷新</el-button>
     </div>
-    <el-table :data="audits">
+    <DataList :rows="audits">
       <el-table-column label="操作" prop="action" min-width="180" />
       <el-table-column label="资源" prop="resourceId" min-width="180" />
       <el-table-column label="来源 IP" prop="ip" width="140" />
       <el-table-column label="时间" prop="createdAt" min-width="170" />
-    </el-table>
+    </DataList>
   </section>
 </template>

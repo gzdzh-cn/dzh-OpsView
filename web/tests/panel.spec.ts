@@ -6,7 +6,9 @@ const username = 'e2e-admin',
 test.beforeAll(async ({ request }) => {
   const status = await (await request.get('/api/v1/auth')).json()
   if (status.setupRequired) {
-    const token = fs.readFileSync(path.resolve('../.opsview/e2e/setup.token'), 'utf8').trim()
+    const token = fs
+      .readFileSync(path.join(process.env.OPSVIEW_E2E_DATA!, 'setup.token'), 'utf8')
+      .trim()
     const response = await request.post('/api/v1/auth/setup', {
       data: { token, username, password },
     })
@@ -32,7 +34,6 @@ test('sidebar navigates all embedded management pages without missing assets', a
     ['/sites', '网站'],
     ['/databases', '数据库'],
     ['/docker', 'Docker'],
-    ['/apps', '应用进程'],
     ['/software', '软件与插件'],
     ['/files', '文件'],
     ['/backups', '备份与计划'],
@@ -86,11 +87,9 @@ test('queued installation reports executor unavailable instead of success', asyn
     .first()
     .getByRole('button', { name: '安装', exact: true })
     .click()
-  await page
-    .getByPlaceholder('字母、数字、横线或下划线，例如 my-app')
-    .fill(`e2e-nginx-${Date.now()}`)
+  await expect(page.getByPlaceholder('字母、数字、横线或下划线，例如 my-app')).toHaveCount(0)
   await page.getByRole('button', { name: '创建并部署' }).click()
-  await expect(page.locator('.el-dialog')).not.toBeVisible()
+  await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
   await page.goto('/tasks')
   await expect(page.locator('.el-table .status-badge.failed').first()).toBeVisible({
     timeout: 20000,
@@ -209,7 +208,7 @@ test('proxy editor submits multiple paths and upstreams', async ({ page }) => {
   await second.locator('textarea').fill('http://127.0.0.1:4000')
   await second.getByPlaceholder('$host 或 api.example.com').fill('api.example.com')
   await page.getByRole('button', { name: '创建并部署', exact: true }).click()
-  await expect(page.locator('.el-dialog')).not.toBeVisible()
+  await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
   expect(submitted.config.proxyRoutes[0].targets).toEqual([
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
@@ -493,4 +492,132 @@ test('PHP Session memcached settings preserve masked credentials and confirm sco
     path: '../.opsview/screenshots/php-session-memcached.png',
     fullPage: true,
   })
+})
+
+test('Docker engine states gate resource requests and negotiate older engines', async ({
+  page,
+}) => {
+  let state = 'not_installed',
+    resources = 0
+  await page.route('**/api/v1/docker/status', (route) =>
+    route.fulfill({
+      json: {
+        status: state,
+        reason: state === 'ready' ? 'Docker 引擎可用' : '尚未安装 Docker 引擎',
+        engineVersion: '20.10.24',
+        apiVersion: '1.41',
+        composeAvailable: true,
+        composeVersion: '2.39.0',
+      },
+    }),
+  )
+  await page.route('**/api/v1/docker/containers', (route) => {
+    resources++
+    return route.fulfill({ json: { items: [] } })
+  })
+  await page.goto('/docker')
+  await expect(page.getByRole('button', { name: '安装 Docker 引擎', exact: true })).toBeVisible()
+  expect(resources).toBe(0)
+  state = 'ready'
+  await page.getByRole('button', { name: '重新检测', exact: true }).click()
+  await expect(page.locator('.notice').first()).toContainText('API 1.41')
+  await expect(page.getByRole('tab', { name: '容器', exact: true })).toBeVisible()
+  expect(resources).toBe(1)
+  await page.getByRole('tab', { name: '应用模板', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '容器应用模板', exact: true })).toBeVisible()
+})
+
+test('application entry retires to other websites and plugins use row lists', async ({ page }) => {
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture] }))
+  await page.goto('/apps')
+  await expect(page).toHaveURL('/sites?tab=other&retired=apps')
+  await expect(page.getByRole('tab', { name: '其他项目', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.locator('.el-alert')).toContainText('应用进程功能已下线')
+  await expect(page.locator('.sidebar a[href="/apps"]')).toHaveCount(0)
+  await page.goto('/software')
+  await page.getByRole('tab', { name: '插件市场', exact: true }).click()
+  await expect(page.locator('.list-panel .el-table')).toBeVisible()
+  await expect(page.locator('.plugin-card')).toHaveCount(0)
+  await page.getByRole('tab', { name: '仓库管理', exact: true }).click()
+  await expect(page.getByRole('button', { name: '添加插件仓库', exact: true }).first()).toBeVisible()
+})
+
+test('server file page navigates root, shows revisions, recovers conflicts and stays within mobile viewport', async ({
+  page,
+}) => {
+  let saved: any,
+    current = '/',
+    contents = 'hello\n',
+    rev = 'revision-1'
+  const row = {
+    name: '.env',
+    path: '/var/www/.env',
+    directory: false,
+    symlink: false,
+    size: 6,
+    mode: '0640',
+    owner: 'www-data',
+    group: 'www-data',
+    modifiedAt: new Date().toISOString(),
+    revision: rev,
+  }
+  await page.route('**/api/v1/files', async (route) => {
+    const p = route.request().postDataJSON()
+    if (p.action === 'metadata')
+      return route.fulfill({ json: { favorites: [], shortcuts: [{ name: '根目录', path: '/' }] } })
+    if (p.action === 'list') {
+      current = p.path
+      return route.fulfill({
+        json: {
+          path: current,
+          total: 1,
+          items: current === '/' ? [{ ...row, name: 'var', path: '/var', directory: true }] : [row],
+          readOnly: false,
+        },
+      })
+    }
+    if (p.action === 'read') return route.fulfill({ json: { text: contents, revision: rev } })
+    if (p.action === 'write') {
+      saved = p
+      return route.fulfill({
+        status: 409,
+        json: {
+          error: '文件已变化，请重新载入',
+          code: 'revision_conflict',
+          revision: 'revision-2',
+        },
+      })
+    }
+    if (p.action === 'trash') return route.fulfill({ json: { items: [] } })
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/files')
+  await expect(page.getByRole('textbox', { name: '服务器路径', exact: true })).toHaveValue('/')
+  await page.getByRole('textbox', { name: '服务器路径', exact: true }).fill('/var/www')
+  await page.getByRole('button', { name: '前往', exact: true }).click()
+  await expect(page.getByRole('button', { name: '.env', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '编辑', exact: true }).click()
+  await expect(page.locator('.el-dialog .cm-content')).toContainText('hello')
+  await page.locator('.el-dialog .cm-content').fill('changed')
+  await page.getByRole('button', { name: '查看差异并保存', exact: true }).click()
+  await expect(page.locator('.el-dialog .log-box')).toContainText('+ 1: changed')
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect.poll(() => saved?.revision).toBe('revision-1')
+  await expect(page.locator('.el-message')).toContainText('文件已变化')
+  rev = 'revision-2'
+  contents = 'external edit'
+  await page.getByRole('button', { name: '返回编辑', exact: true }).click()
+  await page.getByRole('button', { name: '重新载入', exact: true }).click()
+  await expect(page.locator('.el-dialog .cm-content')).toContainText('external edit')
+  await page.getByRole('button', { name: '取消', exact: true }).last().click()
+  await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator('.sidebar')).not.toBeInViewport()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
+    false,
+  )
+  await page.screenshot({ path: '../.opsview/screenshots/files-mobile.png', fullPage: true })
 })

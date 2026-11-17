@@ -38,7 +38,7 @@ func send(w http.ResponseWriter, code int, v any) {
 }
 func fail(w http.ResponseWriter, code int, msg string) { send(w, code, map[string]any{"error": msg}) }
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<20)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if e := d.Decode(v); e != nil {
@@ -74,7 +74,9 @@ func (c *Controller) Handler() http.Handler {
 		"GET /api/v1/overview": c.overview, "GET /api/v1/resources": c.resources, "POST /api/v1/resources": c.createResource, "PUT /api/v1/resources/{id}": c.updateResource, "DELETE /api/v1/resources/{id}": c.deleteResource, "POST /api/v1/resources/{id}/actions/{action}": c.action,
 		"GET /api/v1/catalog": func(w http.ResponseWriter, r *http.Request) { send(w, 200, catalog.ForSystem(catalogSystem())) }, "GET /api/v1/plugins": c.plugins, "POST /api/v1/plugins/import": c.importPlugin, "POST /api/v1/catalog/import": c.importCatalog,
 		"GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
-		"POST /api/v1/files": c.files, "GET /api/v1/system": c.system, "POST /api/v1/system/actions/{action}": c.systemAction,
+		"POST /api/v1/files":         c.files,
+		"GET /api/v1/files/transfer": c.fileTransfer, "PUT /api/v1/files/transfer": c.fileTransfer, "GET /api/v1/files/tasks/{id}": c.fileTaskResult, "GET /api/v1/system": c.system, "POST /api/v1/system/actions/{action}": c.systemAction,
+		"GET /api/v1/docker/status":       func(w http.ResponseWriter, r *http.Request) { c.exec(w, r, model.Operation{Name: "docker.status"}) },
 		"GET /api/v1/docker/{collection}": c.dockerList, "POST /api/v1/docker/containers/{id}/{action}": c.dockerAction,
 		"POST /api/v1/docker/manage/{collection}/{action}": c.dockerManage,
 		"GET /api/v1/openapi.json": func(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +170,14 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	if body.Kind == "site" && body.Config.String("type") == "app" {
+		fail(w, 410, "应用进程部署已下线，请使用静态站或反向代理")
+		return
+	}
+	if body.Kind == "app" {
+		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
+		return
+	}
 	res := model.Resource{Kind: body.Kind, Name: body.Name, Config: body.Config}
 	if res.Config == nil {
 		res.Config = model.Config{}
@@ -177,6 +187,11 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if e := c.App.Store.Create(&res); e != nil {
+		var duplicate *model.DuplicateVersion
+		if errors.As(e, &duplicate) {
+			send(w, 409, model.Config{"error": duplicate.Error(), "resourceId": duplicate.ResourceID})
+			return
+		}
 		fail(w, 409, "创建失败：名称可能已存在")
 		return
 	}
@@ -193,13 +208,27 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 	send(w, 201, res)
 }
 func (c *Controller) validate(res *model.Resource) error {
+	if res.Kind == "app" {
+		return errors.New("应用进程功能已下线")
+	}
 	if res.Kind == "instance" {
+		if res.Config.String("mode") != "" && res.Config.String("mode") != "native" {
+			return errors.New("软件市场仅支持原生安装，容器应用请使用 Docker 菜单")
+		}
+		res.Config["mode"] = "native"
 		entry, ok := catalog.Find(res.Config.String("catalogId"))
 		if !ok {
 			return errors.New("软件版本不在已验证目录中；请先导入签名配方")
 		}
 		res.Config["software"] = entry.Software
 		res.Config["version"] = entry.Version
+		res.Name = entry.Software + "-" + entry.Version
+		if res.Config.String("installMethod") == "" {
+			res.Config["installMethod"] = "source"
+			if catalog.InstallationReason(entry, "native", "binary", catalogSystem()) == "" {
+				res.Config["installMethod"] = "binary"
+			}
+		}
 		if res.Config.String("mode") == "native" && entry.Source == "" {
 			return errors.New("此版本未提供原生安装配方")
 		}
@@ -215,6 +244,10 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 	res, e := c.App.Store.Resource(r.PathValue("id"))
 	if e != nil {
 		fail(w, 404, "资源不存在")
+		return
+	}
+	if res.Kind == "app" {
+		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
 		return
 	}
 	if res.Kind == "instance" {
@@ -237,6 +270,15 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 	if res.Kind == "plugin" && b.Config.String("pluginId") != res.Config.String("pluginId") {
 		fail(w, 400, "插件标识不可修改")
 		return
+	}
+	if res.Kind == "site" && b.Config.String("type") == "app" {
+		if !res.Config.Bool("externalApplication") {
+			fail(w, 410, "应用进程部署已下线，请使用反向代理")
+			return
+		}
+		b.Config["externalApplication"] = true
+		b.Config["legacyAppId"] = res.Config.String("legacyAppId")
+		delete(b.Config, "appId")
 	}
 	security.PreserveMasked(b.Config, res.Config)
 
@@ -268,7 +310,11 @@ func (c *Controller) deleteResource(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "资源不存在")
 		return
 	}
-	if res.Kind != "schedule" && res.Kind != "repository" && res.Status != "pending" {
+	if res.Kind == "app" {
+		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
+		return
+	}
+	if res.Kind != "schedule" && res.Kind != "repository" && res.Status != "pending" && !(res.Kind == "instance" && res.Status == "uninstalled") {
 		fail(w, 409, "请使用资源的卸载或删除任务，以便同步处理服务器状态")
 		return
 	}
@@ -298,6 +344,10 @@ func (c *Controller) action(w http.ResponseWriter, r *http.Request) {
 	res, e := c.App.Store.Resource(r.PathValue("id"))
 	if e != nil {
 		fail(w, 404, "资源不存在")
+		return
+	}
+	if res.Kind == "app" {
+		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
 		return
 	}
 	var p model.Config
@@ -458,31 +508,12 @@ func (c *Controller) exec(w http.ResponseWriter, r *http.Request, op model.Opera
 	}
 	send(w, 200, data)
 }
-func (c *Controller) files(w http.ResponseWriter, r *http.Request) {
-	var b struct {
-		ResourceID string `json:"resourceId"`
-		Action     string `json:"action"`
-		Path       string `json:"path"`
-		Content    string `json:"content"`
-		Mode       string `json:"mode"`
-	}
-	if !decode(w, r, &b) {
-		return
-	}
-	res, e := c.App.Store.Resource(b.ResourceID)
-	if e != nil || (res.Kind != "site" && res.Kind != "app" && res.Kind != "instance") {
-		fail(w, 400, "请选择受管理的网站或应用")
-		return
-	}
-	c.App.Store.Audit("files."+b.Action, res.ID, clientIP(r))
-	c.exec(w, r, model.Operation{Name: "files." + b.Action, Resource: res, Params: model.Config{"path": b.Path, "content": b.Content, "mode": b.Mode}})
-}
 func (c *Controller) system(w http.ResponseWriter, r *http.Request) {
 	c.exec(w, r, model.Operation{Name: "system.inspect", Params: model.Config{}})
 }
 func (c *Controller) systemAction(w http.ResponseWriter, r *http.Request) {
 	action := r.PathValue("action")
-	if action != "install-docker" && action != "service" && action != "logs" && action != "import-catalog" && action != "reconcile" {
+	if action != "install-docker" && action != "start-docker" && action != "service" && action != "logs" && action != "import-catalog" && action != "reconcile" {
 		fail(w, 400, "不支持的系统操作")
 		return
 	}

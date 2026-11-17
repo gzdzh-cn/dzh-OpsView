@@ -11,7 +11,7 @@ ExecStart=/opt/opsview/bin/opsview-executor --root /var/lib/opsview/managed --so
 Restart=on-failure
 RestartSec=3
 UMask=0027
-ProtectHome=true
-PrivateTmp=true
+ProtectHome=false
+PrivateTmp=false
 [Install]
 WantedBy=multi-user.target

@@ -23,12 +23,7 @@ export const router = createRouter({
       component: () => import('./views/Docker.vue'),
       meta: { title: 'Docker', caption: '容器、镜像与项目，尽在掌握' },
     },
-    {
-      path: '/apps',
-      component: () => import('./views/Resources.vue'),
-      props: { kind: 'app' },
-      meta: { title: '应用进程', caption: '让你的服务持续、稳定地运行' },
-    },
+    { path: '/apps', redirect: '/sites?tab=other&retired=apps' },
     {
       path: '/software',
       component: () => import('./views/Market.vue'),
@@ -37,7 +32,7 @@ export const router = createRouter({
     {
       path: '/files',
       component: () => import('./views/Files.vue'),
-      meta: { title: '文件', caption: '管理站点、应用与数据库导入文件' },
+      meta: { title: '文件', caption: '管理服务器目录、文件与回收站' },
     },
     {
       path: '/backups',

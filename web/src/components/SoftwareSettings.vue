@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DataList from './DataList.vue'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, action, post, errorText, type Config, type Resource } from '../lib/api'
@@ -634,20 +635,20 @@ const documentGlobal = window.document
             :closable="false"
           />
           <pre v-if="metrics.content">{{ metrics.content }}</pre>
-          <el-table
+          <DataList
             v-if="metrics.metrics"
-            :data="Object.entries(metrics.metrics).map(([name, value]) => ({ name, value }))"
+            :rows="Object.entries(metrics.metrics).map(([name, value]) => ({ name, value }))"
             max-height="480"
           >
             <el-table-column prop="name" label="指标" />
             <el-table-column prop="value" label="当前值" />
-          </el-table>
+          </DataList>
           <pre v-if="metrics.sites?.length">{{ JSON.stringify(metrics.sites, null, 2) }}</pre>
           <pre>{{ metrics.detail }}</pre>
         </template>
         <template v-else-if="page === 'extensions'">
           <p class="form-help">扩展绑定当前 PHP 版本。内置扩展以实际运行时结果为准。</p>
-          <el-table :data="extensions">
+          <DataList :rows="extensions">
             <el-table-column prop="name" label="扩展" width="140" />
             <el-table-column prop="status" label="状态" width="110" />
             <el-table-column prop="reason" label="说明" />
@@ -658,10 +659,12 @@ const documentGlobal = window.document
                   link
                   type="primary"
                   @click="
-                    submit('extension', {
-                      name: row.name,
-                      operation: row.installed ? 'enable' : 'install',
-                    })
+                    () => {
+                      submit('extension', {
+                        name: row.name,
+                        operation: row.installed ? 'enable' : 'install',
+                      })
+                    }
                   "
                 >
                   安装 / 启用
@@ -683,7 +686,7 @@ const documentGlobal = window.document
                 </el-button>
               </template>
             </el-table-column>
-          </el-table>
+          </DataList>
         </template>
         <template v-else-if="page === 'phpinfo'">
           <h3>PHP 运行时信息</h3>

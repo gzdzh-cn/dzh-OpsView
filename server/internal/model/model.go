@@ -63,3 +63,9 @@ type Audit struct {
 	IP         string `json:"ip"`
 	CreatedAt  string `json:"createdAt"`
 }
+
+type DuplicateVersion struct{ ResourceID string }
+
+func (e *DuplicateVersion) Error() string {
+	return "该软件的准确版本已存在，请管理已有实例或清理保留记录"
+}

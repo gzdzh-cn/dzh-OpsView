@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/url"
 	"opsview/internal/model"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -45,7 +44,7 @@ func Validate(r model.Resource) error {
 		if c.String("type") == "php" && !Name.MatchString(c.String("phpInstanceId")) {
 			return errors.New("请选择 PHP 实例")
 		}
-		if c.String("type") == "app" && !Name.MatchString(c.String("appId")) {
+		if c.String("type") == "app" && c.String("upstream") == "" && !Name.MatchString(c.String("appId")) {
 			return errors.New("请选择应用进程")
 		}
 		if expiry := c.String("expiresAt"); expiry != "" {
@@ -71,7 +70,7 @@ func Validate(r model.Resource) error {
 		if err := ValidateSiteOptions(c); err != nil {
 			return err
 		}
-		if c.String("type") == "proxy" {
+		if c.String("type") == "proxy" || (c.String("type") == "app" && c.String("upstream") != "") {
 			routes, err := SiteProxyRoutes(c)
 			if err != nil {
 				return err
@@ -113,18 +112,7 @@ func Validate(r model.Resource) error {
 			}
 		}
 	case "app":
-		if !filepath.IsAbs(c.String("executable")) || strings.ContainsAny(c.String("executable"), "\r\n%\"\\") {
-			return errors.New("启动程序须为服务器上的绝对路径")
-		}
-		if len(c.String("arguments")) > 4096 || strings.ContainsAny(c.String("arguments"), "\x00\r\n") {
-			return errors.New("启动参数无效")
-		}
-		if !Name.MatchString(c.String("user")) {
-			return errors.New("请指定非 root 运行用户")
-		}
-		if c.String("user") == "root" {
-			return errors.New("应用不能以 root 运行")
-		}
+		return errors.New("应用进程功能已下线，已有服务与数据保留")
 	case "firewall":
 		if c.String("protocol") != "tcp" && c.String("protocol") != "udp" {
 			return errors.New("协议须为 tcp 或 udp")

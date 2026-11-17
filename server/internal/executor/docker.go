@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,35 +29,12 @@ func dockerHTTP() *http.Client {
 	}}, Timeout: 30 * time.Minute}
 }
 func dockerRequest(ctx context.Context, method, path string, body any) ([]byte, error) {
-	var data []byte
-	if body != nil {
-		var err error
-		data, err = json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, method, "http://docker/v1.47"+path, bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := dockerHTTP().Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Docker 不可用：%w", err)
-	}
-	defer res.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(res.Body, 32<<20))
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode >= 300 {
-		return nil, &dockerAPIError{code: res.StatusCode, message: string(b)}
-	}
-	return b, nil
+	return dockerAPI.request(ctx, method, path, body)
 }
 func (e *Engine) docker(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
 	switch op.Name {
+	case "docker.status":
+		return e.dockerStatus(ctx), nil
 	case "docker.manage":
 		return e.dockerManage(ctx, op, log)
 	case "docker.list":

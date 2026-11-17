@@ -9,7 +9,7 @@ string = {"type": "string"}
 config = {"type": "object", "additionalProperties": True}
 resource = obj({"id": string, "kind": string, "name": string, "status": string, "config": config, "revision": {"type": "integer"}, "createdAt": string, "updatedAt": string})
 task = obj({"id": string, "resourceId": string, "operation": string, "state": {"type": "string", "enum": ["queued", "running", "succeeded", "failed", "interrupted", "cancelled"]}, "error": string, "createdAt": string, "updatedAt": string})
-schemas = {"Resource": resource, "Task": task, "Error": obj({"error": string,"code":string,"revision":string},["error"]), "ResourceInput": obj({"kind": string, "name": string, "config": config}), "ResourceUpdate": obj({"name": string, "config": config, "revision": {"type": "integer"}}), "Envelope": obj({"keyId": string, "payload": string, "signature": string})}
+schemas = {"Resource": resource, "Task": task, "Error": obj({"error": string,"code":string,"revision":string,"resourceId":string},["error"]), "ResourceInput": obj({"kind": string, "name": string, "config": config}, ["kind","config"]), "ResourceUpdate": obj({"name": string, "config": config, "revision": {"type": "integer"}}), "Envelope": obj({"keyId": string, "payload": string, "signature": string})}
 paths = {}
 def add(path, method, summary, response=config, body=None, public=False, status="200"):
     route = paths.setdefault('/api/v1' + path, {})
@@ -46,7 +46,19 @@ add('/settings/certificate','post','上传面板 PEM 证书及私钥',body=obj({
 add('/resources/{id}/download','get','下载加密备份或导出数据库')
 paths['/api/v1/resources/{id}/download']['get']['responses']['200']['content'] = {'application/octet-stream': {'schema': {'type':'string','format':'binary'}}}
 paths['/api/v1/resources/{id}/download']['get']['parameters'] += [{'name':'artifact','in':'query','schema':string}]
-add('/files','post','受管理目录文件操作',body=obj({"resourceId":string,"action":string,"path":string,"content":string,"mode":string},['resourceId','action','path']))
+schemas['FileInput']=obj({'scope':{'type':'string','enum':['server']},'resourceId':string,'action':{'type':'string','enum':['list','stat','read','write','mkdir','note','metadata','favorite','copy','move','rename','permissions','delete','search','size','compress','extract','trash','upload-create','upload-status','upload-finish','upload-cancel']},'path':string,'target':string,'paths':{'type':'array','items':string,'maxItems':1000},'revision':string,'text':{'type':'string','maxLength':10485760},'content':{'oneOf':[string,{'type':'boolean'}],'description':'旧接口为 Base64；服务器 search 操作为布尔内容搜索开关'},'mode':string,'owner':string,'group':string,'recursive':{'type':'boolean'},'confirmed':{'type':'boolean'},'query':string,'searchContent':{'type':'boolean','description':'保留字段；内容搜索使用 content=true'},'hidden':{'type':'boolean'},'filter':string,'page':{'type':'integer','minimum':1},'pageSize':{'type':'integer','minimum':1,'maximum':500},'sort':string,'descending':{'type':'boolean'},'conflict':{'type':'string','enum':['skip','overwrite','keep']},'trashAction':{'type':'string','enum':['list','restore','purge','empty']},'id':string,'size':{'type':'integer','format':'int64','maximum':2147483648},'sha256':string,'note':string,'remove':{'type':'boolean'}},['action'])
+add('/files','post','服务器绝对路径或旧资源相对路径操作；批量耗时操作返回 taskId，写入冲突返回 409',body=ref('FileInput'))
+paths['/api/v1/files']['post']['responses']['202']={'description':'耗时文件操作已排队','content':{'application/json':{'schema':ref('Task')}}}
+add('/files/tasks/{id}','get','读取文件任务状态及加密持久化结果')
+add('/files/transfer','get','经认证和执行器流式下载，支持 Range')
+paths['/api/v1/files/transfer']['get']['parameters']=[{'name':'path','in':'query','required':True,'schema':string},{'name':'Range','in':'header','schema':string}]
+paths['/api/v1/files/transfer']['get']['responses']['200']['content']={'application/octet-stream':{'schema':{'type':'string','format':'binary'}}}
+paths['/api/v1/files/transfer']['get']['responses']['206']={'description':'文件范围响应','content':{'application/octet-stream':{'schema':{'type':'string','format':'binary'}}}}
+add('/files/transfer','put','上传已创建会话的分块，单块最大 8 MiB')
+paths['/api/v1/files/transfer']['put']['parameters'] += [{'name':'id','in':'query','required':True,'schema':string},{'name':'offset','in':'query','required':True,'schema':{'type':'integer','format':'int64'}}]
+paths['/api/v1/files/transfer']['put']['requestBody']={'required':True,'content':{'application/octet-stream':{'schema':{'type':'string','format':'binary'}}}}
+schemas['DockerStatus']=obj({'status':{'type':'string','enum':['ready','not_installed','stopped','incompatible','error']},'reason':string,'engineVersion':string,'apiVersion':string,'minAPIVersion':string,'maxAPIVersion':string,'composeAvailable':{'type':'boolean'},'composeVersion':string},['status','reason','composeAvailable'])
+add('/docker/status','get','无版本探测及 API 1.41–1.47 协商，成功缓存 30 秒',ref('DockerStatus'))
 add('/catalog/import','post','验证签名并导入软件配方',body=ref('Envelope'),status='201')
 add('/plugins/import','post','导入签名插件清单',body=obj({"name":string,"envelope":ref('Envelope')}),status='201')
 add('/repositories/{id}/refresh','post','验证仓库清单并同步插件',body=config)
@@ -54,7 +66,7 @@ add('/system/actions/{action}','post','受控系统操作',body=config,status='2
 add('/docker/containers/{id}/{action}','post','容器操作或日志',body=config,status='202')
 add('/docker/manage/{collection}/{action}','post','固定摘要拉取镜像及管理网络和卷',ref('Task'),config,status='202')
 
-schemas["CatalogEntry"]=obj({"id":string,"software":string,"version":string,"description":string,"platforms":{"type":"array","items":string},"recommended":{"type":"boolean"},"source":string,"image":string,"sha256":string,"recipeRevision":string,"disabledReason":string,"methods":{"type":"array","items":string},"availability":{"type":"object","additionalProperties":string},"verifiedSystems":{"type":"object","additionalProperties":{"type":"array","items":string}},"binaries":{"type":"array","items":obj({"source":string,"sha256":string,"buildPrefix":string,"system":string})}},["id","software","version","description","platforms"])
+schemas["CatalogEntry"]=obj({"id":string,"software":string,"version":string,"description":string,"platforms":{"type":"array","items":string},"recommended":{"type":"boolean"},"source":string,"image":string,"sha256":string,"recipeRevision":string,"disabledReason":string,"methods":{"type":"array","items":string},"availability":{"type":"object","additionalProperties":string},"verifiedSystems":{"type":"object","additionalProperties":{"type":"array","items":string}},"binaries":{"type":"array","items":obj({"source":string,"sha256":string,"buildPrefix":string,"system":string,"runtimePackages":{"type":"array","items":string}})}},["id","software","version","description","platforms"])
 paths['/api/v1/catalog']['get']['responses']['200']['content']['application/json']['schema']={"type":"array","items":ref("CatalogEntry")}
 software_field=obj({"key":string,"label":string,"section":string,"group":string,"default":string,"pattern":string,"apply":{"type":"string","enum":["reload","restart","dynamic"]},"options":{"type":"array","items":string}},["key","label","group","default","pattern","apply"])
 schemas["SoftwareField"]=software_field
@@ -82,6 +94,6 @@ add('/settings/runtime','put','暂存访问设置；120 秒重新连接确认，
 add('/runtime/confirm','post','使用一次性确认凭证提交重新连接结果',body=obj({'token':string}),public=True)
 add('/settings/certificate/issue','post','提交域名或公网 IP ACME 申请',ref('Task'),obj({'host':string,'email':string,'acceptTerms':{'type':'boolean'}}),status='202')
 add('/auth/username','post','修改用户名，失效旧会话并保留双因素认证',body=obj({'username':string,'password':string,'code':string}))
-add('/tasks/{id}/cancel','post','取消软件安装并终止构建进程组',body=config,status='202')
+add('/tasks/{id}/cancel','post','取消软件安装或文件任务；变更阶段保留可恢复副本',body=config,status='202')
 spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session"}}}}
 (root/'server/internal/api/openapi.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n')

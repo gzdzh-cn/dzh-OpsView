@@ -42,7 +42,7 @@ func (e *Engine) system(ctx context.Context, op model.Operation, log func(string
 				existing = append(existing, model.Config{"name": s, "path": path, "managed": false})
 			}
 		}
-		return model.Config{"osRelease": readText("/etc/os-release"), "ports": ports, "firewall": firewall, "dockerRules": dockerRules, "services": services, "existing": existing, "externalRestrictions": "云厂商安全组需要在云控制台单独检查"}, nil
+		return model.Config{"portItems": parseListeningPorts(ports), "serviceItems": parseSystemServices(services), "osRelease": readText("/etc/os-release"), "ports": ports, "firewall": firewall, "dockerRules": dockerRules, "services": services, "existing": existing, "externalRestrictions": "云厂商安全组需要在云控制台单独检查"}, nil
 	case "system.logs":
 		unit := op.Params.String("unit")
 		if !logic.Name.MatchString(strings.TrimSuffix(unit, ".service")) {
@@ -56,6 +56,9 @@ func (e *Engine) system(ctx context.Context, op model.Operation, log func(string
 			return nil, errors.New("只允许控制 OpsView 管理的服务")
 		}
 		action := op.Params.String("action")
+		if strings.HasPrefix(unit, "opsview-app-") {
+			return nil, errors.New("应用进程功能已下线，旧服务保留")
+		}
 		if action != "start" && action != "stop" && action != "restart" {
 			return nil, errors.New("服务操作无效")
 		}
@@ -67,6 +70,10 @@ func (e *Engine) system(ctx context.Context, op model.Operation, log func(string
 			out = append(out, r)
 		}
 		return model.Config{"resources": out}, nil
+	case "system.start-docker":
+		err := systemctl(ctx, log, "start", "docker.service")
+		dockerAPI.invalidate()
+		return model.Config{}, err
 	case "system.install-docker":
 		e.mu.Lock()
 		defer e.mu.Unlock()
@@ -127,6 +134,7 @@ func (e *Engine) system(ctx context.Context, op model.Operation, log func(string
 		if err = run(ctx, log, "", nil, nil, "systemctl", "enable", "--now", "docker"); err != nil {
 			return nil, err
 		}
+		dockerAPI.invalidate()
 		return model.Config{}, nil
 	}
 	return nil, errors.New("系统操作无效")

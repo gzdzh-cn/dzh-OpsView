@@ -1,13 +1,16 @@
 <script setup lang="ts">
+import DataList from '../components/DataList.vue'
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePanel } from '../stores/panel'
 import { action, api, put, errorText, size, date, type Resource, type Config } from '../lib/api'
 import ResourceForm from '../components/ResourceForm.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import SiteRuntimeOptions from '../components/SiteRuntimeOptions.vue'
+const route = useRoute()
 const panel = usePanel(),
-  tab = ref('php'),
+  tab = ref(String(route.query.tab || 'php')),
   filter = ref(''),
   createOpen = ref(false),
   editing = ref<Resource>(),
@@ -132,7 +135,7 @@ function status(row: Resource) {
         : row.status
 }
 function appPort(row: Resource) {
-  return panel.resources.find((r) => r.id === row.config.appId)?.config.port || '—'
+  return panel.resources.find((r) => r.id === row.config.legacyAppId)?.config.port || '—'
 }
 async function save() {
   if (!selected.value) return
@@ -174,6 +177,12 @@ async function loadLogs() {
 }
 </script>
 <template>
+  <el-alert
+    v-if="route.query.retired"
+    title="应用进程功能已下线，已有服务与数据保留；关联网站继续作为外部应用访问。"
+    type="info"
+    :closable="false"
+  />
   <el-tabs v-model="tab">
     <el-tab-pane label="PHP 项目" name="php" />
     <el-tab-pane label="反向代理" name="proxy" />
@@ -194,7 +203,7 @@ async function loadLogs() {
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <div class="surface site-table">
-      <el-table :data="rows" row-key="id" @row-dblclick="open">
+      <DataList :rows="rows" row-key="id" @row-dblclick="open">
         <el-table-column
           :label="tab === 'php' ? '网站名' : tab === 'proxy' ? '域名' : '项目名称'"
           min-width="150"
@@ -247,7 +256,16 @@ async function loadLogs() {
           min-width="190"
           show-overflow-tooltip
         >
-          <template #default="{ row }">{{ row.config.documentRoot || '部署后生成' }}</template>
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              :disabled="!row.config.documentRoot"
+              @click="$router.push({ path: '/files', query: { path: row.config.documentRoot } })"
+            >
+              {{ row.config.documentRoot || '部署后生成' }}
+            </el-button>
+          </template>
         </el-table-column>
         <el-table-column v-if="tab !== 'other'" label="日流量" width="110">
           <template #default="{ row }">
@@ -317,7 +335,7 @@ async function loadLogs() {
             <el-button link type="danger" @click="run(row, 'delete')">删除</el-button>
           </template>
         </el-table-column>
-      </el-table>
+      </DataList>
     </div>
   </template>
   <ResourceForm v-model="createOpen" kind="site" :initial="initial" :editing="editing" />

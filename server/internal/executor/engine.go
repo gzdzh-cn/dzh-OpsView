@@ -28,7 +28,9 @@ type Engine struct {
 	PanelCertificatePath  string
 	TrustDir              string
 	SocketGID             int
+	socketPath            string
 	Vault                 *security.Vault
+	fileMu                sync.Mutex
 	mu                    sync.Mutex
 	siteMu                sync.Mutex
 	runtimeMu             sync.Mutex
@@ -70,6 +72,7 @@ func (e *Engine) Initialize() error {
 	return nil
 }
 func (e *Engine) Serve(ctx context.Context, socket string) error {
+	e.socketPath = socket
 	if err := e.Initialize(); err != nil {
 		return err
 	}
@@ -104,6 +107,7 @@ func (e *Engine) Serve(ctx context.Context, socket string) error {
 	go e.watchSites(runCtx)
 	go e.watchPanelRuntime(runCtx)
 	go e.watchCertificates(runCtx)
+	go e.expireFileTrash(runCtx)
 	go func() { <-ctx.Done(); _ = srv.Close() }()
 	err = srv.Serve(l)
 	if errors.Is(err, http.ErrServerClosed) {
@@ -112,6 +116,10 @@ func (e *Engine) Serve(ctx context.Context, socket string) error {
 	return err
 }
 func (e *Engine) handle(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/file-transfer" {
+		e.handleFileTransfer(w, r)
+		return
+	}
 	if r.Method == "POST" && r.URL.Path == "/download" {
 		e.handleDownload(w, r)
 		return
@@ -120,7 +128,7 @@ func (e *Engine) handle(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<20)
 	var op model.Operation
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
@@ -179,7 +187,7 @@ func (e *Engine) Execute(ctx context.Context, op model.Operation, log func(strin
 	case strings.HasPrefix(op.Name, "database."):
 		return e.database(ctx, op, log)
 	case strings.HasPrefix(op.Name, "app."):
-		return e.app(ctx, op, log)
+		return nil, errors.New("应用进程功能已下线，已有服务与数据保留")
 	case strings.HasPrefix(op.Name, "compose."):
 		return e.compose(ctx, op, log)
 	case strings.HasPrefix(op.Name, "firewall."):

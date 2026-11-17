@@ -92,7 +92,7 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		}
 		action = "apply"
 	}
-	if r.Config.String("type") == "app" {
+	if r.Config.String("type") == "app" && r.Config.String("upstream") == "" {
 		app, er := e.load(r.Config.String("appId"))
 		if er != nil || app.Kind != "app" {
 			return nil, errors.New("关联应用不存在")

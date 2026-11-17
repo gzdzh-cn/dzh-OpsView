@@ -47,6 +47,7 @@ jobs:
         working-directory: web
       - run: make api check
       - run: ./scripts/test-installer.sh
+      - run: ./scripts/test-files-linux.sh
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - run: npm run test:e2e

@@ -78,7 +78,7 @@ func TestAuthenticationCSRFAndCredentialRedaction(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 	cookie, csrf := setupAndLogin(t, h)
-	resource := map[string]any{"kind": "instance", "name": "mysql-local", "config": map[string]any{"catalogId": "mysql-8.4.8", "mode": "docker", "port": 3306, "password": "private-db-password"}}
+	resource := map[string]any{"kind": "instance", "name": "mysql-local", "config": map[string]any{"catalogId": "mysql-8.4.8", "mode": "native", "port": 3306, "password": "private-db-password"}}
 	if w := request(h, "POST", "/api/v1/resources", resource, cookie, "", ""); w.Code != 403 {
 		t.Fatal("missing CSRF accepted", w.Code)
 	}

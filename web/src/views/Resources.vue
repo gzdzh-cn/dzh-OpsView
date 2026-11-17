@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DataList from '../components/DataList.vue'
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -6,7 +7,6 @@ import {
   Search,
   Connection,
   Coin,
-  Cpu,
   Box,
   Lock,
   Clock,
@@ -29,7 +29,6 @@ const titles: Record<string, string> = {
   site: '网站',
   database: '数据库',
   instance: '软件实例',
-  app: '应用进程',
   compose: 'Compose 项目',
   firewall: '防火墙规则',
   backup: '备份任务',
@@ -133,7 +132,6 @@ const icons: Record<string, any> = {
   site: Connection,
   database: Coin,
   instance: Box,
-  app: Cpu,
   compose: Box,
   firewall: Lock,
   backup: FolderOpened,
@@ -161,10 +159,18 @@ async function execute(row: Resource, op: string, params: Record<string, any> = 
         { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' },
       )
       params.confirmDataDeletion = true
-      if (row.status === 'pending' || ['schedule', 'repository'].includes(row.kind)) {
+      if (
+        row.status === 'pending' ||
+        row.status === 'uninstalled' ||
+        ['schedule', 'repository'].includes(row.kind)
+      ) {
         await api(`/resources/${row.id}`, { method: 'DELETE' })
         await panel.refresh()
-        ElMessage.success('已删除未部署配置')
+        ElMessage.success(
+          row.status === 'uninstalled'
+            ? '已清理记录，数据仍保留，可重新安装该版本'
+            : '已删除未部署配置',
+        )
         return
       }
     }
@@ -262,7 +268,7 @@ async function sync(row: Resource) {
         </el-button>
       </div>
     </div>
-    <el-table v-if="rows.length" :data="rows" row-key="id">
+    <DataList v-if="rows.length" :rows="rows" row-key="id">
       <el-table-column label="名称" min-width="180">
         <template #default="{ row }">
           <div class="resource-identity">
@@ -300,7 +306,6 @@ async function sync(row: Resource) {
             }}
             <small class="cell-subtext">{{ row.config.scope }} · {{ row.config.source }}</small>
           </span>
-          <span v-else-if="kind === 'app'" class="task-operation">{{ row.config.executable }}</span>
           <span v-else-if="kind === 'schedule'" class="task-operation">
             {{ row.config.cron }}
             <small class="cell-subtext">
@@ -337,7 +342,9 @@ async function sync(row: Resource) {
               <button @click="openCertificate(row)">上传证书</button>
               <button @click="execute(row, 'logs')">日志</button>
             </template>
-            <template v-if="kind === 'app' || kind === 'compose' || kind === 'instance'">
+            <template
+              v-if="(kind === 'compose' || kind === 'instance') && row.status !== 'uninstalled'"
+            >
               <button v-if="kind !== 'instance'" @click="edit(row)">配置</button>
               <button
                 v-if="row.status === 'pending' || row.status === 'error'"
@@ -396,14 +403,23 @@ async function sync(row: Resource) {
             <button v-if="kind === 'repository'" @click="sync(row)">同步</button>
             <button
               class="danger"
-              @click="execute(row, kind === 'instance' ? 'uninstall' : 'delete')"
+              @click="
+                () => {
+                  execute(
+                    row,
+                    kind === 'instance' && row.status !== 'uninstalled' ? 'uninstall' : 'delete',
+                  )
+                }
+              "
             >
-              {{ kind === 'instance' ? '卸载' : '移除' }}
+              {{
+                kind === 'instance' ? (row.status === 'uninstalled' ? '清理记录' : '卸载') : '移除'
+              }}
             </button>
           </div>
         </template>
       </el-table-column>
-    </el-table>
+    </DataList>
     <div v-else class="empty-page">
       <span class="empty-symbol"><component :is="icons[kind] || Box" /></span>
       <h3>{{ filter ? '没有匹配的资源' : '还没有' + (titles[kind] || '资源') }}</h3>

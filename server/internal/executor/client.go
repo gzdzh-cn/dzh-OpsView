@@ -39,7 +39,7 @@ func (c *Client) Execute(ctx context.Context, op model.Operation, log func(strin
 		return nil, fmt.Errorf("执行器拒绝请求：%d", res.StatusCode)
 	}
 	scanner := bufio.NewScanner(res.Body)
-	scanner.Buffer(make([]byte, 4096), 2<<20)
+	scanner.Buffer(make([]byte, 4096), 64<<20)
 	var data model.Config
 	finished := false
 	for scanner.Scan() {

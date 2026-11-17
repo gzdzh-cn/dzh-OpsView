@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DataList from '../components/DataList.vue'
 import { ElMessage } from 'element-plus'
 import { computed, onUnmounted, ref } from 'vue'
 import { Clock, ArrowRight } from '@element-plus/icons-vue'
@@ -11,6 +12,16 @@ const panel = usePanel(),
   events = ref<any[]>([]),
   error = ref('')
 let stream: EventSource | undefined
+const fileResult = ref<any>(),
+  resultOpen = ref(false)
+async function viewResult(id: string) {
+  try {
+    fileResult.value = await api(`/files/tasks/${id}`)
+    resultOpen.value = true
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
+}
 const tasks = computed(() =>
   panel.tasks.filter((t) => filter.value === 'all' || t.state === filter.value),
 )
@@ -52,7 +63,7 @@ async function cancelInstall(id: string) {
   try {
     await post(`/tasks/${id}/cancel`)
     await panel.refresh()
-    ElMessage.success('已请求取消安装')
+    ElMessage.success('已请求取消任务')
   } catch (e) {
     ElMessage.error(errorText(e))
   }
@@ -102,7 +113,7 @@ async function cancelInstall(id: string) {
         />
       </el-select>
     </div>
-    <el-table v-if="tasks.length" :data="tasks" @row-click="open" style="cursor: pointer">
+    <DataList v-if="tasks.length" :rows="tasks" @row-click="open" style="cursor: pointer">
       <el-table-column label="操作" min-width="200">
         <template #default="{ row }">
           <span class="task-operation">{{ row.operation }}</span>
@@ -128,12 +139,23 @@ async function cancelInstall(id: string) {
       <el-table-column label="操作" width="120">
         <template #default="{ row }">
           <el-button
-            v-if="row.operation === 'instance.install' && ['queued', 'running'].includes(row.state)"
+            v-if="
+              (row.operation === 'instance.install' || row.operation.startsWith('files.')) &&
+              ['queued', 'running'].includes(row.state)
+            "
             link
             type="danger"
             @click.stop="cancelInstall(row.id)"
           >
-            取消安装
+            取消任务
+          </el-button>
+          <el-button
+            v-if="row.operation.startsWith('files.') && row.state === 'succeeded'"
+            link
+            type="primary"
+            @click.stop="viewResult(row.id)"
+          >
+            查看结果
           </el-button>
         </template>
       </el-table-column>
@@ -142,13 +164,16 @@ async function cancelInstall(id: string) {
           <el-icon><ArrowRight /></el-icon>
         </template>
       </el-table-column>
-    </el-table>
+    </DataList>
     <div v-else class="empty-page">
       <span class="empty-symbol"><Clock /></span>
       <h3>暂无任务记录</h3>
       <p>安装软件、部署网站和执行备份后，这里将显示真实进度与日志。</p>
     </div>
   </section>
+  <el-dialog v-model="resultOpen" title="文件任务结果" width="min(760px, 95vw)">
+    <pre class="log-box">{{ JSON.stringify(fileResult?.result, null, 2) }}</pre>
+  </el-dialog>
   <el-drawer :model-value="!!selected" title="任务执行详情" size="680px" @close="close">
     <template v-if="selected">
       <dl class="detail-grid">

@@ -37,7 +37,7 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if schemaVersion > 1 {
+	if schemaVersion > 2 {
 		db.Close()
 		return nil, errors.New("面板数据库来自较新版本，禁止降级打开")
 	}
@@ -51,8 +51,12 @@ func Open(dir string) (*Store, error) {
  CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, resource_id TEXT NOT NULL, ip TEXT NOT NULL, created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires INTEGER NOT NULL);
- PRAGMA user_version=1;`)
+`)
 	if e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = s.migrateV2(); e != nil {
 		db.Close()
 		return nil, e
 	}
@@ -124,8 +128,32 @@ func (s *Store) Create(r *model.Resource) error {
 	if r.Status == "" {
 		r.Status = "pending"
 	}
-	_, e := s.DB.Exec(`INSERT INTO resources VALUES(?,?,?,?,?,?,?,?)`, r.ID, r.Kind, r.Name, r.Status, s.encode(r.Config), r.Revision, r.CreatedAt, r.UpdatedAt)
-	return e
+	tx, e := s.DB.Begin()
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	sw, ver := instanceVersion(r)
+	if sw != "" && ver != "" {
+		var existing string
+		er := tx.QueryRow(`SELECT resource_id FROM software_versions WHERE software=? AND version=?`, sw, ver).Scan(&existing)
+		if er == nil {
+			return &model.DuplicateVersion{ResourceID: existing}
+		}
+		if !errors.Is(er, sql.ErrNoRows) {
+			return er
+		}
+	}
+	_, e = tx.Exec(`INSERT INTO resources VALUES(?,?,?,?,?,?,?,?)`, r.ID, r.Kind, r.Name, r.Status, s.encode(r.Config), r.Revision, r.CreatedAt, r.UpdatedAt)
+	if e != nil {
+		return e
+	}
+	if sw != "" && ver != "" {
+		if _, e = tx.Exec(`INSERT INTO software_versions VALUES(?,?,?)`, sw, ver, r.ID); e != nil {
+			return e
+		}
+	}
+	return tx.Commit()
 }
 func (s *Store) Update(r *model.Resource) error {
 	res, e := s.DB.Exec(`UPDATE resources SET name=?,status=?,config=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, r.Name, r.Status, s.encode(r.Config), Now(), r.ID, r.Revision)
@@ -140,8 +168,48 @@ func (s *Store) Update(r *model.Resource) error {
 	return nil
 }
 func (s *Store) Delete(id string) error {
-	_, e := s.DB.Exec(`DELETE FROM resources WHERE id=?`, id)
-	return e
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`DELETE FROM resources WHERE id=?`, id); err != nil {
+		return err
+	}
+	// Historical duplicate instances remain version occupants after the selected
+	// representative is removed. Config is encrypted, so rebuild via decoded rows.
+	rows, err := tx.Query(`SELECT id,config FROM resources WHERE kind='instance'`)
+	if err != nil {
+		return err
+	}
+	type held struct{ id, software, version string }
+	remaining := []held{}
+	for rows.Next() {
+		var id, encrypted string
+		if err = rows.Scan(&id, &encrypted); err != nil {
+			rows.Close()
+			return err
+		}
+		var config model.Config
+		if err = s.decode(encrypted, &config); err != nil {
+			rows.Close()
+			return err
+		}
+		if config.String("software") != "" && config.String("version") != "" {
+			remaining = append(remaining, held{id, config.String("software"), config.String("version")})
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, r := range remaining {
+		if _, err = tx.Exec(`INSERT OR IGNORE INTO software_versions VALUES(?,?,?)`, r.software, r.version, r.id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 func (s *Store) Audit(action, id, ip string) {
 	_, _ = s.DB.Exec(`INSERT INTO audit(action,resource_id,ip,created_at) VALUES(?,?,?,?)`, action, id, ip, Now())
@@ -181,6 +249,11 @@ func (s *Store) Enqueue(op model.Operation) (model.Task, error) {
 		return t, e
 	}
 	return t, tx.Commit()
+}
+func (s *Store) Task(id string) (model.Task, error) {
+	var t model.Task
+	err := s.DB.QueryRow(`SELECT id,resource_id,operation,state,error,created_at,updated_at FROM tasks WHERE id=?`, id).Scan(&t.ID, &t.ResourceID, &t.Operation, &t.State, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+	return t, err
 }
 func (s *Store) Tasks() ([]model.Task, error) {
 	rows, e := s.DB.Query(`SELECT id,resource_id,operation,state,error,created_at,updated_at FROM tasks ORDER BY created_at DESC LIMIT 200`)

@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import DataList from '../components/DataList.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { usePanel } from '../stores/panel'
 import {
   Connection,
   Coin,
   Box,
-  Cpu,
   ArrowRight,
   Plus,
   CircleCheck,
@@ -78,10 +78,10 @@ const shortcuts = computed(() => [
     color: 'amber',
   },
   {
-    label: '应用进程',
-    count: panel.kind('app').length,
-    icon: Cpu,
-    route: '/apps',
+    label: 'Compose 项目',
+    count: panel.kind('compose').length,
+    icon: Box,
+    route: '/docker',
     color: 'purple',
   },
 ])
@@ -353,7 +353,7 @@ onUnmounted(() => {
           <el-icon><ArrowRight /></el-icon>
         </router-link>
       </div>
-      <el-table v-if="panel.tasks.length" :data="panel.tasks.slice(0, 5)" style="width: 100%">
+      <DataList v-if="panel.tasks.length" :rows="panel.tasks.slice(0, 5)" style="width: 100%">
         <el-table-column label="操作">
           <template #default="{ row }">
             <span class="task-operation">{{ row.operation }}</span>
@@ -368,7 +368,7 @@ onUnmounted(() => {
             <span class="cell-date">{{ date(row.createdAt) }}</span>
           </template>
         </el-table-column>
-      </el-table>
+      </DataList>
       <div v-else class="compact-empty">
         <span class="empty-symbol"><Clock /></span>
         <strong>还没有执行任务</strong>

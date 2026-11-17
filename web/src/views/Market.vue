@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import PluginMarket from '../components/PluginMarket.vue'
+import DataList from '../components/DataList.vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Box, Grid, Upload } from '@element-plus/icons-vue'
+import { Upload } from '@element-plus/icons-vue'
 import { usePanel } from '../stores/panel'
-import { api, post, put, action, errorText, type Config } from '../lib/api'
+import { post, action, errorText, type Config } from '../lib/api'
 import ResourceForm from '../components/ResourceForm.vue'
 import Resources from './Resources.vue'
 import SoftwareSettings from '../components/SoftwareSettings.vue'
@@ -13,15 +15,11 @@ const panel = usePanel(),
   tab = ref('software'),
   install = ref(false),
   initial = ref<Config>({}),
-  plugins = ref<any[]>([]),
   importOpen = ref(false),
   importType = ref('plugin'),
   importName = ref(''),
   importText = ref(''),
-  busy = ref(false),
-  selected = ref<any>(),
-  pluginForm = ref<Config>({}),
-  pluginOpen = ref(false)
+  busy = ref(false)
 const groups = computed(() =>
   ['nginx', 'mysql', 'php', 'redis', 'postgresql', 'nodejs'].map((software) => ({
     software,
@@ -75,7 +73,7 @@ const matchingInstances = computed(() =>
 )
 function openSettings(software: string) {
   chosenSoftware.value = software
-  const items = matchingInstances.value
+  const items = matchingInstances.value.filter((r) => r.status !== 'uninstalled')
   if (items.length === 1) {
     settingsResource.value = items[0]
     settingsOpen.value = true
@@ -94,11 +92,15 @@ async function uninstallSoftware(software: string) {
 async function removeInstance(r: Resource) {
   try {
     await ElMessageBox.confirm(
-      `卸载 ${r.name}，保留业务数据。有关联资源时将拒绝卸载。`,
+      r.status === 'uninstalled'
+        ? `清理 ${r.name} 的记录以释放版本占用，原业务数据保留。`
+        : `卸载 ${r.name}，保留业务数据。有关联资源时将拒绝卸载。`,
       '卸载实例',
       { confirmButtonText: '卸载', cancelButtonText: '取消' },
     )
-    await action(r.id, 'uninstall')
+    if (r.status === 'uninstalled')
+      await import('../lib/api').then(({ api }) => api(`/resources/${r.id}`, { method: 'DELETE' }))
+    else await action(r.id, 'uninstall')
     chooseOpen.value = false
     await panel.refresh()
     ElMessage.success('卸载任务已提交')
@@ -110,14 +112,6 @@ function openImport(type: string) {
   importType.value = type
   importOpen.value = true
 }
-async function loadPlugins() {
-  try {
-    plugins.value = await api('/plugins')
-  } catch (e) {
-    ElMessage.error(errorText(e))
-  }
-}
-onMounted(loadPlugins)
 watch(
   groups,
   (items) => {
@@ -160,82 +154,6 @@ function openInstall(software: string) {
   }
   install.value = true
 }
-function openPlugin(p: any) {
-  selected.value = p
-  pluginForm.value = { ...(installed(p)?.config.values || {}) }
-  for (const f of p.form || [])
-    if (pluginForm.value[f.key] === undefined) pluginForm.value[f.key] = f.default
-  pluginOpen.value = true
-}
-async function installPlugin() {
-  if (!selected.value) return
-  busy.value = true
-  try {
-    const p = selected.value
-    await ElMessageBox.confirm(
-      `插件来源：${p.builtin ? '项目内置' : '已签名仓库'}\n请求权限：${(p.permissions || []).join('、') || '无额外权限'}。应用插件的端口默认仅绑定本机。`,
-      '安装权限',
-      { confirmButtonText: '安装', cancelButtonText: '取消' },
-    )
-    const existing = installed(p)
-    const config = {
-      pluginId: p.id,
-      builtin: !!p.builtin,
-      envelope: p.envelope,
-      values: pluginForm.value,
-    }
-    const resource = existing
-      ? await put('/resources/' + existing.id, {
-          name: existing.name,
-          config,
-          revision: existing.revision,
-        })
-      : await post('/resources', { kind: 'plugin', name: p.id, config })
-    await action(resource.id, 'install')
-    pluginOpen.value = false
-    await panel.refresh()
-    ElMessage.success('已提交插件安装任务')
-  } catch (e) {
-    if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
-  } finally {
-    busy.value = false
-  }
-}
-async function removePlugin(p: any) {
-  const resource = panel.kind('plugin').find((r) => r.config.pluginId === p.id || r.name === p.id)
-  if (!resource) return
-  try {
-    await ElMessageBox.confirm('卸载后保留配置、业务数据和卷。', '卸载插件', {
-      confirmButtonText: '卸载',
-      cancelButtonText: '取消',
-    })
-    if (resource.status === 'pending' || resource.status === 'error') {
-      try {
-        await action(resource.id, 'uninstall')
-      } catch {
-        await api('/resources/' + resource.id, { method: 'DELETE' })
-      }
-    } else await action(resource.id, 'uninstall')
-    await panel.refresh()
-    ElMessage.success('已提交卸载任务')
-  } catch (e) {
-    if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
-  }
-}
-async function checkPlugin(p: any) {
-  const resource = installed(p)
-  if (!resource) return
-  try {
-    await action(resource.id, 'check')
-    await panel.refresh()
-    ElMessage.success('插件检查已提交，结果显示在任务中心与资源配置中')
-  } catch (e) {
-    ElMessage.error(errorText(e))
-  }
-}
-function installed(p: any) {
-  return panel.kind('plugin').find((r) => r.config.pluginId === p.id || r.name === p.id)
-}
 async function importPackage() {
   busy.value = true
   try {
@@ -265,10 +183,10 @@ async function importPackage() {
   </el-tabs>
   <template v-if="tab === 'software'">
     <div class="notice">
-      原生安装支持固定版本及独立实例。预编译包与源码配方按实际验证状态提供；安装过程可在任务中心查看。
+      原生安装支持固定版本及独立实例。极速安装包与编译配方按实际验证状态提供；安装过程可在任务中心查看。
     </div>
     <div class="surface software-list">
-      <el-table :data="groups" row-key="software">
+      <DataList :rows="groups" row-key="software">
         <el-table-column label="软件" width="150">
           <template #default="{ row: g }">
             <div class="software-row-title">
@@ -330,7 +248,7 @@ async function importPackage() {
             </el-button>
           </template>
         </el-table-column>
-      </el-table>
+      </DataList>
     </div>
     <div class="split-heading">
       <h3>已配置实例</h3>
@@ -338,72 +256,31 @@ async function importPackage() {
     </div>
     <Resources kind="instance" embedded />
   </template>
-  <template v-if="tab === 'plugins'">
-    <div class="split-heading" style="margin-top: 0">
-      <div>
-        <h3>扩展你的工作空间</h3>
-        <p class="form-help" style="margin-bottom: 0">应用和运维能力，使用独立插件规范。</p>
-      </div>
-      <el-button :icon="Upload" @click="openImport('plugin')">导入插件</el-button>
-    </div>
-    <div class="market-grid">
-      <article v-for="p in plugins" :key="p.id" class="surface software-card">
-        <div class="software-top">
-          <span
-            class="software-logo"
-            :class="p.type === 'backup' ? 'amber' : p.id === 'redis' ? 'purple' : 'blue'"
-          >
-            <el-icon>
-              <Grid v-if="p.type === 'backup'" />
-              <Box v-else />
-            </el-icon>
-          </span>
-          <div>
-            <h3>{{ p.name }}</h3>
-            <small>v{{ p.version }} · {{ p.builtin ? '内置维护' : '已签名仓库' }}</small>
-          </div>
-        </div>
-        <p>{{ p.description }}</p>
-        <div class="software-pills">
-          <span v-for="permission in p.permissions" :key="permission">{{ permission }}</span>
-        </div>
-        <div class="software-bottom">
-          <span>{{ p.type === 'application' ? '应用插件' : '运维扩展' }}</span>
-          <el-button v-if="installed(p)" text @click="openPlugin(p)">配置 / 升级</el-button>
-          <el-button
-            v-if="installed(p)?.status === 'ready' && p.type !== 'application'"
-            text
-            @click="checkPlugin(p)"
-          >
-            检查
-          </el-button>
-          <el-button v-if="installed(p)" plain @click="removePlugin(p)">
-            {{ installed(p)?.status === 'ready' ? '卸载' : '移除 / 重试' }}
-          </el-button>
-          <el-button v-else type="primary" plain @click="openPlugin(p)">安装插件</el-button>
-        </div>
-      </article>
-    </div>
-    <div v-if="!plugins.length" class="surface empty-page">
-      <h3>暂无插件</h3>
-      <p>添加自建仓库或导入签名插件清单。</p>
-    </div>
-  </template>
+  <PluginMarket v-if="tab === 'plugins'" category="operations" />
   <Resources v-if="tab === 'repositories'" kind="repository" />
   <SoftwareSettings v-model="settingsOpen" :resource="settingsResource" />
   <el-dialog v-model="chooseOpen" title="选择实例" width="600px">
-    <el-table :data="matchingInstances">
+    <DataList :rows="matchingInstances">
       <el-table-column prop="name" label="实例" />
       <el-table-column label="版本">
         <template #default="{ row }">{{ row.config.version }}</template>
       </el-table-column>
       <el-table-column label="操作">
         <template #default="{ row }">
-          <el-button link type="primary" @click="chooseInstance(row)">设置</el-button>
-          <el-button link type="danger" @click="removeInstance(row)">卸载</el-button>
+          <el-button
+            link
+            type="primary"
+            v-if="row.status !== 'uninstalled'"
+            @click="chooseInstance(row)"
+          >
+            设置
+          </el-button>
+          <el-button link type="danger" @click="removeInstance(row)">
+            {{ row.status === 'uninstalled' ? '清理记录' : '卸载' }}
+          </el-button>
         </template>
       </el-table-column>
-    </el-table>
+    </DataList>
   </el-dialog>
   <el-dialog
     :model-value="!!introduction"
@@ -419,30 +296,6 @@ async function importPackage() {
     </div>
   </el-dialog>
   <ResourceForm v-model="install" kind="instance" :initial="initial" />
-  <el-dialog v-model="pluginOpen" :title="'安装 ' + (selected?.name || '')" width="520px">
-    <p class="form-help">{{ selected?.description }}</p>
-    <el-form label-position="top">
-      <el-form-item v-for="f in selected?.form || []" :key="f.key" :label="f.label">
-        <el-input-number
-          v-if="f.type === 'port'"
-          v-model="pluginForm[f.key]"
-          :min="1"
-          :max="65535"
-        />
-        <el-input
-          v-else
-          v-model="pluginForm[f.key]"
-          :type="f.type === 'password' ? 'password' : 'text'"
-          show-password
-        />
-      </el-form-item>
-    </el-form>
-    <div class="notice">插件安装前将显示权限请求。第三方清单必须通过受信任公钥验证。</div>
-    <template #footer>
-      <el-button @click="pluginOpen = false">取消</el-button>
-      <el-button type="primary" :loading="busy" @click="installPlugin">继续安装</el-button>
-    </template>
-  </el-dialog>
   <el-dialog
     v-model="importOpen"
     :title="importType === 'catalog' ? '导入签名安装配方' : '导入签名插件清单'"

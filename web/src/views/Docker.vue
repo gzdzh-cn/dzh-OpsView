@@ -1,10 +1,34 @@
 <script setup lang="ts">
+import PluginMarket from '../components/PluginMarket.vue'
+import DataList from '../components/DataList.vue'
 import { ref, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Box, RefreshRight, Download, Plus } from '@element-plus/icons-vue'
+import { Box, RefreshRight, Plus } from '@element-plus/icons-vue'
 import { api, post, errorText, size } from '../lib/api'
 import { usePanel } from '../stores/panel'
 import Resources from './Resources.vue'
+const engine = ref<any>(),
+  engineBusy = ref(false)
+async function inspect() {
+  engineBusy.value = true
+  try {
+    engine.value = await api('/docker/status')
+    if (engine.value.status === 'ready') await load()
+  } catch (e) {
+    error.value = errorText(e)
+  } finally {
+    engineBusy.value = false
+  }
+}
+async function startEngine() {
+  try {
+    await post('/system/actions/start-docker')
+    ElMessage.success('启动任务已提交，请稍后重新检测')
+    await panel.refresh()
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
+}
 const tab = ref('containers'),
   items = ref<any[]>([]),
   busy = ref(false),
@@ -14,7 +38,7 @@ const tab = ref('containers'),
   logTitle = ref('容器日志'),
   panel = usePanel()
 async function load() {
-  if (tab.value === 'compose') return
+  if (['compose', 'templates'].includes(tab.value) || engine.value?.status !== 'ready') return
   busy.value = true
   error.value = ''
   try {
@@ -106,18 +130,39 @@ async function install() {
   }
 }
 watch(tab, load)
-onMounted(load)
+onMounted(inspect)
 </script>
 <template>
-  <el-tabs v-model="tab" class="panel-tabs">
+  <div class="notice" v-if="engine?.status === 'ready'">
+    Docker {{ engine.engineVersion }} · API {{ engine.apiVersion }} · Compose
+    {{ engine.composeAvailable ? engine.composeVersion : '未安装' }}
+    <el-button link @click="inspect">重新检测</el-button>
+  </div>
+  <section v-if="!engine || engine.status !== 'ready'" class="surface empty-page">
+    <h3>{{ engine?.reason || '正在检测 Docker 引擎…' }}</h3>
+    <p v-if="engine?.status === 'incompatible'">面板支持 API 1.41–1.47，请手动配置兼容引擎。</p>
+    <el-button :loading="engineBusy" @click="inspect">重新检测</el-button>
+    <el-button v-if="engine?.status === 'not_installed'" type="primary" @click="install">
+      安装 Docker 引擎
+    </el-button>
+    <el-button v-if="engine?.status === 'stopped'" type="primary" @click="startEngine">
+      启动 Docker 服务
+    </el-button>
+  </section>
+  <el-tabs v-if="engine?.status === 'ready'" v-model="tab" class="panel-tabs">
     <el-tab-pane label="容器" name="containers" />
     <el-tab-pane label="镜像" name="images" />
     <el-tab-pane label="网络" name="networks" />
     <el-tab-pane label="数据卷" name="volumes" />
     <el-tab-pane label="Compose 项目" name="compose" />
+    <el-tab-pane label="应用模板" name="templates" />
   </el-tabs>
-  <Resources v-if="tab === 'compose'" kind="compose" />
-  <section v-else class="surface">
+  <PluginMarket v-if="engine?.status === 'ready' && tab === 'templates'" category="application" />
+  <Resources v-if="engine?.status === 'ready' && tab === 'compose'" kind="compose" />
+  <section
+    v-if="engine?.status === 'ready' && !['compose', 'templates'].includes(tab)"
+    class="surface"
+  >
     <div class="page-toolbar">
       <div class="page-toolbar-left">
         <h3>
@@ -134,11 +179,10 @@ onMounted(load)
         >
           {{ tab === 'images' ? '拉取镜像' : '创建' }}
         </el-button>
-        <el-button :icon="Download" type="primary" @click="install">安装引擎</el-button>
       </div>
     </div>
     <div v-if="error" class="notice warn" style="margin: 0 20px 20px">{{ error }}</div>
-    <el-table v-if="items.length" :data="items">
+    <DataList v-if="items.length" :rows="items">
       <el-table-column label="名称 / ID" min-width="200">
         <template #default="{ row }">
           <span class="task-operation">
@@ -195,7 +239,7 @@ onMounted(load)
           </div>
         </template>
       </el-table-column>
-    </el-table>
+    </DataList>
     <div v-else class="empty-page">
       <span class="empty-symbol"><Box /></span>
       <h3>{{ error ? 'Docker 暂不可用' : busy ? '正在读取…' : '当前没有资源' }}</h3>

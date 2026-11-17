@@ -37,7 +37,7 @@ func TestTaskExecutionFailureRedactionAndRestart(t *testing.T) {
 	defer store.DB.Close()
 	executor := &testExecutor{}
 	app := &App{Store: store, Executor: executor}
-	resource := model.Resource{Kind: "app", Name: "test", Config: model.Config{"password": "task-secret-value", "executable": "/usr/bin/test", "user": "nobody"}}
+	resource := model.Resource{Kind: "compose", Name: "test", Config: model.Config{"password": "task-secret-value", "executable": "/usr/bin/test", "user": "nobody"}}
 	if err = store.Create(&resource); err != nil {
 		t.Fatal(err)
 	}

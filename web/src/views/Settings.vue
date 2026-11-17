@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DataList from "../components/DataList.vue"
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, put, post, errorText, size, type Config } from '../lib/api'
@@ -368,7 +369,7 @@ onMounted(async () => {
         <el-button type="primary" @click="backup">立即备份面板配置</el-button>
         <el-button @click="loadBackups">刷新备份</el-button>
       </div>
-      <el-table :data="metadataBackups">
+      <DataList :rows="metadataBackups">
         <el-table-column label="备份文件">
           <template #default="{ row }">
             <a :href="row.url">{{ row.name }}</a>
@@ -380,7 +381,7 @@ onMounted(async () => {
         <el-table-column label="操作" width="100">
           <template #default="{ row }"><a :href="row.url">下载</a></template>
         </el-table-column>
-      </el-table>
+      </DataList>
       <p class="form-help">恢复命令将备份解密至新的目录，核对后再切换，保留当前数据目录。</p>
     </template>
   </div>

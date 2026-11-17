@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
         working-directory: web
       - run: ./scripts/test-installer.sh
+      - run: ./scripts/test-files-linux.sh
       - run: make api check
       - run: npx playwright install --with-deps chromium
         working-directory: web

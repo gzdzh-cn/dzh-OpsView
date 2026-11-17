@@ -3,6 +3,7 @@ package logic
 import (
 	"errors"
 	"opsview/internal/dao"
+	"strings"
 )
 
 // Installation cancellation is intentionally narrower than arbitrary task cancellation.
@@ -13,8 +14,8 @@ func (a *App) CancelInstall(id string) error {
 	if err := a.Store.DB.QueryRow("SELECT operation,state FROM tasks WHERE id=?", id).Scan(&operation, &state); err != nil {
 		return err
 	}
-	if operation != "instance.install" {
-		return errors.New("当前只支持取消软件安装任务")
+	if operation != "instance.install" && !strings.HasPrefix(operation, "files.") {
+		return errors.New("此任务不支持取消")
 	}
 	if state == "queued" {
 		result, err := a.Store.DB.Exec("UPDATE tasks SET state='cancelled',updated_at=? WHERE id=? AND state='queued'", dao.Now(), id)
@@ -22,7 +23,7 @@ func (a *App) CancelInstall(id string) error {
 			return err
 		}
 		if n, _ := result.RowsAffected(); n == 1 {
-			a.Store.Event(id, "安装任务已取消")
+			a.Store.Event(id, "任务已取消")
 			return nil
 		}
 	}

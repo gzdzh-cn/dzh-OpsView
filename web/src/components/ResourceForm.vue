@@ -21,7 +21,6 @@ const titles: Record<string, string> = {
   site: '网站',
   instance: '软件实例',
   database: '数据库',
-  app: '应用进程',
   compose: 'Compose 项目',
   firewall: '防火墙规则',
   backup: '备份任务',
@@ -41,14 +40,6 @@ const defaults: Record<string, Config> = {
   },
   instance: { catalogId: '', mode: 'native', port: 80, password: '' },
   database: { instanceId: '', username: '', password: '', source: '127.0.0.1', allowRemote: false },
-  app: {
-    executable: '/usr/bin/node',
-    arguments: '["server.js"]',
-    user: 'opsview-app',
-    port: 3000,
-    environment: '{}',
-    healthURL: '',
-  },
   compose: { yaml: '' },
   firewall: {
     ports: '8080',
@@ -109,19 +100,16 @@ const targets = computed(() =>
   ),
 )
 const version = computed(() => panel.catalog.find((v) => v.id === form.value.catalogId))
-const applicationTargets = computed(() => panel.kind('app').filter((r) => r.config.port))
-const applicationOptions = computed(() =>
-  applicationTargets.value.map((r) => ({
-    label: r.name + ' · :' + r.config.port,
-    value: 'http://127.0.0.1:' + r.config.port,
-  })),
-)
-const runtimeOptions = computed(() => panel.kind('instance').filter((r) => r.config.executablePath))
 const catalogOptions = computed(() =>
   panel.catalog.filter(
     (v) => !form.value.softwareFilter || v.software === form.value.softwareFilter,
   ),
 )
+function occupied(v: Config) {
+  return panel
+    .kind('instance')
+    .some((r) => r.config.software === v.software && r.config.version === v.version)
+}
 function selectVersion() {
   const v = panel.catalog.find((v) => v.id === form.value.catalogId)
   form.value.port =
@@ -143,13 +131,15 @@ function selectVersion() {
     (['mysql', 'nodejs'].includes(v?.software) ? 'binary' : 'source')
 }
 async function save() {
-  if (!name.value) {
+  if (!name.value && props.kind !== 'instance') {
     error.value = '请填写资源名称'
     return
   }
   busy.value = true
   error.value = ''
   try {
+    if (props.kind === 'instance' && version.value && occupied(version.value))
+      throw new Error('该版本已有实例，请管理已有实例；卸载保留数据的记录须先清理')
     if (
       props.kind === 'instance' &&
       form.value.mode === 'native' &&
@@ -174,7 +164,6 @@ async function save() {
       site: 'apply',
       instance: 'install',
       database: props.editing ? 'access' : 'create',
-      app: 'apply',
       compose: 'apply',
       firewall: 'apply',
     }
@@ -208,14 +197,13 @@ void api
     destroy-on-close
   >
     <div v-if="kind === 'instance'" class="notice">
+      名称由软件与准确版本自动生成，同一准确版本只允许保留一个实例。
       实例拥有独立端口与数据目录。默认仅本机访问数据库，安装过程可在任务中心追踪。
     </div>
     <div v-if="kind === 'firewall'" class="notice warn">
       应用后需在 120 秒内确认，否则自动撤回。云安全组需在云控制台单独配置。
     </div>
-    <div v-if="kind === 'app'" class="notice">
-      先保存配置，再到文件管理上传构建产物；程序不存在时首次部署会报错，上传完成后重新应用即可。
-    </div>
+
     <el-alert
       v-if="error"
       :title="error"
@@ -226,7 +214,7 @@ void api
     />
     <el-form label-position="top" @submit.prevent="save">
       <div class="form-grid">
-        <el-form-item label="名称" class="wide" required>
+        <el-form-item v-if="kind !== 'instance'" label="名称" class="wide" required>
           <el-input
             v-model="name"
             placeholder="字母、数字、横线或下划线，例如 my-app"
@@ -248,7 +236,11 @@ void api
           <el-form-item label="网站类型">
             <el-select v-model="form.type">
               <el-option label="PHP 项目" value="php" />
-              <el-option label="应用项目" value="app" />
+              <el-option
+                v-if="editing?.config.type === 'app'"
+                label="外部应用（历史项目）"
+                value="app"
+              />
               <el-option label="静态站点" value="static" />
               <el-option label="反向代理" value="proxy" />
             </el-select>
@@ -262,16 +254,6 @@ void api
                 :key="r.id"
                 :value="r.id"
                 :label="r.name + ' · ' + r.config.version"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item v-if="form.type === 'app'" label="应用进程" required>
-            <el-select v-model="form.appId">
-              <el-option
-                v-for="r in applicationTargets"
-                :key="r.id"
-                :value="r.id"
-                :label="r.name + ' · :' + r.config.port"
               />
             </el-select>
           </el-form-item>
@@ -293,14 +275,12 @@ void api
               placeholder="example.com www.example.com，以空格分隔"
             />
           </el-form-item>
-          <el-form-item v-if="form.type === 'proxy'" label="代理目标" class="wide" required>
-            <el-select
-              v-if="applicationTargets.length"
-              v-model="form.upstream"
-              placeholder="绑定已部署应用"
-              style="margin-bottom: 10px"
-              :options="applicationOptions"
-            />
+          <el-form-item
+            v-if="['proxy', 'app'].includes(form.type)"
+            label="代理目标"
+            class="wide"
+            required
+          >
             <el-input v-model="form.upstream" placeholder="http://127.0.0.1:3000" />
           </el-form-item>
           <el-form-item label="高级 Nginx 参数" class="wide">
@@ -333,16 +313,11 @@ void api
               <el-option
                 v-for="v in catalogOptions"
                 :key="v.id"
-                :label="`${v.software} ${v.version}`"
+                :label="`${v.software} ${v.version}${occupied(v) ? '（已有实例）' : ''}`"
+                :disabled="occupied(v)"
                 :value="v.id"
               />
             </el-select>
-          </el-form-item>
-          <el-form-item label="安装方式">
-            <el-radio-group v-model="form.mode">
-              <el-radio-button value="native" :disabled="!version?.source">原生</el-radio-button>
-              <el-radio-button value="docker" :disabled="!version?.image">Docker</el-radio-button>
-            </el-radio-group>
           </el-form-item>
           <el-form-item v-if="form.mode === 'native'" label="原生安装方式">
             <el-radio-group v-model="form.installMethod">
@@ -356,7 +331,7 @@ void api
                   ).includes('binary')
                 "
               >
-                预编译包安装
+                极速安装
               </el-radio-button>
               <el-radio-button
                 value="source"
@@ -368,10 +343,13 @@ void api
                   ).includes('source')
                 "
               >
-                源码编译安装
+                编译安装
               </el-radio-button>
             </el-radio-group>
           </el-form-item>
+          <p v-if="version?.availability?.binary" class="form-help wide">
+            极速安装不可用：{{ version.availability.binary }}
+          </p>
           <el-alert
             v-if="version?.disabledReason"
             :title="version.disabledReason"
@@ -399,7 +377,7 @@ void api
             />
           </el-form-item>
           <div class="form-help wide">
-            原生安装需要下载依赖与编译工具；Docker 安装需要已运行的 Docker 引擎。
+            极速安装直接部署已验证运行包；编译安装以低权限用户构建主软件，不会自动切换方式。
           </div>
         </template>
         <template v-if="kind === 'database'">
@@ -441,49 +419,7 @@ void api
             秒内确认。云安全组单独设置。
           </div>
         </template>
-        <template v-if="kind === 'app'">
-          <el-form-item label="可执行文件绝对路径" class="wide" required>
-            <el-select
-              v-if="runtimeOptions.length"
-              v-model="form.executable"
-              filterable
-              allow-create
-              default-first-option
-              style="margin-bottom: 10px"
-            >
-              <el-option
-                v-for="runtime in runtimeOptions"
-                :key="runtime.id"
-                :label="runtime.name + ' · ' + runtime.config.version"
-                :value="runtime.config.executablePath"
-              />
-            </el-select>
-            <el-input
-              v-model="form.executable"
-              placeholder="/usr/bin/node 或应用目录中的可执行文件"
-            />
-          </el-form-item>
-          <el-form-item label="启动参数（JSON 数组）" class="wide">
-            <el-input v-model="form.arguments" placeholder='["server.js"]' />
-          </el-form-item>
-          <el-form-item label="运行用户" required>
-            <el-input v-model="form.user" placeholder="opsview-app" />
-          </el-form-item>
-          <el-form-item label="健康检查端口">
-            <el-input-number v-model="form.port" :min="1" :max="65535" />
-          </el-form-item>
-          <el-form-item label="HTTP 健康检查地址（可选）" class="wide">
-            <el-input v-model="form.healthURL" placeholder="http://127.0.0.1:3000/health" />
-          </el-form-item>
-          <el-form-item label="环境变量（JSON 对象，加密保存）" class="wide">
-            <el-input
-              v-model="form.environment"
-              type="textarea"
-              :rows="3"
-              placeholder='{"NODE_ENV":"production"}'
-            />
-          </el-form-item>
-        </template>
+
         <template v-if="kind === 'compose'">
           <el-form-item label="Compose 配置" class="wide" required>
             <div style="width: 100%">

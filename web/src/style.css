@@ -1778,3 +1778,147 @@ svg {
     gap: 13px;
   }
 }
+
+/* All business lists share the core-software row layout. */
+.list-panel,
+.surface:has(.data-list) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: none;
+}
+.data-list {
+  width: 100%;
+  min-width: 0;
+  background: var(--el-bg-color, #fff);
+}
+.data-list .el-table {
+  --el-table-header-bg-color: #f7f9f8;
+  --el-table-border-color: #edf0ee;
+  --el-table-row-hover-bg-color: #f7fbf8;
+}
+.data-list .el-table th.el-table__cell {
+  font-weight: 500;
+  color: #69746e;
+  padding: 13px 0;
+}
+.data-list .el-table td.el-table__cell {
+  padding: 16px 0;
+}
+.data-list .el-table .cell {
+  padding: 0 20px;
+  line-height: 24px;
+}
+.data-list .el-table__fixed-right-patch {
+  background: #f7f9f8;
+}
+.list-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid #edf0ee;
+  overflow-x: auto;
+}
+.list-filter {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-bottom: 1px solid #edf0ee;
+}
+.list-filter .el-input {
+  max-width: 320px;
+}
+.list-error {
+  margin: 12px 20px;
+  width: auto;
+}
+.list-panel .page-toolbar {
+  min-height: 70px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #edf0ee;
+  margin: 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.list-panel-body {
+  min-height: 100px;
+}
+.list-ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.file-navigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #edf0ee;
+  flex-wrap: wrap;
+}
+.file-navigation .el-input {
+  flex: 1;
+  min-width: 220px;
+}
+.file-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-bottom: 1px solid #edf0ee;
+}
+.file-name {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  text-align: left;
+  max-width: 100%;
+}
+.file-name .el-icon {
+  flex-shrink: 0;
+}
+.file-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-toolbar-filter {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 20px;
+  flex-wrap: wrap;
+}
+.file-toolbar-filter .el-input {
+  max-width: 320px;
+}
+.file-path-note {
+  padding: 0 20px 12px;
+  color: #89958d;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .data-list .el-table .cell {
+    padding: 0 12px;
+  }
+  .list-pagination {
+    justify-content: flex-start;
+  }
+  .file-navigation {
+    padding: 12px;
+  }
+  .file-actions {
+    padding: 12px;
+  }
+}
+
+/* Let narrow tables scroll naturally; pinned actions would cover file names. */
+@media (max-width: 760px) {
+  .el-table .el-table__cell.is-fixed-column--right,
+  .el-table .el-table__cell.is-fixed-column--left {
+    position: static !important;
+    box-shadow: none !important;
+  }
+}

@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"opsview/internal/catalog"
+	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/security"
 )
@@ -65,6 +67,13 @@ func (c *Controller) importPlugin(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &b) {
 		return
 	}
+	payload, err := base64.StdEncoding.DecodeString(b.Envelope.Payload)
+	var manifest catalog.Plugin
+	if err != nil || json.Unmarshal(payload, &manifest) != nil || !logic.Name.MatchString(manifest.ID) {
+		fail(w, 400, "插件清单缺少有效 ID")
+		return
+	}
+	b.Name = manifest.ID
 	res := model.Resource{ID: security.ID(), Kind: "plugin", Name: b.Name, Config: model.Config{"envelope": b.Envelope, "builtin": false}}
 	if !validPluginName(b.Name) {
 		fail(w, 400, "插件名称无效")

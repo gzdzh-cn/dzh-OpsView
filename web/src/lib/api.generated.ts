@@ -441,8 +441,60 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 受管理目录文件操作 */
+        /** 服务器绝对路径或旧资源相对路径操作；批量耗时操作返回 taskId，写入冲突返回 409 */
         post: operations["post_files"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取文件任务状态及加密持久化结果 */
+        get: operations["get_files_tasks_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 经认证和执行器流式下载，支持 Range */
+        get: operations["get_files_transfer"];
+        /** 上传已创建会话的分块，单块最大 8 MiB */
+        put: operations["put_files_transfer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/docker/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 无版本探测及 API 1.41–1.47 协商，成功缓存 30 秒 */
+        get: operations["get_docker_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -833,7 +885,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 取消软件安装并终止构建进程组 */
+        /** 取消软件安装或文件任务；变更阶段保留可恢复副本 */
         post: operations["post_tasks_id_cancel"];
         delete?: never;
         options?: never;
@@ -871,10 +923,11 @@ export interface components {
             error: string;
             code?: string;
             revision?: string;
+            resourceId?: string;
         };
         ResourceInput: {
             kind: string;
-            name: string;
+            name?: string;
             config: {
                 [key: string]: unknown;
             };
@@ -890,6 +943,55 @@ export interface components {
             keyId: string;
             payload: string;
             signature: string;
+        };
+        FileInput: {
+            /** @enum {string} */
+            scope?: "server";
+            resourceId?: string;
+            /** @enum {string} */
+            action: "list" | "stat" | "read" | "write" | "mkdir" | "note" | "metadata" | "favorite" | "copy" | "move" | "rename" | "permissions" | "delete" | "search" | "size" | "compress" | "extract" | "trash" | "upload-create" | "upload-status" | "upload-finish" | "upload-cancel";
+            path?: string;
+            target?: string;
+            paths?: string[];
+            revision?: string;
+            text?: string;
+            /** @description 旧接口为 Base64；服务器 search 操作为布尔内容搜索开关 */
+            content?: string | boolean;
+            mode?: string;
+            owner?: string;
+            group?: string;
+            recursive?: boolean;
+            confirmed?: boolean;
+            query?: string;
+            /** @description 保留字段；内容搜索使用 content=true */
+            searchContent?: boolean;
+            hidden?: boolean;
+            filter?: string;
+            page?: number;
+            pageSize?: number;
+            sort?: string;
+            descending?: boolean;
+            /** @enum {string} */
+            conflict?: "skip" | "overwrite" | "keep";
+            /** @enum {string} */
+            trashAction?: "list" | "restore" | "purge" | "empty";
+            id?: string;
+            /** Format: int64 */
+            size?: number;
+            sha256?: string;
+            note?: string;
+            remove?: boolean;
+        };
+        DockerStatus: {
+            /** @enum {string} */
+            status: "ready" | "not_installed" | "stopped" | "incompatible" | "error";
+            reason: string;
+            engineVersion?: string;
+            apiVersion?: string;
+            minAPIVersion?: string;
+            maxAPIVersion?: string;
+            composeAvailable: boolean;
+            composeVersion?: string;
         };
         CatalogEntry: {
             id: string;
@@ -915,6 +1017,7 @@ export interface components {
                 sha256: string;
                 buildPrefix: string;
                 system: string;
+                runtimePackages: string[];
             }[];
         };
         SoftwareField: {
@@ -2391,13 +2494,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    resourceId: string;
-                    action: string;
-                    path: string;
-                    content?: string;
-                    mode?: string;
-                };
+                "application/json": components["schemas"]["FileInput"];
             };
         };
         responses: {
@@ -2410,6 +2507,215 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description 耗时文件操作已排队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_files_tasks_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_files_transfer: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: {
+                Range?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description 文件范围响应 */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_files_transfer: {
+        parameters: {
+            query: {
+                id: string;
+                offset: number;
+            };
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_docker_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DockerStatus"];
                 };
             };
             /** @description 校验失败 */
