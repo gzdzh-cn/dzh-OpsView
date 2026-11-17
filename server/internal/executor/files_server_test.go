@@ -253,3 +253,31 @@ func TestArchiveValidationBeforePublication(t *testing.T) {
 		})
 	}
 }
+
+func TestServerFileRevisionDetectsPreservedModificationTime(t *testing.T) {
+	e, dir := fileFixture(t)
+	path := filepath.Join(dir, "preserve.txt")
+	if err := os.WriteFile(path, []byte("private=value"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := e.readFileText(model.Config{"path": path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(path)
+	if err = os.WriteFile(path, []byte("private=other"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(path, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.writeFileText(model.Config{"path": path, "revision": before.String("revision"), "text": "stale"})
+	var conflict *model.RevisionConflict
+	if !errors.As(err, &conflict) {
+		t.Fatal("external change with preserved mtime overwritten", err)
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "private=other" {
+		t.Fatal(string(data))
+	}
+}

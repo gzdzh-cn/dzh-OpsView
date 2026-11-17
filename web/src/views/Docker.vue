@@ -11,11 +11,14 @@ const engine = ref<any>(),
   engineBusy = ref(false)
 async function inspect() {
   engineBusy.value = true
+  error.value = ''
   try {
     engine.value = await api('/docker/status')
     if (engine.value.status === 'ready') await load()
   } catch (e) {
     error.value = errorText(e)
+    engine.value = { status: 'error', reason: error.value }
+    items.value = []
   } finally {
     engineBusy.value = false
   }

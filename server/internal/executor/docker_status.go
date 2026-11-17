@@ -165,7 +165,7 @@ func (e *Engine) dockerStatus(ctx context.Context) model.Config {
 			status = "incompatible"
 			reason = err.Error()
 		} else if _, socketErr := os.Stat("/var/run/docker.sock"); os.IsNotExist(socketErr) || errors.Is(err, syscall.ECONNREFUSED) {
-			if _, binaryErr := exec.LookPath("docker"); binaryErr != nil && os.IsNotExist(socketErr) {
+			if _, binaryErr := exec.LookPath("dockerd"); binaryErr != nil && os.IsNotExist(socketErr) {
 				status = "not_installed"
 				reason = "尚未安装 Docker 引擎"
 			} else {

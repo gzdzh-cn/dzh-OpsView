@@ -201,7 +201,8 @@ func (e *Engine) privateFileIdentity(st os.FileInfo) bool {
 	return false
 }
 func fileRevision(st os.FileInfo) string {
-	return fmt.Sprintf("%s-%d-%d-%o", fileIdentity(st), st.Size(), st.ModTime().UnixNano(), st.Mode())
+	uid, gid, _ := fileOwner(st)
+	return fmt.Sprintf("%s-%d-%d-%o-%d-%d-%d", fileIdentity(st), st.Size(), st.ModTime().UnixNano(), st.Mode(), fileChangeStamp(st), uid, gid)
 }
 func fileOwner(st os.FileInfo) (int, int, uint64) {
 	if v, ok := st.Sys().(*syscall.Stat_t); ok {
