@@ -136,3 +136,19 @@ Ubuntu 22.04/24.04、Debian 12/13 各 10 个 Go 测试包全部通过。旧 Redi
 候选附件为 `opsview-candidate-53def0fddba6ee3b0aae60db97eacabbee9bac1a`。未创建正式 Release，也未更新当前服务器。原生软件验收不会自动扩大目录中的安装放行范围。
 
 本次 PHP 8.4.27 的 Ubuntu 24.04 真实 systemd 测试还通过固定 PECL memcached 3.3.0 源码配方安装，并验证 Session、SASL、错误密码拒绝、占位符保留、站点前缀隔离及 FPM 有效配置。这个扩展验证不等于全部 PHP 版本和扩展矩阵完成。后续文档提交不改变功能代码。
+
+## 2026-11-17 v0.1.2-rc.1 公开测试版
+
+发布提交 `1d382217a7830a4c37d6d89e9582d38a11ecfe56`，标签 `v0.1.2-rc.1`。用户授权发布测试后已创建 [GitHub 预发布版本](https://github.com/gzdzh-cn/dzh-OpsView/releases/tag/v0.1.2-rc.1)，未更新现有服务器。`latest` 经公开 API 核对仍为 `v0.1.1`；测试版需显式指定版本。
+
+| 工作流 | 结果及范围 |
+| --- | --- |
+| [发布与公开安装](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44014583118) | build、publish、verify-public-install 全部通过；版本一致性、Go race/vet、前端与浏览器、安装器、真实 Nginx 轮转、PHP Session 协议、发布包校验及 systemd 安装更新回退 |
+| [常规检查](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44014548906) | 通过 |
+| [候选构建](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44014548881) | 通过 |
+
+公开安装验证在全新 Ubuntu 24.04 GitHub 临时主机从固定标签下载脚本并校验，完成八个安装阶段、随机账号登录、ov 入口、端口修改及重新连接确认、改端口后的在线更新、再次登录和日志无明文密码检查。此次安装验证没有使用生产服务器。
+
+本机另外直接下载三个公开附件，验证 `install.sh` 和发布包 SHA-256、归档路径及类型、四个二进制和版本文档。发布包大小为 23,620,253 字节，SHA-256 为 `b530bb3891e38c056a51d3e7cea184df7c54cd8453f0467b7c78ce38365f154a`。已公开标签及附件保持原样，后续文档不重打发布包。
+
+原生配方的有效验收范围仍以上文最终功能提交的 16 项结果为准；发布提交触发的额外原生矩阵尚在排队，未将其记为通过，也未扩大安装放行范围。本版为预发布测试，前述完整版本矩阵、跨服务联动及生产验收待办继续有效。
