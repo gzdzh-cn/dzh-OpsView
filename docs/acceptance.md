@@ -351,3 +351,22 @@ ncurses 另增加固定摘要的 GNU 镜像回退。已分别下载两个源，S
 面板发布及公开安装验证完成后补充最终记录；未自动更新用户服务器。
 
 rc.8 发布前复核：使用实际 Linux amd64 发布二进制在隔离 Ubuntu 容器完成全部 28 项 Playwright，全部通过，缓存导航 P95 67.1ms。覆盖八分类、同软件多个版本、已安装孤立插件、隐藏重复安装、仓库管理、Docker 模板、带参数跳转、移动端和全部侧栏。版本目录提升后再次通过 Go race/vet。公开 Nginx 归档及两个元数据附件摘要已独立核对。
+
+### rc.8 面板发布验证完成
+
+发布提交 `6c1800d7a5951b53b1d3932bb835b8fc4d3b8e74`，标签 `v0.1.3-rc.8`。[发布流水线 44271204423](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44271204423) 的 `build`、`publish`、`verify-public-install` 及全部步骤均成功。
+
+- Go race/vet、前端类型检查/构建/单元测试、安装器和 Linux 文件检查通过。
+- 真实 systemd 网站部署、MySQL/PostgreSQL/Redis 集成、日志轮转和 PHP Session 通过。
+- 28 项页面回归通过，生成发布包后再次通过全部页面和导航检查。
+- 真实 systemd 安装更新及故障回退、公开下载附件后的安装登录、改端口与 `ov update` 通过。
+- 独立下载公开安装脚本及校验清单并核对一致；GitHub 附件摘要与清单一致。完整面板包公开下载及安装由 CI 验证。
+
+公开面板包为 23,991,180 字节，摘要如下：
+
+```text
+31607b220cc652f7c64eca4645e082420cb8e68e305d91fcda31d70bc30c1585  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
+
+显式更新命令：`ov backup`、`ov update --version v0.1.3-rc.8`。本次未连接或更新用户服务器，不自动安装或升级业务软件。验收记录追加不改写公开标签及附件。
