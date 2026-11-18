@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"opsview/internal/model"
 	"opsview/internal/security"
 	"os"
@@ -54,5 +55,59 @@ func TestSiteDocumentRootAndSecurity(t *testing.T) {
 	}
 	if got := unitQuote("$USER %i $(touch /tmp/no)"); strings.Contains(got, "$USER") && !strings.Contains(got, "$$USER") {
 		t.Fatal("systemd variable expansion", got)
+	}
+}
+
+func TestFailedSiteDeletionReleasesOnlyReservation(t *testing.T) {
+	e := &Engine{Root: t.TempDir()}
+	var err error
+	e.Vault, err = security.OpenVault(filepath.Join(e.Root, "key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(filepath.Join(e.Root, "state"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	inst := model.Resource{ID: "nginx-test", Kind: "instance", Config: model.Config{"software": "nginx"}}
+	if err = e.save(inst); err != nil {
+		t.Fatal(err)
+	}
+	r := model.Resource{ID: "failed-website-reservation-test", Kind: "site", Config: model.Config{"instanceId": inst.ID, "type": "static"}}
+	claim := filepath.Join(e.Root, "state", r.ID+".document-root")
+	content := filepath.Join(e.Root, "project-content")
+	if err = os.WriteFile(content, []byte("preserve"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(claim, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	conf := filepath.Join(e.Root, "instances", inst.ID, "conf", "sites", r.ID+".conf")
+	if err = os.MkdirAll(filepath.Dir(conf), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(conf, []byte("unregistered config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	op := model.Operation{Name: "site.delete", Resource: r}
+	if _, err = e.site(context.Background(), op, func(string) {}); err == nil {
+		t.Fatal("unregistered config was ignored")
+	}
+	if _, err = os.Stat(claim); err != nil {
+		t.Fatal("claim lost on rejected cleanup", err)
+	}
+	if err = os.Remove(conf); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.site(context.Background(), op, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(claim); !os.IsNotExist(err) {
+		t.Fatal("reservation retained", err)
+	}
+	if b, er := os.ReadFile(content); er != nil || string(b) != "preserve" {
+		t.Fatal("project content changed", er)
+	}
+	if _, err = e.site(context.Background(), op, func(string) {}); err != nil {
+		t.Fatal("cleanup not idempotent", err)
 	}
 }

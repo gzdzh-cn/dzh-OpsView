@@ -144,7 +144,20 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if action == "delete" {
 		stored, err := e.load(r.ID)
 		if err != nil {
-			return nil, err
+			if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+			// Failed first deployments may own a directory reservation but no running site.
+			for _, p := range []string{confpath, filepath.Join("/etc/systemd/system", serviceName(managedSiteProcess(r))), filepath.Join("/etc/systemd/system", phpSiteUnit(r))} {
+				if _, er := os.Lstat(p); !os.IsNotExist(er) {
+					return nil, errors.New("存在尚未登记的站点配置或服务，请先检查任务现场")
+				}
+			}
+			if er := os.Remove(filepath.Join(e.Root, "state", r.ID+".document-root")); er != nil && !os.IsNotExist(er) {
+				return nil, er
+			}
+			log("已清理失败部署的目录占用，项目文件保留")
+			return model.Config{}, nil
 		}
 		old, err := os.ReadFile(confpath)
 		if err != nil {
@@ -161,7 +174,6 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 			_ = e.nginx(ctx, inst, log, "-s", "reload")
 			return nil, err
 		}
-		_ = stored
 		e.stopSiteProcesses(ctx, stored)
 		if stored.Config.String("type") == "managed" {
 			proc := managedSiteProcess(stored)

@@ -279,3 +279,7 @@ Go 测试覆盖 schema 2 → 3 保留密文及关联、同实例重名拒绝、�
 - 本地 Go race/vet、前端类型检查与构建、7 项 Vitest、安装器 16 项通过。浏览器新增目录生成、托管参数和 Nginx 确认检查，完整套件共 26 项。
 - 已加入 `TestLinuxWebsiteCreation`，在显式允许的临时 GitHub Ubuntu 24.04 systemd 主机执行，使用发行版 Nginx/PHP 验证新根目录、真实 HTTP、PHP、非 root 进程、失败回退、到期停用及生产 umask。该测试不替代每个软件版本的安装矩阵。
 - 发布及公开安装工作流通过后补充最终运行记录。未自动更新用户服务器。
+
+rc.6 发布前复核：生产 Linux amd64 包在隔离 Ubuntu 容器执行 26 项 Playwright 全部通过（含移动端建站弹窗、目录联动、托管提交和 Nginx 操作确认），缓存导航 P95 67ms。新增失败部署清理回归验证：存在未登记配置时拒绝清理；确认无服务现场后只释放目录占用，保留项目文件，重复操作幂等。
+
+[Linux 网站检查 44233442676](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44233442676) 的 `websites` 与 `deployment` 已成功，覆盖真实 systemd 网站部署及安装回退；最终标签发布与公开安装仍以发布流水线结果为准。

@@ -1062,6 +1062,14 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
     animations: 'disabled',
     fullPage: true,
   })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(dialog.getByRole('button', { name: '创建并部署', exact: true })).toBeInViewport()
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
+  await page.screenshot({
+    path: '../.opsview/screenshots/site-create-mobile.png',
+    animations: 'disabled',
+    fullPage: true,
+  })
   await dialog.getByRole('button', { name: '创建并部署', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   expect(submitted.config.type).toBe('managed')

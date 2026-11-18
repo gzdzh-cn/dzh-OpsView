@@ -425,6 +425,15 @@ async function save() {
   flex-shrink: 0;
 }
 
+.site-create-form :deep(.el-checkbox) {
+  height: auto;
+  white-space: normal;
+  align-items: flex-start;
+}
+.site-create-form :deep(.el-checkbox__label) {
+  white-space: normal;
+  line-height: 1.6;
+}
 .site-create-form {
   padding: 4px 12px 0 0;
 }
