@@ -283,3 +283,22 @@ Go 测试覆盖 schema 2 → 3 保留密文及关联、同实例重名拒绝、�
 rc.6 发布前复核：生产 Linux amd64 包在隔离 Ubuntu 容器执行 26 项 Playwright 全部通过（含移动端建站弹窗、目录联动、托管提交和 Nginx 操作确认），缓存导航 P95 67ms。新增失败部署清理回归验证：存在未登记配置时拒绝清理；确认无服务现场后只释放目录占用，保留项目文件，重复操作幂等。
 
 [Linux 网站检查 44233442676](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44233442676) 的 `websites` 与 `deployment` 已成功，覆盖真实 systemd 网站部署及安装回退；最终标签发布与公开安装仍以发布流水线结果为准。
+
+### rc.6 发布验证完成
+
+发布提交 `45411b4`、标签 `v0.1.3-rc.6`。[发布流水线 44234216247](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44234216247) 的 `build`、`publish`、`verify-public-install` 全部成功。
+
+- Go race/vet、前端类型检查/构建/单元测试、安装器和 Linux 文件检查通过。
+- 真实 systemd 主机的网站创建测试、数据库集成、日志轮转与 PHP Session 检查通过。
+- 26 项浏览器回归通过；打包后再次用发布二进制通过全部页面测试。
+- systemd 安装、更新及故障回退，以及公开附件安装、登录、改端口和 `ov update` 通过。
+- 本地额外下载公开安装脚本并与公开 SHA256SUMS 核对一致；完整发布包公开下载与安装由 CI 验证。
+
+公开附件摘要：
+
+```text
+dd1eb470aad2491b80b3a7b15cc94bcac5c81b5ca79a27c01c46bda9a4a893f8  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
+
+本版为预发布测试版，用户通过 `ov backup`、`ov update --version v0.1.3-rc.6` 显式更新。未自动更新用户服务器；后续验收文档追加不改写已公开标签及附件。
