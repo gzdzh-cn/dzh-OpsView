@@ -8,7 +8,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -37,6 +37,8 @@ jobs:
       - run: ./scripts/linux-tests.sh ubuntu:22.04 ubuntu:24.04 debian:bookworm-slim debian:trixie-slim
       - run: ./scripts/test-log-rotation.sh
       - run: ./scripts/test-php-session.sh
+      - name: Verify UFW and firewalld with independent clients on four systems
+        run: bash scripts/test-firewall-linux.sh
       - run: make release
   deployment:
     runs-on: ubuntu-24.04

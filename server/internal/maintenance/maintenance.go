@@ -86,7 +86,7 @@ func (r *Runner) help() {
 	for i, c := range Commands {
 		fmt.Fprintf(r.Out, "%2d  %-16s %s\n", i+1, c, labels[i])
 	}
-	fmt.Fprintln(r.Out, "    init             显式初始化随机管理员（仅未初始化时）\n密码输入：ov password [--generate | --stdin]\n端口修改：ov port <端口> [--source IP/CIDR] [--yes]\n地址修正：ov info --public-host <域名或IPv4>\n版本更新：ov update [--version v0.1.1]")
+	fmt.Fprintln(r.Out, "    init             显式初始化随机管理员（仅未初始化时）\n密码输入：ov password [--generate | --stdin]\n端口修改：ov port <端口> [--source IP/CIDR] [--yes]\n地址修正：ov info --public-host <域名或IPv4>\n版本更新：ov update [--version v0.1.3-rc.11]\n防火墙事务：ov firewall status|rollback [--yes]")
 }
 func (r *Runner) line(prompt string) (string, error) {
 	fmt.Fprint(r.Out, prompt)
@@ -177,6 +177,8 @@ func (r *Runner) command(args []string) error {
 		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	}
 	switch command {
+	case "firewall":
+		return r.firewall(args)
 	case "ssl":
 		return r.ssl(args)
 	case "entry":

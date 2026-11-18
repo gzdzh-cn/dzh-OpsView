@@ -5,7 +5,7 @@ mkdir -p dist/tests
 cert_mount=()
 for cert_path in /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem; do
   if [ -f "$cert_path" ]; then
-    cert_mount=(-v "$cert_path:/etc/ssl/certs/ca-certificates.crt:ro")
+    cert_mount=(-v "$cert_path:/tmp/opsview-host-ca.pem:ro")
     break
   fi
 done
@@ -16,6 +16,8 @@ docker run --rm --platform linux/amd64 --cap-add NET_ADMIN \
   -v "$PWD/dist/tests/security.test:/tmp/security.test:ro" \
   -e OPSVIEW_SECURITY_SMOKE=true -e OPSVIEW_FIREWALL_SMOKE=true \
   debian:bookworm-slim sh -ec '
+    mkdir -p /etc/ssl/certs
+    if [ -f /tmp/opsview-host-ca.pem ]; then cp /tmp/opsview-host-ca.pem /etc/ssl/certs/ca-certificates.crt; fi
     sed -i "s@http://@https://@g" /etc/apt/sources.list.d/debian.sources
     apt-get -o Acquire::Retries=3 update -qq
     DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends openssh-server ufw iproute2 > /dev/null

@@ -38,7 +38,7 @@ func pathContains(parent, child string) bool {
 	return child == parent || strings.HasPrefix(child, parent+"/") || parent == "/"
 }
 func (e *Engine) filePrivatePaths() []string {
-	paths := []string{filepath.Join(e.Root, "state"), filepath.Join(e.Root, "executor.key"), filepath.Join(e.Root, "backup.key"), filepath.Join(e.Root, "file-manager"), filepath.Join(filepath.Dir(e.Root), "panel"), "/var/lib/opsview/panel", "/run/opsview", "/var/run/docker.sock", "/etc/opsview/trust", "/etc/opsview/trust.d"}
+	paths := []string{filepath.Join(e.Root, "firewall-admin"), filepath.Join(e.Root, "firewall"), e.firewallModePath(), e.sshPendingPath(), e.pendingPath(), filepath.Join(e.Root, "ssh-conflict.conf"), filepath.Join(e.Root, "state"), filepath.Join(e.Root, "executor.key"), filepath.Join(e.Root, "backup.key"), filepath.Join(e.Root, "file-manager"), filepath.Join(filepath.Dir(e.Root), "panel"), "/var/lib/opsview/panel", "/run/opsview", "/var/run/docker.sock", "/etc/opsview/trust", "/etc/opsview/trust.d"}
 	if e.socketPath != "" {
 		paths = append(paths, e.socketPath)
 	}

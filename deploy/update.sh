@@ -19,6 +19,9 @@ install -d -o root -g root -m 0755 /etc/opsview
 exec 9>/etc/opsview/panel.json.lock
 flock -w 5 9 || deploy_error '其他进程正在修改面板访问设置，请稍后重试。'
 [ ! -e /var/lib/opsview/managed/panel-pending.json ] || deploy_error '面板访问设置等待重新连接确认，请先确认或执行 ov recover-access --all。'
+for pending in /var/lib/opsview/managed/firewall-admin/pending.json /var/lib/opsview/managed/firewall-admin/feature-pending.json /var/lib/opsview/managed/firewall-mode.json /var/lib/opsview/managed/ssh-pending.json; do
+ [ ! -e "$pending" ] || deploy_error "安全修改等待确认或回退：$pending。请先处理事务；防火墙可执行 ov firewall status。"
+done
 stage_start 5 预检及备份现有服务
 ensure_dependencies
 check_ov_conflict

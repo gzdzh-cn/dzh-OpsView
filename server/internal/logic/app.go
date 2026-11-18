@@ -97,6 +97,8 @@ func (a *App) ReloadSchedules() {
 			log.Printf("schedule %s: %v", r.ID, e)
 		}
 	}
+	_, _ = a.schedule.AddFunc("41 * * * *", a.queueFirewallCountryUpdate)
+
 	_, _ = a.schedule.AddFunc("23 * * * *", func() {
 		databases, err := a.Store.Resources("database")
 		if err != nil {
@@ -384,4 +386,14 @@ func (a *App) auditFileTask(op model.Operation, result string) {
 	for _, path := range paths {
 		a.Store.Audit(op.Name+":"+result+":"+path, "files-host", "task")
 	}
+}
+
+func (a *App) queueFirewallCountryUpdate() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	status, err := a.Executor.Execute(ctx, model.Operation{Name: "system.firewall-admin-country-status"}, func(string) {})
+	if err != nil || !status.Bool("due") {
+		return
+	}
+	_, _ = a.Store.Enqueue(model.Operation{Name: "system.firewall-admin-region-update", Resource: model.Resource{ID: "system-security", Kind: "system", Name: "地区数据自动更新"}, Params: model.Config{}})
 }

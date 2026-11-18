@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"opsview/internal/hostfirewall"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
@@ -34,16 +35,17 @@ type sshSettings struct {
 var sshDirectives = []string{"port", "passwordauthentication", "pubkeyauthentication", "permitrootlogin", "maxauthtries", "logingracetime", "clientaliveinterval", "clientalivecountmax", "kbdinteractiveauthentication", "challengeresponseauthentication"}
 
 type pendingSSH struct {
-	Old             []byte      `json:"old"`
-	AppliedRevision string      `json:"appliedRevision"`
-	AppliedIncludes string      `json:"appliedIncludes"`
-	Final           []byte      `json:"final"`
-	Settings        sshSettings `json:"settings"`
-	Unit            string      `json:"unit"`
-	Deadline        int64       `json:"deadline"`
-	Mode            uint32      `json:"mode"`
-	UndoRules       [][]string  `json:"undoRules"`
-	RollbackError   string      `json:"rollbackError,omitempty"`
+	Old             []byte              `json:"old"`
+	AppliedRevision string              `json:"appliedRevision"`
+	AppliedIncludes string              `json:"appliedIncludes"`
+	Final           []byte              `json:"final"`
+	Settings        sshSettings         `json:"settings"`
+	Unit            string              `json:"unit"`
+	Deadline        int64               `json:"deadline"`
+	Mode            uint32              `json:"mode"`
+	UndoHost        []hostfirewall.Rule `json:"undoHost,omitempty"`
+	UndoRules       [][]string          `json:"undoRules"`
+	RollbackError   string              `json:"rollbackError,omitempty"`
 }
 
 func (e *Engine) sshPath() string {
@@ -485,23 +487,10 @@ func (e *Engine) sshOperation(ctx context.Context, op model.Operation, log func(
 	return nil, errors.New("SSH 操作无效")
 }
 func (e *Engine) applySSH(ctx context.Context, p model.Config, log func(string)) (model.Config, error) {
-	if _, err := os.Stat(e.firewallModePath()); !os.IsNotExist(err) {
-		return nil, errors.New("防火墙状态修改待确认，请稍后修改 SSH")
+	if err := e.ensureFirewallIdle(); err != nil {
+		return nil, err
 	}
-	files, _ := filepath.Glob(filepath.Join(e.Root, "firewall", "*.json"))
-	for _, path := range files {
-		var rule pendingFirewall
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		if json.Unmarshal(b, &rule) != nil {
-			return nil, errors.New("防火墙状态损坏，请先检查")
-		}
-		if !rule.Confirmed && !rule.RolledBack {
-			return nil, errors.New("防火墙规则待确认，请先确认或等待回退")
-		}
-	}
+
 	if !p.Bool("confirmedImpact") {
 		return nil, errors.New("请确认 SSH 登录影响")
 	}
@@ -583,7 +572,18 @@ func (e *Engine) applySSH(ctx context.Context, p model.Config, log func(string))
 		}
 		return nil, cause
 	}
-	if runtimeconfig.CompatibleUFW() {
+	if fw := e.hostFirewall().Detect(ctx); fw.Backend == "firewalld" && fw.Enabled && fw.Compatible {
+		pending.UndoHost, err = e.prepareFirewalldAccess(ctx, next.Ports, p.String("source"))
+		if err != nil {
+			return fail(err)
+		}
+		if err = e.saveSSH(pending); err != nil {
+			return fail(err)
+		}
+		if err = e.applyHostAccess(ctx, pending.UndoHost, false); err != nil {
+			return fail(err)
+		}
+	} else if runtimeconfig.CompatibleUFW() {
 		source := p.String("source")
 		if !validSource(source, false) {
 			return fail(errors.New("启用 UFW 时请填写新 SSH 端口放行来源 IP/CIDR"))
@@ -718,6 +718,9 @@ func (e *Engine) rollbackSSH(ctx context.Context, p pendingSSH) error {
 		return err
 	}
 	if err = probeSSHPorts(ctx, settings.Ports); err != nil {
+		return err
+	}
+	if err := e.applyHostAccess(ctx, p.UndoHost, true); err != nil {
 		return err
 	}
 	for _, rule := range p.UndoRules {

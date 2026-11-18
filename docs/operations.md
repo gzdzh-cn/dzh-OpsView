@@ -285,3 +285,26 @@ rc.7 软件验收补充：本轮新增 MySQL、PHP、Redis 的 64 个系统组�
 防火墙启停和 SSH 配置修改后，保留当前 SSH 会话，用新设置重新连接，再在 120 秒内确认；未确认会自动回退。确认前不要重装、降级执行器或手动删除 pending 记录。恢复失败时先通过保留的终端或云控制台核对并修复主机配置，确认面板显示无待恢复记录后再降级。
 
 更新失败沿用安装器自动回退。成功更新后退回 rc.9，按本手册既有停服、旧二进制/配置及完整元数据快照恢复、健康检查流程执行。降级面板不自动撤回已确认的 UFW、sshd 配置或公钥；需要撤回时先在新版显式修改并确认。不要将恢复面板配置描述为还原全部主机网络策略。
+
+
+## rc.11 系统防火墙更新与回退
+
+更新前确保任务中心无运行中的安全变更，执行 `ov firewall status` 并处理待确认/回退事务，保留可用 SSH 会话。
+
+```bash
+ov backup
+ov update --version v0.1.3-rc.11
+ov status
+ov firewall status
+```
+
+schema 从 3 增量升级到 4，旧管理员、数据库关联规则和资源 ID 保留。更新本身不启用防火墙、不创建业务规则、不修改 SSH。具体功能与受支持条件见 [系统安全说明](system-security.md)。运行中任务及 pending 必须先处理；禁止删除恢复记录后强行更新。
+
+更新器停服后保留 `/var/lib/opsview/updates/<时间-进程号>/`，包含完整 `panel/`（SQLite、WAL、master.key）、`bin/`、systemd 单元、`panel.json` 和 ov 入口；失败自动恢复。**成功升级后退回 rc.10 不能仅运行旧版更新命令，旧程序不接受 schema 4。**
+
+1. 先在新版停止使用地区、转发、禁 Ping 和 OpsView Fail2ban 扩展，处理所有待回退事务。保留外部规则，不清空 NAT/iptables。已确认的系统规则不会随降级自动撤销。
+2. 核对本次升级之前的快照，确认其二进制为 rc.10 且 `panel/opsview.db`、`panel/master.key`、`bin/opsview`、`units/`、`panel.json` 完整。不能混用新数据库与旧主密钥。
+3. 使用本手册 rc.5 节的完整停服/保留现场/恢复 `panel`、`bin`、单元和运行配置步骤，将 `OPSVIEW_ROLLBACK` 指向 **本次 rc.11 升级前的 rc.10 快照**。保留 systemd drop-in、业务目录、执行器密钥及 `managed/` 恢复现场。
+4. `systemctl daemon-reload` 后先启动执行器，再启动面板；用 `ov status`、`ov info`、实际登录、SSH 新连接及系统防火墙命令验证。快照之后的面板元数据改动会被撤回，业务侧改动需单独核对。
+
+面板备份不等于全机网络配置备份。外部 firewalld 临时配置、Docker 链和云安全组由各自管理者负责，不能通过恢复 SQLite 回滚。四系统容器测试验证隔离网络内真实规则和流量；整机重启、独立公网及云安全组组合仍需目标环境验收。

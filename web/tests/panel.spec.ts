@@ -1038,7 +1038,7 @@ test('system loads only selected tab and discards late reads after navigation', 
     return performance.now() - start
   })
   expect(feedback).toBeLessThanOrEqual(200)
-  await expect(page.getByRole('tab', { name: '防火墙规则', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '系统防火墙', exact: true })).toBeVisible()
   expect(audits).toBe(0)
   await page.getByRole('tab', { name: '操作审计', exact: true }).click()
   await expect.poll(() => audits).toBe(1)
@@ -1713,51 +1713,169 @@ test('SSH management loads lazily and stages connection settings with explicit c
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
 })
 
-test('firewall renders actual IPv4 and IPv6 rules and keeps incompatible systems read-only', async ({
+test('firewall inherits system rules directly and disables incompatible mutations', async ({
   page,
 }) => {
   await page.route('**/api/v1/system/firewall', (r) =>
     r.fulfill({
       json: {
+        backend: 'ufw',
         installed: true,
         enabled: true,
         compatible: false,
-        reason: '检测到其他防火墙，仅提供诊断',
-        protectedPorts: [555, 18790],
+        reason: '检测到不兼容的自定义防火墙，仅提供诊断',
         rules: [
           {
-            number: 1,
-            destination: '555/tcp',
-            action: 'ALLOW',
-            direction: 'IN',
-            source: 'Anywhere',
+            id: 'one',
+            kind: 'port',
+            protocol: 'tcp',
+            ports: '555',
+            family: 'ipv4',
+            direction: 'in',
+            action: 'allow',
+            source: 'any',
+            destination: 'any',
             note: 'ssh',
-            managed: false,
+            editable: true,
           },
           {
-            number: 2,
-            destination: '80/tcp (v6)',
-            action: 'DENY',
-            direction: 'IN',
+            id: 'two',
+            kind: 'port',
+            protocol: 'tcp',
+            ports: '80',
+            family: 'ipv6',
+            direction: 'in',
+            action: 'deny',
             source: '2001:db8::/32',
-            note: 'opsview-test',
-            managed: true,
+            destination: 'any',
+            note: 'test',
+            editable: true,
           },
         ],
-        externalRestrictions: '云安全组单独配置',
-        raw: 'Status: active',
+        revision: 'one',
+        counts: { port: 2, ip: 0, forward: 0, region: 0 },
+        protectedPorts: [555, 18790],
       },
     }),
   )
   await page.goto('/system')
-  await expect(page.getByRole('button', { name: '关闭防火墙' })).toBeDisabled()
-  await page.getByText('系统实际规则', { exact: true }).click()
-  await expect(page.getByRole('radio', { name: '系统实际规则', exact: true })).toBeChecked()
-  await expect(page.getByRole('cell', { name: '555/tcp', exact: true })).toBeVisible()
+  await expect(page.getByRole('switch', { name: '防火墙开关', exact: true })).toBeDisabled()
+  await expect(page.getByRole('tab', { name: '端口规则：2', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: '2001:db8::/32', exact: true })).toBeVisible()
-  await expect(page.getByText('检测到其他防火墙，仅提供诊断')).toBeVisible()
+  await expect(page.getByRole('button', { name: '修改', exact: true }).first()).toBeDisabled()
+  await expect(page.getByRole('button', { name: '检查规则', exact: true })).toHaveCount(0)
+  await expect(page.getByText('系统实际规则', { exact: true })).toHaveCount(0)
   await page.screenshot({
     path: '../.opsview/screenshots/system-firewall-actual.png',
     fullPage: true,
   })
+})
+
+test('firewall tabs edit inherited rules, preview imports and reconcile selected changes', async ({
+  page,
+}) => {
+  let saved: any, observed: any
+  const rule = {
+    id: 'inherited',
+    kind: 'port',
+    protocol: 'tcp',
+    ports: '8080',
+    family: 'ipv4',
+    direction: 'in',
+    action: 'allow',
+    source: 'any',
+    destination: 'any',
+    note: '继承的端口',
+    editable: true,
+    permanent: true,
+    runtime: true,
+    listening: true,
+  }
+  const status = {
+    backend: 'ufw',
+    installed: true,
+    enabled: true,
+    compatible: true,
+    revision: 'revision-1',
+    rules: [rule],
+    counts: { port: 1, ip: 0, forward: 0, region: 0 },
+    protectedPorts: [555, 18790],
+    pending: {},
+  }
+  await page.route('**/api/v1/system/firewall', (r) => r.fulfill({ json: status }))
+  await page.route('**/api/v1/tasks', (r) =>
+    r.fulfill({ json: [{ id: 'firewall-task', state: 'succeeded' }] }),
+  )
+  await page.route('**/api/v1/system/firewall/save', (r) => {
+    saved = r.request().postDataJSON()
+    return r.fulfill({ status: 202, json: { id: 'firewall-task' } })
+  })
+  await page.route('**/api/v1/system/firewall/import-preview', (r) =>
+    r.fulfill({
+      json: {
+        token: 'preview-token',
+        revision: 'revision-1',
+        rows: [
+          { index: 0, status: 'ready', rule: { ...rule, ports: '8443' } },
+          { index: 1, status: 'unsupported', reason: '不支持动态域名', rule: {} },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/v1/system/firewall/import-apply', (r) => {
+    expect(r.request().postDataJSON().indices).toEqual([0])
+    expect(r.request().postDataJSON().token).toBe('preview-token')
+    return r.fulfill({ status: 202, json: { id: 'firewall-task' } })
+  })
+  await page.route('**/api/v1/system/firewall/sync-preview', (r) =>
+    r.fulfill({
+      json: {
+        revision: 'revision-1',
+        rows: [{ rule, change: 'system-added', defaultAction: 'observe' }],
+      },
+    }),
+  )
+  await page.route('**/api/v1/system/firewall/sync-observe', (r) => {
+    observed = r.request().postDataJSON()
+    return r.fulfill({ status: 202, json: { id: 'firewall-task' } })
+  })
+  await page.goto('/system')
+  await expect(page.getByText('继承的端口', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '修改', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改端口规则', exact: true })
+  await expect(dialog.getByLabel('规则端口')).toHaveValue('8080')
+  await dialog.getByLabel('规则端口').fill('8081,8083-8085')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  expect(saved.id).toBe('inherited')
+  expect(saved.revision).toBe('revision-1')
+  expect(saved.rule.ports).toBe('8081,8083-8085')
+  await page.getByRole('tab', { name: 'IP规则：0', exact: true }).click()
+  await expect(page.getByRole('button', { name: '添加IP规则', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '端口转发：0', exact: true }).click()
+  await page.getByRole('button', { name: '添加端口转发', exact: true }).click()
+  await expect(page.getByPlaceholder('单端口或等长范围')).toBeVisible()
+  await page
+    .getByRole('dialog', { name: '添加端口转发', exact: true })
+    .getByRole('button', { name: '取消', exact: true })
+    .click()
+  await page.getByRole('tab', { name: '地区规则：0', exact: true }).click()
+  await expect(page.getByRole('button', { name: '更新地区数据', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '端口规则：1', exact: true }).click()
+  await page.getByRole('button', { name: '导入规则', exact: true }).click()
+  const importer = page.getByRole('dialog', { name: '导入防火墙规则', exact: true })
+  await importer.getByPlaceholder('粘贴规则内容').fill('{"rules":[]}')
+  await importer.getByRole('button', { name: '预览规则', exact: true }).click()
+  await expect(importer.getByText('不支持动态域名', { exact: true })).toBeVisible()
+  await importer.getByRole('row').filter({ hasText: '8443' }).locator('label.el-checkbox').click()
+  await importer.getByRole('button', { name: '应用所选规则', exact: true }).click()
+  await expect(importer).not.toBeVisible()
+  await page.getByRole('button', { name: '同步规则', exact: true }).click()
+  const sync = page.getByRole('dialog', { name: '同步规则差异', exact: true })
+  await sync.getByRole('row').filter({ hasText: '8080' }).locator('label.el-checkbox').click()
+  await sync.getByRole('button', { name: '以系统更新记录', exact: true }).click()
+  await expect(sync).not.toBeVisible()
+  expect(observed.ids).toEqual(['inherited'])
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
 })

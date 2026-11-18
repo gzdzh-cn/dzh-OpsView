@@ -426,3 +426,20 @@ rc.8 发布前复核：使用实际 Linux amd64 发布二进制在隔离 Ubuntu 
 ```
 
 更新：`ov backup`、`ov update --version v0.1.3-rc.10`。本次未更新用户服务器或业务软件；更新本身不启用防火墙或修改 SSH。SQLite schema 保持 3。已确认的主机安全修改不会因降级面板自动撤回，降级前需处理待回退记录，详见运维手册。
+
+## 2026-11-19 rc.11 统一系统防火墙
+
+本轮新增 UFW/firewalld 统一适配器、四类真实规则、继承编辑、导入预览与差异同步、地区集合、Fail2ban 和本机事务恢复；SQLite 增量升级 schema 4。未更新用户服务器，未修改宝塔参考服务器。
+
+本地验证：
+
+- `go test -race ./...`、`go vet ./...` 通过，含规则解析、修订漂移、注入、事务互斥、导入未知字段拒绝、地区下载失败保留及任务去重测试。
+- Vue/TypeScript 生产构建、7 项 Vitest、34 项 Playwright 通过；缓存导航 P95 66.7ms。浏览器测试覆盖自动继承、四标签、编辑回填、导入预览及勾选同步。
+- 安装脚本摘要、归档边界、失败下载及参数防注入检查通过。
+- 独立 Docker 网络命名空间使用真实 UFW/firewalld、IPv4/IPv6、独立客户端 TCP/Ping、本机 REDIRECT、远程 DNAT/MASQUERADE、地区过滤、管理来源保护与超时回退、Fail2ban 实际日志封禁/解封。测试不挂载 Docker Socket 或宿主机系统目录。
+
+测试发现并修复：UFW 内部限速链误识别、IPv6 插入偏移、末条插入、firewalld 默认区域禁 Ping 不生效、默认区域 active 文字差异及旧版 firewalld 重载清空外部链。产品在存在外部链时拒绝 firewalld reload/启停，测试明确断言此保护，并仅在移除测试自建哨兵后验证允许的重载。容器内置 DNS NAT 仅在隔离夹具初始化时移除，不在产品中放宽保护。
+
+四系统 Linux amd64 矩阵、实际发布二进制、systemd 安装/更新和公开附件检查由 GitHub 候选/发布工作流继续验证；最终结果以对应工作流结论为准。隔离容器测试不能替代整机重启、独立公网、云安全组及所有 Docker/自定义防火墙组合验收。
+
+升级与旧版完整元数据恢复见 [运维说明](operations.md#rc11-系统防火墙更新与回退)。发布后使用 `ov backup`、`ov update --version v0.1.3-rc.11`；不能只装旧二进制退回 schema 3。

@@ -273,3 +273,19 @@ func TestRetainedOrFailedInstancesCannotBeReinstalled(t *testing.T) {
 		}
 	}
 }
+
+func TestCountryRefreshUsesTaskCenterAndDeduplicates(t *testing.T) {
+	store, err := dao.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.DB.Close()
+	ex := &testExecutor{result: model.Config{"due": true}}
+	a := &App{Store: store, Executor: ex}
+	a.queueFirewallCountryUpdate()
+	a.queueFirewallCountryUpdate()
+	tasks, err := store.Tasks()
+	if err != nil || len(tasks) != 1 || tasks[0].Operation != "system.firewall-admin-region-update" {
+		t.Fatal(tasks, err)
+	}
+}

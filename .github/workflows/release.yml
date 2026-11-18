@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -64,6 +64,8 @@ jobs:
         run: go test ./internal/executor -run 'TestLive(Database|Redis)' -v -timeout 12m
       - run: ./scripts/test-log-rotation.sh
       - run: ./scripts/test-php-session.sh
+      - name: Verify UFW and firewalld with independent clients on four systems
+        run: bash scripts/test-firewall-linux.sh
       - run: make release
       - name: Verify release checksums
         run: sha256sum --check SHA256SUMS

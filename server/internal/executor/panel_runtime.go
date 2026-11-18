@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"opsview/internal/hostfirewall"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
@@ -23,6 +24,7 @@ type pendingPanel struct {
 	Deadline  int64                `json:"deadline"`
 	RestartAt int64                `json:"restartAt"`
 	Restarted bool                 `json:"restarted"`
+	UndoHost  []hostfirewall.Rule  `json:"undoHost,omitempty"`
 	UndoUFW   []string             `json:"undoUFW,omitempty"`
 }
 
@@ -40,6 +42,8 @@ func (e *Engine) savePending(p pendingPanel) error {
 	return security.WriteAtomic(e.pendingPath(), b, 0600)
 }
 func (e *Engine) panelRuntime(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
+	e.firewallMu.Lock()
+	defer e.firewallMu.Unlock()
 	e.runtimeMu.Lock()
 	defer e.runtimeMu.Unlock()
 	unlock, lockErr := runtimeconfig.Lock(e.panelConfigPath())
@@ -61,6 +65,10 @@ func (e *Engine) panelRuntime(ctx context.Context, op model.Operation, log func(
 		}
 		return model.Config{"confirmed": true}, os.Remove(e.pendingPath())
 	case "system.panel-apply":
+		if err := e.ensureFirewallIdle(); err != nil {
+			return nil, err
+		}
+
 		if _, err := e.loadPending(); err == nil {
 			return nil, errors.New("已有访问设置等待确认，请先确认或等待回退")
 		}
@@ -93,7 +101,20 @@ func (e *Engine) panelRuntime(ctx context.Context, op model.Operation, log func(
 		token := security.ID() + security.ID()
 		p := pendingPanel{Old: old, Next: next, TokenHash: security.Hash(token), Deadline: time.Now().Add(120 * time.Second).Unix(), RestartAt: time.Now().Add(3 * time.Second).Unix()}
 		if next.Port != old.Port {
-			if runtimeconfig.CompatibleUFW() {
+			if fw := e.hostFirewall().Detect(ctx); fw.Backend == "firewalld" && fw.Enabled && fw.Compatible {
+				p.UndoHost, err = e.prepareFirewalldAccess(ctx, []int{next.Port}, op.Params.String("source"))
+				if err != nil {
+					return nil, err
+				}
+				if err = e.savePending(p); err != nil {
+					return nil, err
+				}
+				if err = e.applyHostAccess(ctx, p.UndoHost, false); err != nil {
+					_ = e.applyHostAccess(ctx, p.UndoHost, true)
+					_ = os.Remove(e.pendingPath())
+					return nil, err
+				}
+			} else if runtimeconfig.CompatibleUFW() {
 				source := op.Params.String("source")
 				if net.ParseIP(source) == nil {
 					if _, _, er = net.ParseCIDR(source); er != nil {
@@ -116,6 +137,9 @@ func (e *Engine) panelRuntime(ctx context.Context, op model.Operation, log func(
 			}
 		}
 		if err = e.savePending(p); err != nil {
+			if len(p.UndoHost) > 0 {
+				_ = e.applyHostAccess(ctx, p.UndoHost, true)
+			}
 			if len(p.UndoUFW) > 0 {
 				_ = run(ctx, log, "", nil, nil, "ufw", p.UndoUFW...)
 			}
@@ -123,6 +147,9 @@ func (e *Engine) panelRuntime(ctx context.Context, op model.Operation, log func(
 		}
 		if err = runtimeconfig.Save(e.panelConfigPath(), next); err != nil {
 			_ = os.Remove(e.pendingPath())
+			if len(p.UndoHost) > 0 {
+				_ = e.applyHostAccess(ctx, p.UndoHost, true)
+			}
 			if len(p.UndoUFW) > 0 {
 				_ = run(ctx, log, "", nil, nil, "ufw", p.UndoUFW...)
 			}
@@ -153,6 +180,8 @@ func (e *Engine) watchPanelRuntime(ctx context.Context) {
 	}
 }
 func (e *Engine) checkPanelRuntime(ctx context.Context) {
+	e.firewallMu.Lock()
+	defer e.firewallMu.Unlock()
 	e.runtimeMu.Lock()
 	defer e.runtimeMu.Unlock()
 	unlock, lockErr := runtimeconfig.Lock(e.panelConfigPath())
@@ -170,6 +199,9 @@ func (e *Engine) checkPanelRuntime(ctx context.Context) {
 		}
 		if err = systemctl(ctx, func(string) {}, "restart", "opsview-panel.service"); err != nil {
 			return
+		}
+		if len(p.UndoHost) > 0 {
+			_ = e.applyHostAccess(ctx, p.UndoHost, true)
 		}
 		if len(p.UndoUFW) > 0 {
 			_ = run(ctx, func(string) {}, "", nil, nil, "ufw", p.UndoUFW...)

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpsView API",
-    "version": "0.1.3-rc.10"
+    "version": "0.1.3-rc.11"
   },
   "paths": {
     "/api/v1/health": {
@@ -5051,6 +5051,2693 @@
         }
       }
     },
+    "/api/v1/system/firewall/save": {
+      "post": {
+        "operationId": "post_system_firewall_save",
+        "summary": "提交结构化防火墙任务 save；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/delete": {
+      "post": {
+        "operationId": "post_system_firewall_delete",
+        "summary": "提交结构化防火墙任务 delete；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/dependencies": {
+      "post": {
+        "operationId": "post_system_firewall_dependencies",
+        "summary": "提交结构化防火墙任务 dependencies；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/import-apply": {
+      "post": {
+        "operationId": "post_system_firewall_import_apply",
+        "summary": "提交结构化防火墙任务 import-apply；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/sync-observe": {
+      "post": {
+        "operationId": "post_system_firewall_sync_observe",
+        "summary": "提交结构化防火墙任务 sync-observe；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/sync-restore": {
+      "post": {
+        "operationId": "post_system_firewall_sync_restore",
+        "summary": "提交结构化防火墙任务 sync-restore；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/ping": {
+      "post": {
+        "operationId": "post_system_firewall_ping",
+        "summary": "提交结构化防火墙任务 ping；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/region-update": {
+      "post": {
+        "operationId": "post_system_firewall_region_update",
+        "summary": "提交结构化防火墙任务 region-update；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/protection-install": {
+      "post": {
+        "operationId": "post_system_firewall_protection_install",
+        "summary": "提交结构化防火墙任务 protection-install；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/protection-save": {
+      "post": {
+        "operationId": "post_system_firewall_protection_save",
+        "summary": "提交结构化防火墙任务 protection-save；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/protection-unban": {
+      "post": {
+        "operationId": "post_system_firewall_protection_unban",
+        "summary": "提交结构化防火墙任务 protection-unban；串行执行，修订冲突返回 409",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/export": {
+      "post": {
+        "operationId": "post_system_firewall_export",
+        "summary": "防火墙 export；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/import-preview": {
+      "post": {
+        "operationId": "post_system_firewall_import_preview",
+        "summary": "防火墙 import-preview；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/sync-preview": {
+      "post": {
+        "operationId": "post_system_firewall_sync_preview",
+        "summary": "防火墙 sync-preview；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/protection-status": {
+      "post": {
+        "operationId": "post_system_firewall_protection_status",
+        "summary": "防火墙 protection-status；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/confirm": {
+      "post": {
+        "operationId": "post_system_firewall_confirm",
+        "summary": "防火墙 confirm；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/rollback": {
+      "post": {
+        "operationId": "post_system_firewall_rollback",
+        "summary": "防火墙 rollback；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall/rollback-feature": {
+      "post": {
+        "operationId": "post_system_firewall_rollback_feature",
+        "summary": "防火墙 rollback-feature；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "rule": {
+                    "$ref": "#/components/schemas/FirewallRuleInput"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 10485760
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "jail": {
+                    "type": "string",
+                    "enum": [
+                      "opsview-sshd",
+                      "opsview-nginx-http-auth"
+                    ]
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "revision",
+                  "id",
+                  "rule",
+                  "source",
+                  "confirmedImpact",
+                  "enabled",
+                  "content",
+                  "kind",
+                  "ids",
+                  "indices",
+                  "token",
+                  "connected",
+                  "jail",
+                  "ip",
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/system/ssh": {
       "get": {
         "operationId": "get_system_ssh",
@@ -5159,7 +7846,7 @@
     "/api/v1/system/firewall": {
       "get": {
         "operationId": "get_system_firewall",
-        "summary": "读取 UFW 实际规则、保护端口、Docker IPv4/IPv6 规则及兼容性",
+        "summary": "自动读取 UFW/firewalld 系统规则、四类计数、修订、真实管理端口及待确认事务",
         "security": [
           {
             "session": []
@@ -7155,8 +9842,29 @@
       "FirewallRule": {
         "type": "object",
         "properties": {
-          "number": {
-            "type": "integer"
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "port",
+              "ip",
+              "forward",
+              "region"
+            ]
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "ports": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
           },
           "destination": {
             "type": "string"
@@ -7167,33 +9875,90 @@
           "direction": {
             "type": "string"
           },
-          "source": {
+          "family": {
+            "type": "string",
+            "enum": [
+              "ipv4",
+              "ipv6",
+              "dual"
+            ]
+          },
+          "zone": {
             "type": "string"
           },
           "note": {
             "type": "string"
           },
-          "managed": {
+          "createdAt": {
+            "type": "string"
+          },
+          "editable": {
             "type": "boolean"
           },
-          "ipv6": {
+          "reason": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "string"
+          },
+          "targetPorts": {
+            "type": "string"
+          },
+          "masquerade": {
+            "type": "boolean"
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataUpdatedAt": {
+            "type": "string"
+          },
+          "runtime": {
+            "type": "boolean"
+          },
+          "permanent": {
+            "type": "boolean"
+          },
+          "listening": {
             "type": "boolean"
           }
         },
         "required": [
-          "number",
+          "id",
+          "revision",
+          "kind",
+          "protocol",
+          "ports",
+          "source",
           "destination",
           "action",
           "direction",
-          "source",
-          "note",
-          "managed",
-          "ipv6"
+          "family",
+          "editable",
+          "runtime",
+          "permanent"
         ]
       },
       "FirewallStatus": {
         "type": "object",
         "properties": {
+          "backend": {
+            "type": "string",
+            "enum": [
+              "ufw",
+              "firewalld",
+              ""
+            ]
+          },
           "installed": {
             "type": "boolean"
           },
@@ -7211,6 +9976,27 @@
             "items": {
               "$ref": "#/components/schemas/FirewallRule"
             }
+          },
+          "revision": {
+            "type": "string"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultZone": {
+            "type": "string"
+          },
+          "pingBlocked": {
+            "type": "boolean"
           },
           "raw": {
             "type": "string"
@@ -7236,13 +10022,21 @@
               "deadline": {
                 "type": "integer"
               },
-              "enabled": {
+              "mode": {
                 "type": "boolean"
+              },
+              "feature": {
+                "type": "boolean"
+              },
+              "rollbackError": {
+                "type": "string"
               }
             },
             "required": [
               "deadline",
-              "enabled"
+              "mode",
+              "feature",
+              "rollbackError"
             ]
           },
           "externalRestrictions": {
@@ -7250,11 +10044,17 @@
           }
         },
         "required": [
+          "backend",
           "installed",
           "enabled",
           "compatible",
           "reason",
           "rules",
+          "revision",
+          "counts",
+          "zones",
+          "defaultZone",
+          "pingBlocked",
           "raw",
           "dockerRules",
           "dockerIPv6Rules",
@@ -7262,6 +10062,76 @@
           "portReason",
           "pending",
           "externalRestrictions"
+        ]
+      },
+      "FirewallRuleInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "port",
+              "ip",
+              "forward",
+              "region"
+            ]
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "ports": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string",
+            "enum": [
+              "ipv4",
+              "ipv6",
+              "dual"
+            ]
+          },
+          "zone": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "targetPorts": {
+            "type": "string"
+          },
+          "masquerade": {
+            "type": "boolean"
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "protocol",
+          "source",
+          "destination",
+          "action",
+          "direction",
+          "family"
         ]
       }
     },

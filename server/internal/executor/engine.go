@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"opsview/internal/hostfirewall"
 	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/security"
@@ -35,6 +36,9 @@ type Engine struct {
 	siteMu                sync.Mutex
 	runtimeMu             sync.Mutex
 	firewallMu            sync.Mutex
+	firewallClient        *hostfirewall.Client
+	firewallConfigRoot    string
+	countryTransport      http.RoundTripper
 	sshMu                 sync.Mutex
 	sshConfigPath         string // overridden only by executor tests
 	cancel                context.CancelFunc

@@ -1,9 +1,11 @@
 package maintenance
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
+	"opsview/internal/hostfirewall"
 	"opsview/internal/runtimeconfig"
 	"os"
 	"strconv"
@@ -75,7 +77,8 @@ func (r *Runner) port(args []string) error {
 	if e = r.confirm("确认修改端口？", yes); e != nil {
 		return e
 	}
-	if compatibleUFW() {
+	fw := hostfirewall.Default().Detect(context.Background())
+	if compatibleUFW() || fw.Backend == "firewalld" && fw.Enabled && fw.Compatible {
 		if source == "" {
 			ssh := strings.Fields(os.Getenv("SSH_CONNECTION"))
 			if len(ssh) > 0 && net.ParseIP(ssh[0]) != nil {

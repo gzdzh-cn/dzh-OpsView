@@ -33,7 +33,7 @@ async function readLogs() {
 </script>
 <template>
   <el-tabs v-model="tab" class="panel-tabs">
-    <el-tab-pane label="防火墙规则" name="firewall" />
+    <el-tab-pane label="系统防火墙" name="firewall" />
     <el-tab-pane label="SSH 管理" name="ssh" />
     <el-tab-pane label="端口与服务" name="services" />
     <el-tab-pane label="系统日志" name="logs" />

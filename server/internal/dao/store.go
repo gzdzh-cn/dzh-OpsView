@@ -37,7 +37,7 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if schemaVersion > 3 {
+	if schemaVersion > 4 {
 		db.Close()
 		return nil, errors.New("面板数据库来自较新版本，禁止降级打开")
 	}
@@ -61,6 +61,10 @@ func Open(dir string) (*Store, error) {
 		return nil, e
 	}
 	if e = s.migrateV3(); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = s.migrateV4(); e != nil {
 		db.Close()
 		return nil, e
 	}

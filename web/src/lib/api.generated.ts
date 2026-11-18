@@ -1284,6 +1284,312 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/firewall/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 save；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_save"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 delete；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 dependencies；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_dependencies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/import-apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 import-apply；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_import_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/sync-observe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 sync-observe；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_sync_observe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/sync-restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 sync-restore；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_sync_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 ping；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_ping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/region-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 region-update；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_region_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/protection-install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 protection-install；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_protection_install"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/protection-save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 protection-save；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_protection_save"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/protection-unban": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交结构化防火墙任务 protection-unban；串行执行，修订冲突返回 409 */
+        post: operations["post_system_firewall_protection_unban"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 防火墙 export；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌 */
+        post: operations["post_system_firewall_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/import-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 防火墙 import-preview；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌 */
+        post: operations["post_system_firewall_import_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/sync-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 防火墙 sync-preview；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌 */
+        post: operations["post_system_firewall_sync_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/protection-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 防火墙 protection-status；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌 */
+        post: operations["post_system_firewall_protection_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 防火墙 confirm；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌 */
+        post: operations["post_system_firewall_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 防火墙 rollback；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌 */
+        post: operations["post_system_firewall_rollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/firewall/rollback-feature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 防火墙 rollback-feature；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌 */
+        post: operations["post_system_firewall_rollback_feature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/ssh": {
         parameters: {
             query?: never;
@@ -1325,7 +1631,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 读取 UFW 实际规则、保护端口、Docker IPv4/IPv6 规则及兼容性 */
+        /** 自动读取 UFW/firewalld 系统规则、四类计数、修订、真实管理端口及待确认事务 */
         get: operations["get_system_firewall"];
         put?: never;
         post?: never;
@@ -1832,21 +2138,49 @@ export interface components {
             matchWarning?: string;
         };
         FirewallRule: {
-            number: number;
+            id: string;
+            revision: string;
+            /** @enum {string} */
+            kind: "port" | "ip" | "forward" | "region";
+            protocol: string;
+            ports: string;
+            source: string;
             destination: string;
             action: string;
             direction: string;
-            source: string;
-            note: string;
-            managed: boolean;
-            ipv6: boolean;
+            /** @enum {string} */
+            family: "ipv4" | "ipv6" | "dual";
+            zone?: string;
+            note?: string;
+            createdAt?: string;
+            editable: boolean;
+            reason?: string;
+            raw?: string;
+            position?: number;
+            target?: string;
+            targetPorts?: string;
+            masquerade?: boolean;
+            countries?: string[];
+            dataUpdatedAt?: string;
+            runtime: boolean;
+            permanent: boolean;
+            listening?: boolean;
         };
         FirewallStatus: {
+            /** @enum {string} */
+            backend: "ufw" | "firewalld" | "";
             installed: boolean;
             enabled: boolean;
             compatible: boolean;
             reason: string;
             rules: components["schemas"]["FirewallRule"][];
+            revision: string;
+            counts: {
+                [key: string]: number;
+            };
+            zones: string[];
+            defaultZone: string;
+            pingBlocked: boolean;
             raw: string;
             dockerRules: string;
             dockerIPv6Rules: string;
@@ -1854,9 +2188,29 @@ export interface components {
             portReason: string;
             pending: {
                 deadline: number;
-                enabled: boolean;
+                mode: boolean;
+                feature: boolean;
+                rollbackError: string;
             };
             externalRestrictions: string;
+        };
+        FirewallRuleInput: {
+            /** @enum {string} */
+            kind: "port" | "ip" | "forward" | "region";
+            protocol: string;
+            ports?: string;
+            source: string;
+            destination: string;
+            action: string;
+            direction: string;
+            /** @enum {string} */
+            family: "ipv4" | "ipv6" | "dual";
+            zone?: string;
+            note?: string;
+            target?: string;
+            targetPorts?: string;
+            masquerade?: boolean;
+            countries?: string[];
         };
     };
     responses: never;
@@ -5834,6 +6188,1251 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": string;
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_save: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_delete: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_dependencies: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_import_apply: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_sync_observe: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_sync_restore: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_ping: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_region_update: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_protection_install: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_protection_save: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_protection_unban: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_export: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_import_preview: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_sync_preview: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_protection_status: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_confirm: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_rollback: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_system_firewall_rollback_feature: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    id: string;
+                    rule: components["schemas"]["FirewallRuleInput"];
+                    source: string;
+                    confirmedImpact: boolean;
+                    enabled: boolean;
+                    content: string;
+                    kind: string;
+                    ids: string[];
+                    indices: (number | string)[];
+                    token: string;
+                    connected: boolean;
+                    /** @enum {string} */
+                    jail: "opsview-sshd" | "opsview-nginx-http-auth";
+                    ip: string;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description 校验失败 */

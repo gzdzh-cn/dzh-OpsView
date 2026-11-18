@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"opsview/internal/hostfirewall"
 	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
@@ -30,12 +31,11 @@ func (e *Engine) firewall(ctx context.Context, op model.Operation, log func(stri
 	r := op.Resource
 	action := strings.TrimPrefix(op.Name, "firewall.")
 	if action != "confirm" {
-		for _, pending := range []string{e.firewallModePath(), e.sshPendingPath()} {
-			if _, err := os.Stat(pending); !os.IsNotExist(err) {
-				return nil, errors.New("访问设置待确认，请先确认或回退再修改规则")
-			}
+		if err := e.ensureFirewallIdle(); err != nil {
+			return nil, err
 		}
 	}
+
 	path := filepath.Join(e.Root, "firewall", r.ID+".json")
 	if action == "confirm" {
 		b, err := os.ReadFile(path)
@@ -134,6 +134,9 @@ func portContains(spec, port string) bool {
 	return n >= lo && n <= hi
 }
 func (e *Engine) firewallCompatible(ctx context.Context, r model.Resource, log func(string)) error {
+	if s := e.hostFirewall().Detect(ctx); s.Backend == "firewalld" && s.Enabled && s.Compatible && r.Config.String("scope") == "host" {
+		return nil
+	}
 	if _, err := exec.LookPath("nft"); err == nil {
 		rules, _ := output(ctx, "nft", "list", "ruleset")
 		if strings.Contains(rules, "hook input") && !strings.Contains(rules, "ufw") {
@@ -161,6 +164,27 @@ func (e *Engine) firewallCommand(ctx context.Context, r model.Resource, remove b
 		return err
 	}
 	if c.String("scope") == "host" {
+		if status := e.hostFirewall().Detect(ctx); status.Backend == "firewalld" && status.Compatible {
+			zone, er := e.hostFirewall().Run(ctx, "firewall-cmd", "--get-default-zone")
+			if er != nil {
+				return er
+			}
+			families := []string{"ipv4", "ipv6"}
+			if c.String("source") != "any" {
+				families = []string{"ipv4"}
+				if strings.Contains(c.String("source"), ":") {
+					families = []string{"ipv6"}
+				}
+			}
+			for _, family := range families {
+				rule := hostfirewall.Rule{Kind: "port", Protocol: c.String("protocol"), Ports: strings.ReplaceAll(c.String("ports"), ":", "-"), Source: c.String("source"), Destination: "any", Direction: "in", Action: c.String("action"), Family: family, Zone: strings.TrimSpace(zone), Runtime: true, Permanent: true}
+				if err := e.hostFirewall().Change(ctx, "firewalld", rule, remove); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
 		args := []string{}
 		if remove {
 			args = append(args, "--force", "delete")
@@ -234,6 +258,11 @@ func (e *Engine) watchFirewall(ctx context.Context) {
 func (e *Engine) reconcileFirewall(ctx context.Context) {
 	e.firewallMu.Lock()
 	defer e.firewallMu.Unlock()
+	_ = e.recoverFirewallExtension(ctx)
+	var admin firewallTransaction
+	if e.readFirewallAdmin("pending", &admin) == nil && time.Now().Unix() >= admin.Deadline {
+		_ = e.rollbackFirewallAdmin(ctx)
+	}
 	if p, err := e.loadFirewallMode(); err == nil && time.Now().Unix() >= p.Deadline {
 		if err = e.rollbackFirewallMode(ctx, p); err != nil {
 			p.RollbackError = err.Error()

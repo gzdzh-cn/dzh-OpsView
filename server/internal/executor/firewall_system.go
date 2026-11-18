@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"opsview/internal/hostfirewall"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
@@ -34,11 +35,13 @@ func parseUFWNumbered(text string) []model.Config {
 }
 
 type pendingFirewallMode struct {
-	OldActive     bool       `json:"oldActive"`
-	NextActive    bool       `json:"nextActive"`
-	Deadline      int64      `json:"deadline"`
-	UndoRules     [][]string `json:"undoRules"`
-	RollbackError string     `json:"rollbackError,omitempty"`
+	Backend       string              `json:"backend,omitempty"`
+	UndoHost      []hostfirewall.Rule `json:"undoHost,omitempty"`
+	OldActive     bool                `json:"oldActive"`
+	NextActive    bool                `json:"nextActive"`
+	Deadline      int64               `json:"deadline"`
+	UndoRules     [][]string          `json:"undoRules"`
+	RollbackError string              `json:"rollbackError,omitempty"`
 }
 
 func (e *Engine) firewallModePath() string { return filepath.Join(e.Root, "firewall-mode.json") }
@@ -93,6 +96,16 @@ func (e *Engine) firewallSystem(ctx context.Context, op model.Operation, log fun
 		}
 		return model.Config{"installed": statusErr == nil, "enabled": active, "compatible": compatible, "reason": reason, "rules": parseUFWNumbered(numbered), "raw": status, "dockerRules": docker, "dockerIPv6Rules": docker6, "protectedPorts": ports, "portReason": portReason, "pending": pending, "externalRestrictions": "云安全组需在云控制台单独配置；规则放行不代表公网可达"}, nil
 	case "system.firewall-confirm":
+		if p, er := e.loadFirewallMode(); er == nil && p.Backend == "firewalld" {
+			if time.Now().Unix() >= p.Deadline || !op.Params.Bool("connected") {
+				return nil, errors.New("确认已超时或尚未重新连接")
+			}
+			s := e.hostFirewall().Detect(ctx)
+			if s.Enabled != p.NextActive {
+				return nil, errors.New("防火墙状态已变化")
+			}
+			return model.Config{"confirmed": true}, os.Remove(e.firewallModePath())
+		}
 		p, err := e.loadFirewallMode()
 		if err != nil {
 			return nil, errors.New("没有待确认的防火墙状态修改")
@@ -114,11 +127,24 @@ func (e *Engine) firewallSystem(ctx context.Context, op model.Operation, log fun
 		}
 		return model.Config{"rolledBack": true}, e.rollbackFirewallMode(ctx, p)
 	case "system.firewall-reload":
+		if _, err := os.Stat(e.firewallAdminPath("pending")); !os.IsNotExist(err) {
+			return nil, errors.New("规则事务待确认，请先确认或回退")
+		}
 		if !compatible || !active {
 			return nil, errors.New("仅支持重载兼容且已启用的 UFW")
 		}
 		return model.Config{}, run(ctx, log, "", nil, nil, "ufw", "reload")
 	case "system.firewall-mode":
+		if err := e.ensureFirewallIdle(); err != nil {
+			return nil, err
+		}
+
+		if s := e.hostFirewall().Detect(ctx); s.Backend == "firewalld" && s.Compatible {
+			if _, er := os.Stat(e.firewallModePath()); !os.IsNotExist(er) {
+				return nil, errors.New("已有状态修改待确认")
+			}
+			return e.firewallAdminMode(ctx, op.Params, s, log)
+		}
 		if !compatible {
 			return nil, errors.New("UFW 不可用或防火墙体系不兼容")
 		}
@@ -196,12 +222,29 @@ func (e *Engine) firewallSystem(ctx context.Context, op model.Operation, log fun
 		if err = run(ctx, log, "", nil, nil, "ufw", "--force", action); err != nil {
 			return fail(err)
 		}
+		if err = e.syncFirewallAux(ctx, next, log); err != nil {
+			return fail(err)
+		}
 		log("防火墙状态已修改，请在 120 秒内重新连接面板和 SSH 并确认，否则自动回退")
 		return model.Config{"deadline": p.Deadline}, nil
 	}
 	return nil, errors.New("防火墙系统操作无效")
 }
 func (e *Engine) rollbackFirewallMode(ctx context.Context, p pendingFirewallMode) error {
+	if p.Backend == "firewalld" {
+		if err := e.hostFirewall().SetEnabled(ctx, "firewalld", p.OldActive); err != nil {
+			return err
+		}
+		for _, r := range p.UndoHost {
+			if err := e.hostFirewall().Change(ctx, "firewalld", r, true); err != nil {
+				return err
+			}
+		}
+		if err := e.syncFirewallAux(ctx, p.OldActive, func(string) {}); err != nil {
+			return err
+		}
+		return os.Remove(e.firewallModePath())
+	}
 	action := "disable"
 	if p.OldActive {
 		action = "enable"
@@ -220,6 +263,9 @@ func (e *Engine) rollbackFirewallMode(ctx context.Context, p pendingFirewallMode
 	}
 	if strings.Contains(status, "Status: active") != p.OldActive {
 		return errors.New("防火墙尚未恢复目标状态")
+	}
+	if err = e.syncFirewallAux(ctx, p.OldActive, func(string) {}); err != nil {
+		return err
 	}
 	return os.Remove(e.firewallModePath())
 }

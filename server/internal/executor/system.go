@@ -20,6 +20,9 @@ func (e *Engine) system(ctx context.Context, op model.Operation, log func(string
 	if strings.HasPrefix(op.Name, "system.ssh-") {
 		return e.sshOperation(ctx, op, log)
 	}
+	if strings.HasPrefix(op.Name, "system.firewall-admin-") {
+		return e.firewallAdmin(ctx, op, log)
+	}
 	if strings.HasPrefix(op.Name, "system.firewall-") {
 		return e.firewallSystem(ctx, op, log)
 	}

@@ -8,7 +8,20 @@ import (
 func (c *Controller) systemSecurity(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == "GET" {
-		name := map[string]string{"/api/v1/system/ssh": "ssh-status", "/api/v1/system/ssh/logs": "ssh-logs", "/api/v1/system/firewall": "firewall-status"}[r.URL.Path]
+		name := map[string]string{"/api/v1/system/ssh": "ssh-status", "/api/v1/system/ssh/logs": "ssh-logs", "/api/v1/system/firewall": "firewall-admin-status"}[r.URL.Path]
+		if name == "firewall-admin-status" {
+			data, err := c.App.Executor.Execute(r.Context(), model.Operation{Name: "system." + name}, func(string) {})
+			if err != nil {
+				fail(w, 502, err.Error())
+				return
+			}
+			if err = c.App.Store.ObserveFirewall(data); err != nil {
+				fail(w, 500, "保存防火墙观察记录失败")
+				return
+			}
+			send(w, 200, data)
+			return
+		}
 		c.exec(w, r, model.Operation{Name: "system." + name})
 		return
 	}

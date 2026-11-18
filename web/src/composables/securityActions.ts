@@ -2,7 +2,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, post, errorText, type Task } from '../lib/api'
 
-export function useSecurityActions(reload: () => Promise<unknown>) {
+export function useSecurityActions(reload: () => Promise<unknown>, prefix = '/system/security/') {
   const busy = ref(false),
     taskId = ref('')
   const controller = new AbortController()
@@ -21,7 +21,7 @@ export function useSecurityActions(reload: () => Promise<unknown>) {
     if (busy.value) return false
     busy.value = true
     try {
-      const result = await post<Task>('/system/security/' + action, params)
+      const result = await post<Task>(prefix + action, params)
       if (queued && result.id) {
         taskId.value = result.id
         for (let n = 0; n < 90 && !controller.signal.aborted; n++) {
