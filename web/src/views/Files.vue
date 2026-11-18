@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { usePageState } from '../composables/pageState'
 import { isAbort } from '../lib/query'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { cachedDirectorySizes } from '../lib/fileSizes'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Folder, Document, ArrowLeft, RefreshRight } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type InputInstance } from 'element-plus'
+import { Folder, Document, ArrowLeft, RefreshRight, Loading } from '@element-plus/icons-vue'
 import { api, post, errorText, size, date, type Config } from '../lib/api'
 import ListPanel from '../components/ListPanel.vue'
 import DataList from '../components/DataList.vue'
@@ -36,8 +37,22 @@ function savedRecent(): string[] {
   }
 }
 const recent = ref<string[]>([])
+const addressEditing = ref(false),
+  addressInput = ref<InputInstance>()
+async function editAddress() {
+  addressEditing.value = true
+  await nextTick()
+  addressInput.value?.focus()
+  const input = addressInput.value?.input
+  input?.setSelectionRange(address.value.length, address.value.length)
+}
+function submitOnEnter(event: KeyboardEvent, submit: () => unknown) {
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  void submit()
+}
 const breadcrumb = computed(() =>
-  path.value
+  address.value
     .split('/')
     .filter(Boolean)
     .map((name, i, all) => ({ name, path: '/' + all.slice(0, i + 1).join('/') })),
@@ -94,6 +109,10 @@ function remember(p: string) {
   localStorage.setItem('opsview:file-recent', JSON.stringify(recent.value))
 }
 async function load() {
+  await loadDirectory(path.value, page.value)
+}
+async function loadDirectory(target: string, targetPage: number, navigating = false) {
+  const draft = address.value
   const id = ++listSequence
   listing?.abort()
   listing = new AbortController()
@@ -103,8 +122,8 @@ async function load() {
     const data = await op(
       'list',
       {
-        path: path.value,
-        page: page.value,
+        path: target,
+        page: targetPage,
         pageSize: pageSize.value,
         filter: filter.value,
         hidden: hidden.value,
@@ -116,24 +135,25 @@ async function load() {
     if (!alive || id !== listSequence) return
     items.value = data.items
     total.value = data.total
+    if (address.value === draft && (navigating || address.value === path.value))
+      address.value = data.path
     path.value = data.path
-    address.value = data.path
+    page.value = targetPage
     readOnly.value = data.readOnly
     selection.value = []
     remember(path.value)
   } catch (e) {
     if (alive && id === listSequence && !isAbort(e)) {
       error.value = errorText(e)
-      items.value = []
     }
   } finally {
     if (alive && id === listSequence) busy.value = false
   }
 }
 async function navigate(p: string) {
-  path.value = p || '/'
-  page.value = 1
-  await load()
+  address.value = p || '/'
+  addressEditing.value = false
+  await loadDirectory(address.value, 1, true)
 }
 async function refreshMeta() {
   try {
@@ -184,6 +204,7 @@ async function save() {
     })
     revision.value = data.revision
     original.value = content.value
+    invalidateSizes([editPath.value])
     diffOpen.value = false
     editOpen.value = false
     await load()
@@ -210,6 +231,7 @@ async function create(directory: boolean) {
     const full = join(path.value, answer.value)
     if (directory) {
       await op('mkdir', { path: full })
+      invalidateSizes([full])
       await load()
     } else {
       editPath.value = full
@@ -247,7 +269,9 @@ async function batch(action: string, rows = selection.value, extra: Config = {})
         { confirmButtonText: '移入回收站', cancelButtonText: '取消', type: 'warning' },
       )
     const data = await op(action, { paths: selected.map((r) => r.path), ...extra })
-    if (data.id) await awaitTask(data.id, action === 'size' ? '目录大小' : '文件操作')
+    const changed = [...selected.map((r) => r.path), ...(extra.target ? [extra.target] : [])]
+    invalidateSizes(changed)
+    if (data.id) await awaitTask(data.id, action === 'size' ? '目录大小' : '文件操作', changed)
     else {
       ElMessage.success('操作完成')
       await load()
@@ -293,23 +317,52 @@ async function paste() {
       target: path.value,
       conflict: policy,
     })
-    await awaitTask(data.id, '粘贴结果')
+    const changed = [...clipboard.value.paths, path.value]
+    invalidateSizes(changed)
+    await awaitTask(data.id, '粘贴结果', changed)
     clipboard.value = undefined
   } catch (e) {
     showError(e)
   }
 }
-async function note(row: Config) {
+type NoteEdit = {
+  draft: string
+  original: string
+  editing: boolean
+  saving: boolean
+  error: string
+}
+const notes = ref<Record<string, NoteEdit>>({})
+function note(row: Config) {
+  const state = notes.value[row.path]
+  if (state?.saving) return
+  notes.value[row.path] = state
+    ? { ...state, editing: true }
+    : { draft: row.note || '', original: row.note || '', editing: true, saving: false, error: '' }
+}
+const vFocusNote = { mounted: (el: HTMLElement) => el.querySelector('input')?.focus() }
+function cancelNote(p: string) {
+  if (!notes.value[p]?.saving) delete notes.value[p]
+}
+async function saveNote(p: string) {
+  const state = notes.value[p]
+  if (!state || state.saving || !state.editing) return
+  if (state.draft === state.original) {
+    delete notes.value[p]
+    return
+  }
+  state.saving = true
+  state.error = ''
   try {
-    const answer = await ElMessageBox.prompt('输入备注', '文件备注', {
-      inputValue: row.note || '',
-      confirmButtonText: '保存',
-      cancelButtonText: '取消',
-    })
-    await op('note', { path: row.path, note: answer.value })
-    await load()
+    await op('note', { path: p, note: state.draft })
+    if (!alive) return
+    const row = items.value.find((item) => item.path === p)
+    if (row) row.note = state.draft
+    delete notes.value[p]
   } catch (e) {
-    showError(e)
+    if (alive) state.error = errorText(e)
+  } finally {
+    state.saving = false
   }
 }
 function download(row: Config) {
@@ -318,28 +371,36 @@ function download(row: Config) {
   a.download = row.name
   a.click()
 }
-async function awaitTask(id: string, title: string) {
+async function awaitTask(id: string, title: string, changed: string[] = [], showResult = true) {
   taskId.value = id
   taskBusy.value = true
   taskResult.value = undefined
   resultTitle.value = title
   try {
-    while (alive) {
-      const data = await api('/files/tasks/' + id)
-      if (data.state === 'succeeded') {
-        taskResult.value = data.result
-        resultOpen.value = true
-        await load()
-        return
-      }
-      if (['failed', 'cancelled', 'interrupted'].includes(data.state))
-        throw new Error(data.error || '任务已取消或中断')
-      await new Promise((resolve) => setTimeout(resolve, 800))
+    const result = await waitTaskResult(id)
+    if (!alive) return
+    taskResult.value = result
+    if (showResult) {
+      resultOpen.value = true
+      await load()
     }
+    return result
   } finally {
+    invalidateSizes(changed)
     taskBusy.value = false
     taskId.value = ''
   }
+}
+const taskController = new AbortController()
+async function waitTaskResult(id: string): Promise<Config> {
+  while (alive) {
+    const data = await api('/files/tasks/' + id, { signal: taskController.signal })
+    if (data.state === 'succeeded') return data.result || {}
+    if (['failed', 'cancelled', 'interrupted'].includes(data.state))
+      throw new Error(data.error || '任务已取消或中断')
+    await new Promise((resolve) => setTimeout(resolve, 800))
+  }
+  throw new DOMException('页面已关闭', 'AbortError')
 }
 async function cancelTask() {
   try {
@@ -365,10 +426,70 @@ async function search(contentSearch: boolean) {
     showError(e)
   }
 }
+type DirectorySize = {
+  loading: boolean
+  bytes?: number
+  error?: string
+  id?: string
+  stale?: boolean
+}
+const directorySizes = ref<Record<string, DirectorySize>>(
+  Object.fromEntries([...cachedDirectorySizes].map(([p, bytes]) => [p, { loading: false, bytes }])),
+)
+function directorySizeText(p: string) {
+  const state = directorySizes.value[p]
+  if (state?.loading) return '计算中'
+  if (state?.error) return '重试'
+  if (state?.bytes === undefined) return '计算'
+  const unit = Math.min(4, Math.floor(Math.log(Math.max(1, state.bytes)) / Math.log(1024)))
+  return `${Number((state.bytes / 1024 ** unit).toFixed(2))} ${['B', 'KB', 'MB', 'GB', 'TB'][unit]}`
+}
+function invalidateSizes(changed: string[]) {
+  const affected = (p: string) =>
+    changed.some(
+      (c) =>
+        c === p ||
+        c.startsWith(p === '/' ? '/' : p + '/') ||
+        p.startsWith(c === '/' ? '/' : c + '/'),
+    )
+  for (const p of cachedDirectorySizes.keys()) {
+    if (affected(p)) cachedDirectorySizes.delete(p)
+  }
+  for (const [p, state] of Object.entries(directorySizes.value)) {
+    if (!affected(p)) continue
+    if (state.loading) state.stale = true
+    else delete directorySizes.value[p]
+  }
+}
 async function calculate(row?: Config) {
+  const p = row?.path || path.value
+  if (directorySizes.value[p]?.loading) return
+  const state: DirectorySize = { loading: true }
+  directorySizes.value[p] = state
   try {
-    const data = await op('size', { path: row?.path || path.value })
-    await awaitTask(data.id, '目录大小')
+    const data = await op('size', { path: p }, taskController.signal)
+    directorySizes.value[p].id = data.id
+    const result = await waitTaskResult(data.id)
+    if (!alive) return
+    const current = directorySizes.value[p]
+    if (current.stale) delete directorySizes.value[p]
+    else {
+      current.bytes = result.size
+      cachedDirectorySizes.set(p, result.size)
+      current.loading = false
+      current.id = undefined
+    }
+  } catch (e) {
+    if (alive && !isAbort(e)) {
+      directorySizes.value[p] = { loading: false, error: errorText(e) }
+    }
+  }
+}
+async function cancelSize(p: string) {
+  const id = directorySizes.value[p]?.id
+  if (!id) return
+  try {
+    await post(`/tasks/${id}/cancel`)
   } catch (e) {
     showError(e)
   }
@@ -394,7 +515,8 @@ async function archive(action: 'compress' | 'extract', row?: Config) {
       target: answer.value,
       conflict: policy,
     })
-    await awaitTask(data.id, action === 'compress' ? '压缩结果' : '解压结果')
+    invalidateSizes([answer.value])
+    await awaitTask(data.id, action === 'compress' ? '压缩结果' : '解压结果', [answer.value])
   } catch (e) {
     showError(e)
   }
@@ -420,8 +542,8 @@ async function permissionPreview() {
     let count = 0
     for (const row of permissionRows.value) {
       const task = await op('size', { path: row.path })
-      await awaitTask(task.id, '权限影响范围')
-      count += taskResult.value?.count || 0
+      const result = await awaitTask(task.id, '权限影响范围', [], false)
+      count += result?.count || 0
     }
     permissionCount.value = `将影响 ${count} 项（不递归链接和其他挂载点）`
     resultOpen.value = false
@@ -473,6 +595,7 @@ async function trashAction(action: string, row?: Config) {
         { type: 'warning', confirmButtonText: '永久删除', cancelButtonText: '取消' },
       )
     await op('trash', { trashAction: action, id: row?.id, target, confirmed: true })
+    if (action === 'restore') invalidateSizes([target])
     await loadTrash()
     await load()
   } catch (e) {
@@ -530,6 +653,7 @@ async function uploadFiles(event: Event) {
         uploadProgress.value = Math.round((offset / Math.max(file.size, 1)) * 100)
       }
       await op('upload-finish', { id })
+      invalidateSizes([target])
       localStorage.removeItem(key)
       uploadSession.value = ''
       uploadProgress.value = 100
@@ -575,6 +699,7 @@ onUnmounted(() => {
   alive = false
   listing?.abort()
   metadataController.abort()
+  taskController.abort()
   controller?.abort()
 })
 </script>
@@ -584,7 +709,35 @@ onUnmounted(() => {
       <el-button :icon="ArrowLeft" :disabled="path === '/'" @click="navigate(parent(path))">
         上级
       </el-button>
-      <el-input v-model="address" aria-label="服务器路径" @keyup.enter="navigate(address)" />
+      <div class="file-address" :class="{ 'is-pending': address !== path }">
+        <el-input
+          v-if="addressEditing"
+          ref="addressInput"
+          v-model="address"
+          aria-label="服务器路径"
+          @blur="addressEditing = false"
+          @keydown.enter="submitOnEnter($event, () => navigate(address))"
+          @keydown.esc.prevent="addressEditing = false"
+        />
+        <div v-else class="file-address-display" @click.self="editAddress">
+          <nav aria-label="目录路径" class="file-breadcrumbs">
+            <button type="button" @click.stop="navigate('/')">根目录</button>
+            <template v-for="part in breadcrumb" :key="part.path">
+              <span aria-hidden="true">/</span>
+              <button type="button" @click.stop="navigate(part.path)">{{ part.name }}</button>
+            </template>
+          </nav>
+          <button
+            type="button"
+            class="file-address-edit"
+            aria-label="编辑服务器路径"
+            :title="address !== path ? '路径尚未跳转，点击编辑' : '编辑服务器路径'"
+            @click="editAddress"
+          >
+            <span v-if="address !== path" aria-label="路径尚未跳转">•</span>
+          </button>
+        </div>
+      </div>
       <el-button @click="navigate(address)">前往</el-button>
       <el-button :icon="RefreshRight" aria-label="刷新目录" title="刷新目录" @click="load" />
       <el-dropdown @command="navigate">
@@ -603,14 +756,6 @@ onUnmounted(() => {
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-    </div>
-    <div class="file-navigation">
-      <el-breadcrumb>
-        <el-breadcrumb-item><a @click="navigate('/')">根目录</a></el-breadcrumb-item>
-        <el-breadcrumb-item v-for="part in breadcrumb" :key="part.path">
-          <a @click="navigate(part.path)">{{ part.name }}</a>
-        </el-breadcrumb-item>
-      </el-breadcrumb>
       <el-button v-if="metadata.favorites?.includes(path)" link @click="favorite(path, true)">
         取消收藏
       </el-button>
@@ -649,7 +794,10 @@ onUnmounted(() => {
             >
               压缩
             </el-dropdown-item>
-            <el-dropdown-item :disabled="taskBusy || readOnly" @click="calculate()">
+            <el-dropdown-item
+              :disabled="directorySizes[path]?.loading || readOnly"
+              @click="calculate()"
+            >
               计算大小
             </el-dropdown-item>
             <el-dropdown-item @click="favorite(path)">收藏当前目录</el-dropdown-item>
@@ -749,25 +897,75 @@ onUnmounted(() => {
             </el-button>
           </template>
         </el-table-column>
-        <el-table-column label="大小" prop="size" width="110" sortable="custom">
+        <el-table-column label="大小" prop="size" width="140" sortable="custom">
           <template #default="{ row }">
             <el-button
               v-if="row.directory"
               link
-              :disabled="row.protected || taskBusy"
+              :disabled="row.protected || directorySizes[row.path]?.loading"
+              :title="
+                directorySizes[row.path]?.error ||
+                (directorySizes[row.path]?.bytes !== undefined ? '重新计算' : '计算目录大小')
+              "
+              :aria-label="row.name + '大小：' + directorySizeText(row.path)"
               @click="calculate(row)"
             >
-              计算
+              <el-icon v-if="directorySizes[row.path]?.loading" class="is-loading">
+                <Loading />
+              </el-icon>
+              {{ directorySizeText(row.path) }}
             </el-button>
-            <span v-else>{{ size(row.size) }}</span>
+            <el-button
+              v-if="row.directory && directorySizes[row.path]?.loading"
+              link
+              :disabled="!directorySizes[row.path]?.id"
+              :aria-label="'取消计算 ' + row.name"
+              @click="cancelSize(row.path)"
+            >
+              ×
+            </el-button>
+            <span v-if="!row.directory">{{ size(row.size) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="修改时间" prop="modifiedAt" min-width="175" sortable="custom">
           <template #default="{ row }">{{ date(row.modifiedAt) }}</template>
         </el-table-column>
-        <el-table-column label="备注" min-width="120" show-overflow-tooltip>
+        <el-table-column label="备注" min-width="160">
           <template #default="{ row }">
-            <el-button link :disabled="row.protected" @click="note(row)">
+            <div v-if="notes[row.path]?.editing" class="file-note-edit">
+              <el-input
+                v-focus-note
+                v-model="notes[row.path]!.draft"
+                :aria-label="row.name + '备注'"
+                :disabled="notes[row.path]!.saving"
+                @blur="saveNote(row.path)"
+                @keydown.enter="submitOnEnter($event, () => saveNote(row.path))"
+                @keydown.esc.prevent="cancelNote(row.path)"
+              >
+                <template #suffix>
+                  <el-icon v-if="notes[row.path]!.saving" class="is-loading"><Loading /></el-icon>
+                </template>
+              </el-input>
+              <el-button
+                v-if="notes[row.path]!.error"
+                link
+                type="danger"
+                :title="notes[row.path]!.error"
+                :aria-label="'重试保存 ' + row.name + '备注'"
+                @mousedown.prevent
+                @click="saveNote(row.path)"
+              >
+                重试
+              </el-button>
+            </div>
+            <el-button
+              v-else
+              link
+              class="file-note"
+              :title="row.note || '添加备注'"
+              :disabled="row.protected"
+              @click="note(row)"
+            >
               {{ row.note || '添加备注' }}
             </el-button>
           </template>
@@ -837,7 +1035,29 @@ onUnmounted(() => {
           "
         />
       </div>
-      <div class="file-path-note">{{ path }} · 上传上限 2 GiB · 删除默认保留 30 天</div>
+      <div class="file-path-note">
+        <span>{{ path }} · 上传上限 2 GiB · 删除默认保留 30 天</span>
+        <span v-if="directorySizes[path]" class="file-directory-total">
+          目录大小：
+          <el-button
+            link
+            :disabled="directorySizes[path]?.loading"
+            :title="directorySizes[path]?.error || '重新计算'"
+            @click="calculate()"
+          >
+            <el-icon v-if="directorySizes[path]?.loading" class="is-loading"><Loading /></el-icon>
+            {{ directorySizeText(path) }}
+          </el-button>
+          <el-button
+            v-if="directorySizes[path]?.loading"
+            link
+            :disabled="!directorySizes[path]?.id"
+            @click="cancelSize(path)"
+          >
+            取消计算
+          </el-button>
+        </span>
+      </div>
     </template>
   </ListPanel>
   <el-dialog

@@ -624,6 +624,7 @@ test('server file page navigates root, shows revisions, recovers conflicts and s
     return route.fulfill({ json: {} })
   })
   await page.goto('/files')
+  await page.getByRole('button', { name: '编辑服务器路径', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '服务器路径', exact: true })).toHaveValue('/')
   await page.getByRole('textbox', { name: '服务器路径', exact: true }).fill('/var/www')
   await page.getByRole('button', { name: '前往', exact: true }).click()
@@ -657,6 +658,277 @@ test('server file page navigates root, shows revisions, recovers conflicts and s
     'static',
   )
   await page.screenshot({ path: '../.opsview/screenshots/files-mobile.png', fullPage: true })
+})
+
+test('file address keeps drafts separate from the open directory and preserves listing on errors', async ({
+  page,
+}) => {
+  const listed: string[] = []
+  await page.route('**/api/v1/files', async (route) => {
+    const p = route.request().postDataJSON()
+    if (p.action === 'metadata')
+      return route.fulfill({ json: { favorites: ['/var/www'], shortcuts: [] } })
+    if (p.action === 'list') {
+      listed.push(p.path)
+      if (p.path === '/protected')
+        return route.fulfill({ status: 403, json: { error: '此路径不开放文件管理' } })
+      return route.fulfill({
+        json: {
+          path: p.path,
+          total: 1,
+          items: [{ name: 'visible.txt', path: p.path + '/visible.txt', size: 5 }],
+          readOnly: false,
+        },
+      })
+    }
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/files?path=/var/www')
+  const crumbs = page.getByRole('navigation', { name: '目录路径' })
+  await expect(page.locator('.file-navigation')).toHaveCount(1)
+  await expect(crumbs.getByRole('button', { name: 'www', exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: '服务器路径', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '编辑服务器路径', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  const input = page.getByRole('textbox', { name: '服务器路径', exact: true })
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue('/var/www')
+  await input.fill('/draft/child')
+  await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true })
+  await expect(input).toBeVisible()
+  expect(listed).toEqual(['/var/www'])
+  await page.getByRole('button', { name: '搜索本目录', exact: true }).focus()
+  await expect(crumbs.getByRole('button', { name: 'child', exact: true })).toBeVisible()
+  expect(listed).toEqual(['/var/www'])
+  await page.getByRole('button', { name: '刷新目录', exact: true }).click()
+  await expect.poll(() => listed.length).toBe(2)
+  expect(listed[1]).toBe('/var/www')
+  await expect(crumbs.getByRole('button', { name: 'child', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '编辑服务器路径', exact: true }).click()
+  await expect(input).toHaveValue('/draft/child')
+  await input.fill('/protected')
+  await page.getByRole('button', { name: '前往', exact: true }).click()
+  await expect(page.locator('.list-error')).toContainText('此路径不开放文件管理')
+  await expect(page.getByRole('button', { name: 'visible.txt', exact: true })).toBeVisible()
+  await expect(page.locator('.file-path-note')).toContainText('/var/www')
+  await page.getByRole('button', { name: '上级', exact: true }).click()
+  await expect.poll(() => listed.at(-1)).toBe('/var')
+  await expect(crumbs.getByRole('button', { name: 'protected', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '编辑服务器路径', exact: true }).click()
+  await input.fill('/var/www/child')
+  await input.press('Enter')
+  await expect.poll(() => listed.at(-1)).toBe('/var/www/child')
+  await expect(input).toHaveCount(0)
+  const before = listed.length
+  await crumbs.getByRole('button', { name: 'www', exact: true }).click()
+  await expect.poll(() => listed.length).toBe(before + 1)
+  await expect(input).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '取消收藏', exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '编辑服务器路径', exact: true }).click()
+  await input.fill('/' + 'very-long-directory/'.repeat(20))
+  await input.press('Tab')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
+    false,
+  )
+})
+
+test('file directory sizes load independently inline, retry and stay attached to paths', async ({
+  page,
+}) => {
+  const ready = new Set<string>(),
+    cancelled = new Set<string>(),
+    jobs = new Map<string, { path: string; attempt: number }>()
+  const attempts: Record<string, number> = {}
+  let listCount = 0
+  await page.route('**/api/v1/files', async (route) => {
+    const p = route.request().postDataJSON()
+    if (p.action === 'metadata') return route.fulfill({ json: { favorites: [], shortcuts: [] } })
+    if (p.action === 'list') {
+      listCount++
+      const names = p.path === '/' ? ['alpha', 'beta', 'empty'] : ['elsewhere']
+      return route.fulfill({
+        json: {
+          path: p.path,
+          total: names.length,
+          items: names.map((name) => ({
+            name,
+            path: (p.path === '/' ? '' : p.path) + '/' + name,
+            directory: true,
+          })),
+          readOnly: false,
+        },
+      })
+    }
+    if (p.action === 'size') {
+      const attempt = (attempts[p.path] = (attempts[p.path] || 0) + 1)
+      const id = 'size-' + jobs.size
+      jobs.set(id, { path: p.path, attempt })
+      return route.fulfill({ json: { id } })
+    }
+    return route.fulfill({ json: {} })
+  })
+  await page.route('**/api/v1/files/tasks/*', async (route) => {
+    const id = route.request().url().split('/').at(-1)!
+    const job = jobs.get(id)!
+    if (cancelled.has(id)) return route.fulfill({ json: { state: 'cancelled' } })
+    if (!ready.has(job.path)) return route.fulfill({ json: { state: 'running' } })
+    if (job.path === '/beta' && job.attempt === 1)
+      return route.fulfill({ json: { state: 'failed', error: '读取目录失败' } })
+    const bytes =
+      job.path === '/alpha'
+        ? job.attempt === 1
+          ? 1536
+          : 8 * 1024 ** 2
+        : job.path === '/beta'
+          ? 1024 ** 3 * 1.234
+          : job.path === '/'
+            ? 1024 ** 4
+            : 0
+    return route.fulfill({ json: { state: 'succeeded', result: { size: bytes, count: 3 } } })
+  })
+  await page.route('**/api/v1/tasks/*/cancel', async (route) => {
+    cancelled.add(route.request().url().split('/').at(-2)!)
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/files')
+  const alpha = page.getByRole('button', { name: 'alpha大小：计算', exact: true })
+  await alpha.click()
+  await expect(page.getByRole('button', { name: 'alpha大小：计算中', exact: true })).toBeDisabled()
+  await expect(page.locator('.is-loading').first()).toBeVisible()
+  await page.getByRole('button', { name: 'beta大小：计算', exact: true }).click()
+  await expect.poll(() => jobs.size).toBe(2)
+  ready.add('/beta')
+  await expect(page.getByRole('button', { name: 'beta大小：重试', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'beta大小：重试', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'beta大小：1.23 GB', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'alpha', exact: true }).click()
+  ready.add('/alpha')
+  await expect(page.getByRole('button', { name: 'elsewhere', exact: true })).toBeVisible()
+  await page
+    .getByRole('navigation', { name: '目录路径' })
+    .getByRole('button', { name: '根目录', exact: true })
+    .click()
+  await expect(page.getByRole('button', { name: 'alpha大小：1.5 KB', exact: true })).toBeVisible()
+  expect(attempts['/alpha']).toBe(1)
+  ready.add('/empty')
+  await page.getByRole('button', { name: 'empty大小：计算', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'empty大小：0 B', exact: true })).toBeVisible()
+  await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
+  expect(listCount).toBe(3)
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('menuitem', { name: '计算大小', exact: true }).click()
+  await expect(page.locator('.file-directory-total')).toContainText('计算中')
+  ready.add('/')
+  await expect(page.locator('.file-directory-total')).toContainText('1 TB')
+  await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: '计算大小', exact: true })).not.toBeVisible()
+  await page.screenshot({
+    path: '../.opsview/screenshots/files-inline-desktop.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.locator('.sidebar a[href="/tasks"]').click()
+  await page.locator('.sidebar a[href="/files"]').click()
+  await expect(page.getByRole('button', { name: 'alpha大小：1.5 KB', exact: true })).toBeVisible()
+  await expect(page.locator('.file-directory-total')).toContainText('1 TB')
+  await page.getByRole('button', { name: 'alpha大小：1.5 KB', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'alpha大小：8 MB', exact: true })).toBeVisible()
+  ready.delete('/empty')
+  await page.getByRole('button', { name: 'empty大小：0 B', exact: true }).click()
+  await page.getByRole('button', { name: '取消计算 empty', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'empty大小：重试', exact: true })).toBeVisible()
+  ready.delete('/alpha')
+  await page.getByRole('button', { name: 'alpha大小：8 MB', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'alpha大小：计算中', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'alpha', exact: true }).click()
+  await page.getByRole('button', { name: '新建目录', exact: true }).click()
+  await page.locator('.el-message-box__input input').fill('new-child')
+  await page.getByRole('button', { name: '创建', exact: true }).click()
+  await expect(page.locator('.el-message-box:visible')).toHaveCount(0)
+  ready.add('/alpha')
+  await page
+    .getByRole('navigation', { name: '目录路径' })
+    .getByRole('button', { name: '根目录', exact: true })
+    .click()
+  await expect(page.getByRole('button', { name: 'alpha大小：计算', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'beta大小：1.23 GB', exact: true })).toBeVisible()
+  await expect(page.locator('.file-directory-total')).toHaveCount(0)
+})
+
+test('file notes save inline on blur or Enter, cancel, clear and retain failed drafts', async ({
+  page,
+}) => {
+  let note = '',
+    listCount = 0,
+    fail = false
+  const saves: string[] = []
+  await page.route('**/api/v1/files', async (route) => {
+    const p = route.request().postDataJSON()
+    if (p.action === 'metadata') return route.fulfill({ json: { favorites: [], shortcuts: [] } })
+    if (p.action === 'list') {
+      listCount++
+      return route.fulfill({
+        json: {
+          path: '/',
+          total: 1,
+          items: [{ name: 'file.txt', path: '/file.txt', size: 0, note }],
+          readOnly: false,
+        },
+      })
+    }
+    if (p.action === 'note') {
+      saves.push(p.note)
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      if (fail) return route.fulfill({ status: 500, json: { error: '备注保存失败' } })
+      note = p.note
+      return route.fulfill({ json: {} })
+    }
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/files')
+  await page.getByRole('button', { name: '添加备注', exact: true }).click()
+  const input = page.getByRole('textbox', { name: 'file.txt备注', exact: true })
+  await expect(input).toBeFocused()
+  await input.fill('first')
+  await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true })
+  expect(saves).toEqual([])
+  await input.press('Enter')
+  await page.getByRole('button', { name: '搜索本目录', exact: true }).focus()
+  await expect(page.getByRole('button', { name: 'first', exact: true })).toBeVisible()
+  expect(saves).toEqual(['first'])
+  expect(listCount).toBe(1)
+  await page.getByRole('button', { name: 'first', exact: true }).click()
+  await input.press('Tab')
+  await expect(input).toHaveCount(0)
+  expect(saves).toHaveLength(1)
+  await page.getByRole('button', { name: 'first', exact: true }).click()
+  await input.fill('cancel me')
+  await input.press('Escape')
+  await expect(page.getByRole('button', { name: 'first', exact: true })).toBeVisible()
+  expect(saves).toHaveLength(1)
+  await page.getByRole('button', { name: 'first', exact: true }).click()
+  await input.fill('blur saves')
+  await input.press('Tab')
+  await expect(page.getByRole('button', { name: 'blur saves', exact: true })).toBeVisible()
+  fail = true
+  await page.getByRole('button', { name: 'blur saves', exact: true }).click()
+  await input.fill('retained draft')
+  await input.press('Enter')
+  await expect(
+    page.getByRole('button', { name: '重试保存 file.txt备注', exact: true }),
+  ).toBeVisible()
+  await expect(input).toHaveValue('retained draft')
+  fail = false
+  await page.getByRole('button', { name: '重试保存 file.txt备注', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'retained draft', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'retained draft', exact: true }).click()
+  await input.fill('')
+  await input.press('Enter')
+  await expect(page.getByRole('button', { name: '添加备注', exact: true })).toBeVisible()
+  expect(saves).toEqual(['first', 'blur saves', 'retained draft', 'retained draft', ''])
+  expect(listCount).toBe(1)
+  await expect(page.locator('.el-message-box:visible, .el-dialog:visible')).toHaveCount(0)
 })
 
 test('compact shell preserves account access, tabs and per-list filters across navigation', async ({

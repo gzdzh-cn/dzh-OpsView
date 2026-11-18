@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue'
 import { api, setCSRF, errorText, type Resource, type Task } from '../lib/api'
 import { queries, isAbort } from '../lib/query'
 import { clearPageState } from '../composables/pageState'
+import { cachedDirectorySizes } from '../lib/fileSizes'
 export type Dataset = 'resources' | 'tasks' | 'catalog' | 'overview'
 export const usePanel = defineStore('panel', () => {
   const auth = ref({
@@ -37,6 +38,7 @@ export const usePanel = defineStore('panel', () => {
     epoch++
     queries.clear()
     clearPageState()
+    cachedDirectorySizes.clear()
     setCSRF('')
     resources.value = []
     tasks.value = []
