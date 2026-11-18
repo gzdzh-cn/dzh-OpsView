@@ -33,6 +33,11 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 	if err := extractArchive(ctx, archive, entry.Source, source, true); err != nil {
 		return err
 	}
+	if entry.Software == "php" {
+		if err := applyPHPCompatibility(source, entry.Version); err != nil {
+			return err
+		}
+	}
 	builder := "ovbuild"
 	if err := ensureUser(ctx, builder, "/nonexistent", log); err != nil {
 		return err
@@ -53,7 +58,7 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 		if err != nil {
 			return err
 		}
-		buildEnv = []string{"CFLAGS=-O2 -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types", "CXXFLAGS=-O2 -std=c++11", "CPPFLAGS=-I" + dependencyPrefix + "/include", "LDFLAGS=-L" + dependencyPrefix + "/lib -Wl,--exclude-libs,ALL", "PKG_CONFIG_PATH=" + dependencyPrefix + "/lib/pkgconfig", "LIBS=-lstdc++ -ldl -lpthread"}
+		buildEnv = []string{"CFLAGS=-O2 -std=gnu99 -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types", "CXXFLAGS=-O2 -std=c++11", "CPPFLAGS=-I" + dependencyPrefix + "/include", "LDFLAGS=-L" + dependencyPrefix + "/lib -Wl,--exclude-libs,ALL", "PKG_CONFIG_PATH=" + dependencyPrefix + "/lib/pkgconfig", "LIBS=-lstdc++ -ldl -lpthread"}
 	}
 	build := func(args ...string) error {
 		return run(ctx, log, source, buildEnv, nil, "runuser", append([]string{"-u", builder, "--"}, args...)...)

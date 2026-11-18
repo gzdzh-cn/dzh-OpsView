@@ -129,7 +129,7 @@ func TestFastPackageAcceptance(t *testing.T) {
 	}
 	// Validate real version and built-in extensions before promoting an artifact.
 	if entry.Software == "php" {
-		probe := fmt.Sprintf(`if(PHP_VERSION!==%q){fwrite(STDERR,PHP_VERSION);exit(1);}foreach(["fileinfo","mbstring","curl","zip","gd","intl","bcmath","exif","mysqli","pdo_mysql","pgsql","pdo_pgsql"] as $e){if(!extension_loaded($e)){fwrite(STDERR,$e);exit(2);}}`, entry.Version)
+		probe := fmt.Sprintf(`if(PHP_VERSION!==%q){fwrite(STDERR,PHP_VERSION);exit(1);}foreach(["fileinfo","mbstring","curl","zip","gd","intl","bcmath","exif","mysqli","pdo_mysql","pgsql","pdo_pgsql"] as $e){if(!extension_loaded($e)){fwrite(STDERR,$e);exit(2);}}if(MessageFormatter::formatMessage("en_US","{0,number,integer}",[1234])!=="1,234"){exit(3);}`, entry.Version)
 		if err = run(ctx, log, "", nil, nil, base+"/runtime/bin/php", "-n", "-r", probe); err != nil {
 			t.Fatal("PHP version/extensions", err)
 		}

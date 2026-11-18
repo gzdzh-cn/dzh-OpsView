@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"opsview/internal/catalog"
 	"opsview/internal/security"
@@ -160,3 +161,44 @@ case "$1" in
  *) exit 1 ;;
 esac
 `
+
+// Prefix PHP adapter methods to avoid colliding with
+// ICU's private symbols when linking its static libraries. Keep the friend
+// class name and calls to the actual ICU methods unchanged.
+func applyPHPCompatibility(source, version string) error {
+	if !strings.HasPrefix(version, "7.0.") && !strings.HasPrefix(version, "7.2.") {
+		return nil
+	}
+	path := filepath.Join(source, "ext", "intl", "msgformat", "msgformat_helpers.cpp")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	text := string(b)
+	for _, name := range []string{"getArgTypeList", "getMessagePattern"} {
+		declaration := " " + name + "("
+		call := "MessageFormatAdapter::" + name + "("
+		if strings.Count(text, declaration) != 1 || strings.Count(text, call) < 2 {
+			return errors.New("PHP intl 兼容补丁与已验证源码不匹配，停止构建")
+		}
+		prefixed := "php" + strings.ToUpper(name[:1]) + name[1:]
+		text = strings.ReplaceAll(text, declaration, " "+prefixed+"(")
+		text = strings.ReplaceAll(text, call, "MessageFormatAdapter::"+prefixed+"(")
+	}
+	if err = security.WriteAtomic(path, []byte(text), 0644); err != nil {
+		return err
+	}
+	// Old configure results may enable Zend's sprintf fallback on newer libc.
+	// It is a C function; declare the same linkage when included from C++ intl.
+	header := filepath.Join(source, "main", "php_config.h.in")
+	b, err = os.ReadFile(header)
+	if err != nil {
+		return err
+	}
+	const declaration = "int zend_sprintf(char *buffer, const char *format, ...);"
+	if strings.Count(string(b), declaration) != 1 {
+		return errors.New("PHP sprintf 兼容补丁与已验证源码不匹配，停止构建")
+	}
+	replacement := "#ifdef __cplusplus\nextern \"C\" {\n#endif\n" + declaration + "\n#ifdef __cplusplus\n}\n#endif"
+	return security.WriteAtomic(header, []byte(strings.Replace(string(b), declaration, replacement, 1)), 0644)
+}

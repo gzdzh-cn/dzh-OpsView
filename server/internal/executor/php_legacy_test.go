@@ -97,3 +97,55 @@ func TestVerifiedSourceHardLinksRemainInsideExtractionRoot(t *testing.T) {
 		})
 	}
 }
+
+func TestPHPIntlPatchPreservesICUAPIAndRejectsUnexpectedSource(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "ext/intl/msgformat/msgformat_helpers.cpp")
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatal(err)
+	}
+	source := `class MessageFormatAdapter {
+ static const Formattable::Type* getArgTypeList(const MessageFormat& m, int32_t& count);
+ static const MessagePattern getMessagePattern(MessageFormat* m);
+};
+const Formattable::Type* MessageFormatAdapter::getArgTypeList(const MessageFormat& m, int32_t& count) { return m.getArgTypeList(count); }
+const MessagePattern MessageFormatAdapter::getMessagePattern(MessageFormat* m) { return m->msgPattern; }
+MessageFormatAdapter::getArgTypeList(m, count);
+MessageFormatAdapter::getMessagePattern(m);
+`
+	if err := os.WriteFile(p, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+	header := filepath.Join(root, "main", "php_config.h.in")
+	if err := os.MkdirAll(filepath.Dir(header), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(header, []byte("#if ZEND_BROKEN_SPRINTF\nint zend_sprintf(char *buffer, const char *format, ...);\n#endif\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyPHPCompatibility(root, "7.0.33"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"class MessageFormatAdapter", "m.getArgTypeList(count)", "MessageFormatAdapter::phpGetArgTypeList", "MessageFormatAdapter::phpGetMessagePattern"} {
+		if !strings.Contains(string(b), text) {
+			t.Fatal(text, string(b))
+		}
+	}
+	if strings.Contains(string(b), "MessageFormatAdapter::getArgTypeList") {
+		t.Fatal("colliding symbol retained")
+	}
+	h, err := os.ReadFile(header)
+	if err != nil || !strings.Contains(string(h), "extern \"C\" {\n#endif\nint zend_sprintf") {
+		t.Fatal("C++ linkage mismatch", string(h), err)
+	}
+	if err := applyPHPCompatibility(root, "7.2.34"); err == nil {
+		t.Fatal("unexpected source silently patched")
+	}
+	if err := applyPHPCompatibility("/missing", "7.4.33"); err != nil {
+		t.Fatal(err)
+	}
+}
