@@ -416,13 +416,14 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 				return err
 			}
 		}
-		if err = prepareRuntimePermissions(runtimePath); err != nil {
-			return err
-		}
 		if err = e.prepareMySQLLegacyClients(ctx, entry.Version, base, log); err != nil {
 			return err
 		}
 		if err = prepareMySQLAIO(ctx, runtimePath, log); err != nil {
+			return err
+		}
+		// Compatibility directories are created under the executor umask too.
+		if err = prepareRuntimePermissions(runtimePath); err != nil {
 			return err
 		}
 		data := filepath.Join(base, "data")
