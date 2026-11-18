@@ -30,7 +30,7 @@ func (e *Engine) nginxConfigureArgs(ctx context.Context, version, base, builder 
 		return args, nil
 	}
 	archive := filepath.Join(e.Root, "downloads", "nginx-pcre-8.45.tar.gz")
-	if err := download(ctx, nginxPCRESource, nginxPCRESHA256, archive, log); err != nil {
+	if err := downloadPinnedMirrors(ctx, []string{"https://netix.dl.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.gz", "https://ftp.exim.org/pub/pcre/pcre-8.45.tar.gz", nginxPCRESource}, nginxPCRESHA256, archive, log); err != nil {
 		return nil, err
 	}
 	source := filepath.Join(base, ".nginx-pcre")
