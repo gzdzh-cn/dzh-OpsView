@@ -54,11 +54,11 @@ bash opsview-linux-amd64/deploy/install.sh
 
 ## 候选与原生配方验证
 
-本轮功能以 `v0.1.3-rc.1` 预发布测试版交付，固定版本安装和更新命令见根目录安装教程。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
+当前功能以根目录注明的预发布测试版交付，固定版本安装和更新命令见根目录安装教程。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
 
-**Publish verified native packages** 覆盖六个推荐准确版本 × 四系统，包含 24 个构建及 24 个独立干净系统复验，均以真实 systemd 启动和协议探测验收。Nginx/PHP/Redis/PostgreSQL 构建自有包，MySQL/Node.js 使用官方包；二进制复验更换安装目录，目标机不编译主软件。只有通过的组合才能进入固定 URL/SHA-256 的受信任目录。旧 PHP 和其余未验收版本保持不可安装；常用扩展完整矩阵和公网验收仍单独进行。
+**Publish verified native packages** 按 `packages/catalog/native-targets.json` 生成矩阵。当前新增目标为 MySQL、PHP、Redis 的 16 个准确版本 × 四系统，共 64 个组合；每个任务先构建或安装官方包，再在独立干净系统安装二进制。两次都必须通过真实 systemd 启动及协议检查，PHP 另验证版本、常用内置扩展和实际 intl 格式化。历史六个推荐版本的 24 组合报告继续保留。只有通过的组合才能进入固定 URL/SHA-256 的受信任目录；常用 PECL 扩展完整矩阵和公网验收仍单独进行。
 
-软件包与面板分别发布，不覆盖既有软件 Release。维护者先推送与验收提交一致的 `software-<run-id>` 标签；若集成令牌创建 Release 时返回 403，可推送 `software-publish-<run-id>` 触发 **Publish accepted software artifacts**，它核对原始工作流的 24 个构建、24 个复验、报告及标签后复用原产物发布。首批已发布为 `software-44057101979`，原始报告随仓库保存。
+软件包与面板分别发布，不覆盖既有软件 Release。维护者先推送与验收提交一致的 `software-<run-id>` 标签；若集成令牌创建 Release 时返回 403，可推送 `software-publish-<run-id>` 触发 **Publish accepted software artifacts**，它按当前声明矩阵核对原始工作流各任务的最新结果、全部报告、文件摘要及原始软件标签后复用产物发布。首批已发布为 `software-44057101979`，原始报告随仓库保存。
 
 全部功能和矩阵未验收前只作为开发候选或预发布测试版；不得将带待实现项的构建标记为完整首版。发布工作流额外执行真实 Nginx 轮转和 PHP Session 协议 smoke，发布后在临时 Ubuntu 24.04 主机从公开固定标签下载、安装、登录、改端口并运行 ov 更新。
 
@@ -68,3 +68,6 @@ bash opsview-linux-amd64/deploy/install.sh
 ## v0.1.3-rc.4 导航验收
 
 本版发布工作流继续使用最终 Linux 发布二进制运行完整 Playwright；新增已缓存菜单切换 P95 ≤300ms、慢接口导航反馈 ≤200ms、后台暂停、受保护路径历史过滤和路由代码加载失败后的重试验收。性能计时在浏览器内完成，不将 Playwright 点击等待计入页面耗时。公网首次加载不适用该缓存切换指标。
+
+
+对已诊断为网络等临时故障的失败任务，可推送 `software-retry-<run-id>-2` 标签触发 **Retry transient native acceptance failures**。标签指向包含该工作流的维护提交；工作流核对原始运行、仓库、原始 `software-<run-id>` 标签和下一次尝试编号，只重跑失败及其依赖任务。仍失败时先诊断，最多再用 `-3`，不覆盖既有标签。重试不跳过安装检查；发布要求当前矩阵每个组合均成功，下载产物后再次核对报告及摘要。
