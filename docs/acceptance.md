@@ -406,3 +406,23 @@ rc.8 发布前复核：使用实际 Linux amd64 发布二进制在隔离 Ubuntu 
 - 发布前开发验证：Go 全量 race/vet、前端类型/生产构建、7 项 Vitest、33 项 Playwright 通过，缓存菜单切换 P95 为 83.3ms。
 - 独立 Debian 12 容器的真实 OpenSSH 公钥登录、旧/新端口共存、确认移除旧端口、持久化超时回退、UFW 启用及回退通过。新增检查加入常规、候选与发布工作流；未在用户服务器执行安全变更。
 - SQLite schema 保持 3。Ubuntu 等其他发行版新增安全功能的真实集成矩阵仍待完成；不能将 Debian 容器结果视为全系统验收。GitHub 发布及公开安装验证结果完成后追加。
+
+### rc.10 发布与公开安装验证完成
+
+发布提交 `61a99c64457fac2aa3132149a1b41466787ecb3b`，标签 `v0.1.3-rc.10`。[发布流水线 44319238042](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44319238042) 的 build、publish、verify-public-install 全部成功。
+
+- Go 全量 race/vet、前端类型/构建、Vitest、安装器、Linux 文件与真实网站部署、真实 SSH/UFW、MySQL/PostgreSQL/Redis、日志轮转和 PHP Session 检查通过。
+- 完整 33 项 Playwright 通过，生成发布包后再次用实际 Linux 二进制完成浏览器回归；真实 systemd 安装、更新和故障回退成功。
+- 临时 Ubuntu 24.04 从公开附件下载、校验、安装、登录、修改端口和运行 `ov update` 成功。
+- 独立工作站下载三个公开附件，核对 SHA-256、安装脚本与仓库一致、归档内四个二进制及 rc.10 版本和发布说明。首次普通下载链接超时，重新解析公开固定标签附件后校验通过。
+
+初始常规检查及候选构建在离线四系统测试失败，原因是新增测试夹具依赖最小镜像未安装的 Python，非面板运行代码故障。修正提交 `3e77949` 将命令模拟改为 Go 测试程序自身，不修改运行代码或公开附件，并把四系统离线测试加入后续发布门槛。本地 Ubuntu 22.04/24.04、Debian 12/13 离线测试及相关 Go race/vet 均通过。[修正后常规检查 44321855738](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44321855738) 的 check、deployment、websites，以及 [候选构建 44321855827](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44321855827) 全部成功，包括四系统离线测试、完整浏览器、实际包内二进制及 systemd 安装更新回退。修正仅涉及测试与后续发布门槛，公开版本的运行代码及附件保持不变。
+
+公开面板包为 24,154,163 字节：
+
+```text
+00ec0b8f260ecbbaf05288f9fffa1a890692e63f6f8bb14c3740f7cae4af9ef3  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
+
+更新：`ov backup`、`ov update --version v0.1.3-rc.10`。本次未更新用户服务器或业务软件；更新本身不启用防火墙或修改 SSH。SQLite schema 保持 3。已确认的主机安全修改不会因降级面板自动撤回，降级前需处理待回退记录，详见运维手册。
