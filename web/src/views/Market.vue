@@ -3,10 +3,17 @@ import { usePageState } from '../composables/pageState'
 import PluginMarket from '../components/PluginMarket.vue'
 import DataList from '../components/DataList.vue'
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-const route = useRoute()
+import { useRoute, useRouter } from 'vue-router'
+import {
+  marketCategories,
+  pluginCategory,
+  pluginEdition,
+  matchesMarketCategory,
+} from '../lib/market'
+const route = useRoute(),
+  router = useRouter()
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Grid } from '@element-plus/icons-vue'
+import { Grid, MoreFilled } from '@element-plus/icons-vue'
 import { usePanel } from '../stores/panel'
 import { post, action, errorText, type Config } from '../lib/api'
 import ResourceForm from '../components/ResourceForm.vue'
@@ -15,7 +22,9 @@ import SoftwareSettings from '../components/SoftwareSettings.vue'
 import type { Resource } from '../lib/api'
 import CodeEditor from '../components/CodeEditor.vue'
 const panel = usePanel(),
-  tab = usePageState('tab', 'software'),
+  tab = usePageState('market-tab', 'market'),
+  category = usePageState('market-category', 'all'),
+  pluginMarket = ref<InstanceType<typeof PluginMarket>>(),
   install = ref(false),
   initial = ref<Config>({}),
   importOpen = ref(false),
@@ -26,54 +35,182 @@ const panel = usePanel(),
 watch(
   () => route.query.software,
   (value) => {
-    if (value) tab.value = 'software'
+    if (value) {
+      tab.value = 'market'
+      category.value = 'runtime'
+    }
   },
   { immediate: true },
 )
 const groups = computed(() =>
-  ['nginx', 'mysql', 'php', 'redis', 'postgresql', 'nodejs']
-    .map((software) => ({
-      software,
-      versions: panel.catalog.filter((v) => v.software === software),
-      title:
-        software === 'php'
-          ? 'PHP'
-          : software === 'redis'
-            ? 'Redis'
-            : software === 'nginx'
-              ? 'Nginx'
-              : software === 'mysql'
-                ? 'MySQL'
-                : software === 'nodejs'
-                  ? 'Node.js'
-                  : 'PostgreSQL',
-      symbol:
-        software === 'php'
-          ? 'PHP'
-          : software === 'redis'
-            ? 'R'
-            : software === 'nginx'
-              ? 'N'
-              : software === 'mysql'
-                ? 'M'
-                : software === 'nodejs'
-                  ? 'JS'
-                  : 'P',
-      description:
-        software === 'php'
-          ? '多版本 PHP 与独立 FPM，为每个网站选择运行环境和扩展。'
-          : software === 'redis'
-            ? '高性能内存数据库与缓存，支持持久化、实例隔离和资源控制。'
-            : software === 'nginx'
-              ? '高性能 Web 服务与反向代理，连接域名、静态站点和你的应用。'
-              : software === 'mysql'
-                ? '为业务应用提供可靠的关系型数据存储，独立版本与实例管理。'
-                : software === 'nodejs'
-                  ? '安装独立的 Node.js LTS 运行时，为应用选择准确版本的可执行文件。'
-                  : '功能丰富的开源关系型数据库，为复杂查询与数据应用提供支持。',
-    }))
-    .filter((group) => !route.query.software || group.software === route.query.software),
+  ['nginx', 'mysql', 'php', 'redis', 'postgresql', 'nodejs'].map((software) => ({
+    software,
+    versions: panel.catalog.filter((v) => v.software === software),
+    title:
+      software === 'php'
+        ? 'PHP'
+        : software === 'redis'
+          ? 'Redis'
+          : software === 'nginx'
+            ? 'Nginx'
+            : software === 'mysql'
+              ? 'MySQL'
+              : software === 'nodejs'
+                ? 'Node.js'
+                : 'PostgreSQL',
+    symbol:
+      software === 'php'
+        ? 'PHP'
+        : software === 'redis'
+          ? 'R'
+          : software === 'nginx'
+            ? 'N'
+            : software === 'mysql'
+              ? 'M'
+              : software === 'nodejs'
+                ? 'JS'
+                : 'P',
+    description:
+      software === 'php'
+        ? '多版本 PHP 与独立 FPM，为每个网站选择运行环境和扩展。'
+        : software === 'redis'
+          ? '高性能内存数据库与缓存，支持持久化、实例隔离和资源控制。'
+          : software === 'nginx'
+            ? '高性能 Web 服务与反向代理，连接域名、静态站点和你的应用。'
+            : software === 'mysql'
+              ? '为业务应用提供可靠的关系型数据存储，独立版本与实例管理。'
+              : software === 'nodejs'
+                ? '安装独立的 Node.js LTS 运行时，为应用选择准确版本的可执行文件。'
+                : '功能丰富的开源关系型数据库，为复杂查询与数据应用提供支持。',
+  })),
 )
+const marketRows = computed(() => {
+  const plugins = pluginMarket.value?.plugins || []
+  const rows: any[] = []
+  if (category.value === 'installed') {
+    for (const r of panel.kind('instance')) {
+      const g = groups.value.find((g) => g.software === r.config.software)
+      rows.push({
+        key: r.id,
+        kind: 'instance',
+        title: g?.title || r.name,
+        symbol: g?.symbol || 'A',
+        description: g?.description || '已登记的软件实例',
+        software: r.config.software,
+        category: r.config.mode === 'docker' ? 'docker' : 'runtime',
+        edition: 'free',
+        installed: true,
+        resource: r,
+        version: r.config.version || '—',
+      })
+    }
+    for (const r of panel.kind('plugin').filter((r) => r.status !== 'uninstalled')) {
+      const p = plugins.find((p: any) => r.config.pluginId === p.id || r.name === p.id)
+      rows.push(
+        pluginRow(
+          p || {
+            id: r.config.pluginId || r.name,
+            name: r.name,
+            version: r.config.version,
+            type: r.config.pluginType,
+            description: '仓库中暂无此插件，仍可卸载已登记资源。',
+            unavailable: true,
+          },
+          r,
+        ),
+      )
+    }
+  } else {
+    for (const g of groups.value)
+      rows.push({
+        ...g,
+        key: 'software-' + g.software,
+        kind: 'software',
+        category: 'runtime',
+        edition: 'free',
+        installed: panel.kind('instance').some((r) => r.config.software === g.software),
+      })
+    for (const p of plugins) rows.push(pluginRow(p))
+  }
+  return rows.filter(
+    (row) =>
+      matchesMarketCategory(row, category.value) &&
+      (!route.query.software || row.software === route.query.software),
+  )
+})
+function pluginRow(p: any, resource?: Resource) {
+  const r =
+    resource ||
+    panel
+      .kind('plugin')
+      .find((r) => r.status !== 'uninstalled' && (r.config.pluginId === p.id || r.name === p.id))
+  return {
+    key: r?.id || 'plugin-' + p.id,
+    kind: 'plugin',
+    title: p.name,
+    symbol: p.type === 'application' ? 'D' : 'P',
+    description: p.description,
+    category: pluginCategory(p),
+    edition: pluginEdition(p),
+    installed: !!r,
+    resource: r,
+    plugin: p,
+    version: r?.config.version || p.version || '—',
+  }
+}
+function showAll(navigate: () => unknown) {
+  category.value = 'all'
+  void navigate()
+}
+function selectCategory(value: string) {
+  category.value = value
+  if (route.query.software)
+    void router.replace({ path: '/software', query: { ...route.query, software: undefined } })
+}
+function rowResource(row: any): Resource | undefined {
+  return row.kind === 'software' ? selectedInstance(row.software) : row.resource
+}
+function rowStatus(row: any) {
+  const r = rowResource(row)
+  if (!r) return '未安装'
+  if (r.status === 'ready' && (row.kind === 'plugin' || row.software === 'nodejs')) return '已安装'
+  const statuses: Record<string, string> = {
+    ready: '运行中',
+    running: '运行中',
+    stopped: '已停止',
+    pending: '等待中',
+    installing: '安装中',
+    error: '异常',
+    uninstalled: '待清理',
+  }
+  return statuses[r.status] || r.status
+}
+function editRow(row: any) {
+  if (row.kind === 'plugin') pluginMarket.value?.openPlugin(row.plugin)
+  else if (row.kind === 'instance') chooseInstance(row.resource)
+  else openSettings(row.software)
+}
+async function removeRow(row: any) {
+  if (row.kind === 'plugin') await pluginMarket.value?.removePlugin(row.plugin)
+  else if (row.kind === 'instance') await removeInstance(row.resource)
+  else await uninstallSoftware(row.software)
+}
+async function instanceAction(row: any, command: string) {
+  const r = rowResource(row)
+  if (!r) return
+  try {
+    await ElMessageBox.confirm(
+      `对 ${r.name} 执行${{ start: '启动', stop: '停止', restart: '重启' }[command]}？关联业务可能受影响。`,
+      '服务操作',
+      { confirmButtonText: '执行', cancelButtonText: '取消' },
+    )
+    await action(r.id, command)
+    await panel.refresh(['resources', 'tasks'])
+    ElMessage.success('操作已提交任务中心')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
+  }
+}
 const versions = ref<Record<string, string>>({})
 const chosenVersions = new Set<string>()
 function selectedInstance(software: string) {
@@ -212,101 +349,200 @@ async function importPackage() {
 </script>
 <template>
   <el-tabs v-model="tab" class="panel-tabs">
-    <el-tab-pane label="核心软件" name="software" />
-    <el-tab-pane label="插件市场" name="plugins" />
+    <el-tab-pane label="插件市场" name="market" />
     <el-tab-pane label="仓库管理" name="repositories" />
   </el-tabs>
-  <template v-if="tab === 'software'">
-    <div class="surface software-list">
-      <div v-if="route.query.software" class="page-toolbar software-filter-toolbar">
-        <span class="filter-label">当前仅显示 {{ groups[0]?.title || route.query.software }}</span>
-        <router-link to="/software" custom v-slot="{ navigate, href }">
-          <el-button type="primary" :icon="Grid" :data-href="href" @click="navigate">
-            显示全部软件
-          </el-button>
-        </router-link>
+  <div v-if="tab === 'market'" class="surface software-list">
+    <div class="page-toolbar market-toolbar">
+      <span v-if="route.query.software" class="filter-label">
+        当前仅显示
+        {{ groups.find((g) => g.software === route.query.software)?.title || route.query.software }}
+      </span>
+      <router-link v-if="route.query.software" to="/software" custom v-slot="{ navigate, href }">
+        <el-button type="primary" :icon="Grid" :data-href="href" @click="showAll(navigate)">
+          显示全部软件
+        </el-button>
+      </router-link>
+      <div class="market-tools">
+        <el-dropdown trigger="click">
+          <el-button :icon="MoreFilled" aria-label="市场更多操作">更多</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="openImport('catalog')">导入安装配方</el-dropdown-item>
+              <el-dropdown-item @click="pluginMarket?.openImport()">导入签名插件</el-dropdown-item>
+              <el-dropdown-item @click="pluginMarket?.load()">更新插件列表</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
-      <DataList
-        :key="'Market-1' + ':' + tab"
-        :state-key="'Market-1' + ':' + tab"
-        :rows="groups"
-        row-key="software"
+    </div>
+    <div class="market-categories" role="group" aria-label="应用分类">
+      <span class="category-label">应用分类</span>
+      <el-button
+        v-for="item in marketCategories"
+        :key="item.id"
+        :type="category === item.id ? 'primary' : 'default'"
+        :text="category !== item.id"
+        :aria-pressed="category === item.id"
+        @click="selectCategory(item.id)"
       >
-        <el-table-column label="软件" width="150">
-          <template #default="{ row: g }">
-            <div class="software-row-title">
-              <span class="software-logo green">{{ g.symbol }}</span>
-              <strong>{{ g.title }}</strong>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="简介" min-width="250">
-          <template #default="{ row: g }">
-            <p class="software-description" @click="introduction = g">{{ g.description }}</p>
-          </template>
-        </el-table-column>
-        <el-table-column label="已安装版本" min-width="180">
-          <template #default="{ row: g }">
-            <span
-              v-for="r in panel.kind('instance').filter((r) => r.config.software === g.software)"
-              :key="r.id"
-              class="version-label"
+        {{ item.label }}
+      </el-button>
+    </div>
+    <el-alert v-if="pluginMarket?.error" :title="pluginMarket.error" type="error" :closable="false">
+      <el-button link @click="pluginMarket?.load()">重试插件列表</el-button>
+    </el-alert>
+    <DataList
+      :key="category + ':' + (route.query.software || '')"
+      :state-key="'market-' + category + ':' + (route.query.software || '')"
+      :rows="marketRows"
+      row-key="key"
+      searchable
+      :empty-text="pluginMarket?.loading ? '正在加载插件…' : '此分类暂无应用'"
+    >
+      <el-table-column label="软件名称" min-width="170">
+        <template #default="{ row }">
+          <div class="software-row-title">
+            <span class="software-logo green">{{ row.symbol }}</span>
+            <strong>{{ row.title }}</strong>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="来源" width="110">
+        <template #default="{ row }">
+          {{ row.kind === 'plugin' ? (row.plugin.builtin ? '项目维护' : '签名仓库') : '官方源' }}
+          <small v-if="row.category === 'docker'" class="version-label">Docker 应用</small>
+        </template>
+      </el-table-column>
+      <el-table-column label="简介" min-width="230">
+        <template #default="{ row }">
+          <button class="software-description" :title="row.description" @click="introduction = row">
+            {{ row.description }}
+          </button>
+        </template>
+      </el-table-column>
+      <el-table-column label="版本 / 实例" min-width="210">
+        <template #default="{ row }">
+          <template v-if="row.kind === 'software'">
+            <el-select
+              v-model="versions[row.software]"
+              :aria-label="row.title + '版本'"
+              @change="chosenVersions.add(row.software)"
             >
-              {{ r.config.version }} · {{ r.status }}
-            </span>
-            <span v-if="!panel.kind('instance').some((r) => r.config.software === g.software)">
-              未安装
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="可用版本" width="175">
-          <template #default="{ row: g }">
-            <el-select v-model="versions[g.software]" @change="chosenVersions.add(g.software)">
               <el-option
-                v-for="v in g.versions"
+                v-for="v in row.versions"
                 :key="v.id"
                 :value="v.id"
                 :label="v.version + (v.disabledReason ? ' · 待验证' : '')"
               />
             </el-select>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row: g }">
+          <template v-else>
+            {{ row.version }}
+            <small v-if="row.kind === 'instance'" class="version-label">
+              {{ row.resource.name }} ·
+              {{ row.resource.config.mode === 'docker' ? 'Docker' : '原生' }}
+              <template v-if="row.resource.config.port">:{{ row.resource.config.port }}</template>
+            </small>
+          </template>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">
+          <el-tag size="small" :type="rowResource(row)?.status === 'ready' ? 'success' : 'info'">
+            {{ rowStatus(row) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="230" fixed="right">
+        <template #default="{ row }">
+          <div class="market-actions">
             <el-button
               link
               type="primary"
-              :disabled="!panel.kind('instance').some((r) => r.config.software === g.software)"
-              @click="openSettings(g.software)"
+              :disabled="
+                row.kind === 'software'
+                  ? !panel
+                      .kind('instance')
+                      .some((r) => r.config.software === row.software && r.status !== 'uninstalled')
+                  : !row.resource ||
+                    row.resource.status === 'uninstalled' ||
+                    row.plugin?.unavailable
+              "
+              @click="editRow(row)"
             >
               设置
             </el-button>
-            <el-tag v-if="selectedInstance(g.software)" size="small" type="info">
-              {{ installationLabel(selectedInstance(g.software)!) }}
-            </el-tag>
-            <el-button v-else type="primary" size="small" @click="openInstall(g.software)">
-              安装
-            </el-button>
+            <template v-if="row.kind === 'software'">
+              <el-tag v-if="selectedInstance(row.software)" size="small" type="info">
+                {{ installationLabel(selectedInstance(row.software)!) }}
+              </el-tag>
+              <el-button v-else type="primary" size="small" @click="openInstall(row.software)">
+                安装
+              </el-button>
+            </template>
+            <template v-else-if="row.kind === 'plugin'">
+              <el-button
+                v-if="!row.resource"
+                type="primary"
+                size="small"
+                @click="pluginMarket?.openPlugin(row.plugin)"
+              >
+                安装
+              </el-button>
+              <el-button
+                v-else-if="
+                  row.resource.config.version &&
+                  row.resource.config.version !== row.plugin.version &&
+                  !row.plugin.unavailable
+                "
+                link
+                type="primary"
+                @click="pluginMarket?.openPlugin(row.plugin)"
+              >
+                升级
+              </el-button>
+              <el-button
+                v-if="row.resource && row.plugin.type !== 'application' && !row.plugin.unavailable"
+                link
+                @click="pluginMarket?.checkPlugin(row.plugin)"
+              >
+                检查
+              </el-button>
+            </template>
             <el-button
               link
               type="danger"
-              :disabled="!panel.kind('instance').some((r) => r.config.software === g.software)"
-              @click="uninstallSoftware(g.software)"
+              :disabled="
+                row.kind === 'software'
+                  ? !panel.kind('instance').some((r) => r.config.software === row.software)
+                  : !row.resource
+              "
+              @click="removeRow(row)"
             >
-              卸载
+              {{ row.resource?.status === 'uninstalled' ? '清理记录' : '卸载' }}
             </el-button>
-          </template>
-        </el-table-column>
-      </DataList>
-    </div>
-    <div class="split-heading">
-      <h3>已配置实例</h3>
-      <el-button text :icon="Upload" @click="openImport('catalog')">导入安装配方</el-button>
-    </div>
-    <Resources kind="instance" embedded />
-  </template>
-  <PluginMarket v-if="tab === 'plugins'" category="operations" />
+            <el-dropdown
+              v-if="row.kind === 'instance' && row.resource.status !== 'uninstalled'"
+              trigger="click"
+              @command="(command: string) => instanceAction(row, command)"
+            >
+              <el-button text :icon="MoreFilled" :aria-label="row.resource.name + '更多操作'" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="start">启动</el-dropdown-item>
+                  <el-dropdown-item command="stop">停止</el-dropdown-item>
+                  <el-dropdown-item command="restart">重启</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </template>
+      </el-table-column>
+    </DataList>
+  </div>
   <Resources v-if="tab === 'repositories'" kind="repository" />
+  <PluginMarket ref="pluginMarket" category="all" headless />
   <SoftwareSettings v-model="settingsOpen" :resource="settingsResource" />
   <el-dialog v-model="chooseOpen" title="选择实例" width="600px">
     <DataList
@@ -345,7 +581,13 @@ async function importPackage() {
       <span class="software-logo green">{{ introduction?.symbol }}</span>
       <h2>{{ introduction?.title }}</h2>
       <p>{{ introduction?.description }}</p>
-      <p>独立版本、配置、日志与数据目录；由 systemd 托管，所有安装和配置变更均可追踪。</p>
+      <p v-if="introduction?.kind !== 'plugin'">
+        独立版本、配置、日志与数据目录；由 systemd 托管，所有安装和配置变更均可追踪。
+      </p>
+      <p v-else-if="introduction?.category === 'docker'">
+        Docker 应用通过 Compose 部署，端口默认仅绑定本机；安装前会检查引擎和依赖。
+      </p>
+      <p v-else>插件通过声明式表单配置，安装前会校验来源、权限与兼容范围。</p>
     </div>
   </el-dialog>
   <ResourceForm v-model="install" kind="instance" :initial="initial" />
@@ -369,27 +611,50 @@ async function importPackage() {
 </template>
 
 <style scoped>
-.software-filter-toolbar {
+.market-toolbar {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  justify-content: space-between;
+  display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
-.filter-label {
+.market-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.market-categories {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.category-label {
   color: var(--el-text-color-secondary);
-  font-size: 13px;
+  font-size: 12px;
+  margin-right: 8px;
+}
+.market-categories .el-button {
+  margin: 0;
+  padding: 7px 12px;
 }
 .software-row-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 .software-row-title .software-logo {
   width: 30px;
   height: 30px;
   font-size: 12px;
+  flex-shrink: 0;
 }
 .software-description {
+  display: block;
   max-width: 420px;
   overflow: hidden;
   white-space: nowrap;
@@ -397,19 +662,42 @@ async function importPackage() {
   cursor: pointer;
   color: #475569;
   margin: 0;
+  font-size: 13px;
+  text-align: left;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
-.software-list small {
-  color: #94a3b8;
+.version-label,
+.filter-label {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .version-label {
   display: block;
-  font-size: 12px;
 }
-.software-intro {
-  padding: 24px;
-  line-height: 1.8;
+.market-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.market-actions .el-button {
+  margin: 0;
 }
 .software-list {
   padding: 0;
+}
+.software-intro {
+  padding: 12px;
+  line-height: 1.8;
+}
+@media (max-width: 640px) {
+  .market-categories .el-button {
+    min-height: 44px;
+  }
+  .market-tools {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
 }
 </style>

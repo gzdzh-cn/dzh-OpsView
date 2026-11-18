@@ -7,7 +7,7 @@ import { api, post, put, action, errorText, type Config } from '../lib/api'
 import DataList from './DataList.vue'
 import ListPanel from './ListPanel.vue'
 import CodeEditor from './CodeEditor.vue'
-const props = defineProps<{ category: 'application' | 'operations' }>()
+const props = defineProps<{ category: 'application' | 'operations' | 'all'; headless?: boolean }>()
 const panel = usePanel(),
   selected = ref<any>(),
   pluginForm = ref<Config>({}),
@@ -17,8 +17,10 @@ const panel = usePanel(),
   importOpen = ref(false),
   importText = ref('')
 const rows = computed(() =>
-  plugins.value.filter((p) =>
-    props.category === 'application' ? p.type === 'application' : p.type !== 'application',
+  plugins.value.filter(
+    (p) =>
+      props.category === 'all' ||
+      (props.category === 'application' ? p.type === 'application' : p.type !== 'application'),
   ),
 )
 const {
@@ -120,9 +122,20 @@ async function importPackage() {
     ElMessage.error(errorText(e))
   }
 }
+defineExpose({
+  plugins,
+  loading,
+  error,
+  load,
+  installed,
+  openPlugin,
+  removePlugin,
+  checkPlugin,
+  openImport: () => (importOpen.value = true),
+})
 </script>
 <template>
-  <ListPanel :count="rows.length" :busy="loading" :error="error" @retry="load">
+  <ListPanel v-if="!headless" :count="rows.length" :busy="loading" :error="error" @retry="load">
     <template #actions>
       <el-button @click="load">刷新</el-button>
       <el-button @click="importOpen = true">导入签名插件</el-button>

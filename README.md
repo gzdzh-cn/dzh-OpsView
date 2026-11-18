@@ -6,7 +6,7 @@
 
 当前版本为 **0.1.3-rc.6 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
-本轮软件市场交互与多版本原生安装以 `v0.1.3-rc.7` 发布测试，保留数据库与网站内进程托管功能。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
+本轮统一插件市场与 Nginx 多版本安装以 `v0.1.3-rc.8` 发布测试，保留数据库与网站内进程托管功能。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
 
 本版统一全站业务列表，文件管理扩展至服务器根目录，移除独立应用进程入口并保留旧服务，进程托管在网站内提供，增加 Docker 引擎状态与 API 协商；软件市场只提供原生极速/编译安装。继续验证内嵌资源及实际发布二进制的侧栏导航。
 
@@ -48,9 +48,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.7/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.7/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.7
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.8/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.8/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.8
 # 已安装面板：
-ov update --version v0.1.3-rc.7
+ov update --version v0.1.3-rc.8
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
@@ -92,7 +92,7 @@ sudo bash opsview-linux-amd64/deploy/install.sh
 | 系统与安全 | UFW/DOCKER-USER 规则、监听与发布端口、120 秒确认回退、服务与日志、审计 |
 | 面板设置 | 五类设置行、管理员/TOTP/会话、HTTP/HTTPS、地址/端口/访问限制、120 秒重新连接确认、证书及加密备份 |
 
-新增 Nginx/MySQL/PHP/Redis 共 28 个目标版本，保留既有 PostgreSQL、Node.js 和历史容器实例。本轮新增 MySQL、PHP、Redis 的 64 个系统组合，加上此前 24 个组合，共 88 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统安装验收。PHP、Redis、Nginx 1.30.6 和 PostgreSQL 18.0 也提供对应已验收的编译方式；MySQL、Node.js 使用官方主软件二进制。其余 Nginx 及旧 PostgreSQL 条目仍按实际验证结果开放；完整版本与限制见 [软件管理实现说明](软件管理实现说明.md)。目录是项目快照，**不代表上游最新版本**。所有下载固定摘要，容器固定镜像摘要；业务软件不会自动升级，自定义目录不执行任意 root Shell 配方。
+Nginx/MySQL/PHP/Redis 目录覆盖 32 个准确版本，保留既有 PostgreSQL、Node.js 和历史容器实例。本轮补齐其余 12 个 Nginx 版本在四系统的 48 个组合，累计 136 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统验收，其中 112 个组合同时提供编译安装。Nginx 另验证准确版本、HTTPS、HTTP/2 和正则重写；MySQL、Node.js 使用官方主软件二进制。PostgreSQL 17.6 等未验收条目仍按实际验证结果开放；完整版本与限制见 [软件管理实现说明](软件管理实现说明.md)。目录是项目快照，**不代表上游最新版本**。所有下载固定摘要，容器固定镜像摘要；业务软件不会自动升级，自定义目录不执行任意 root Shell 配方。
 
 历史核心 Nginx 和数据库容器继续管理，使用 Linux 宿主机网络：数据库默认监听 loopback，多实例通过端口区分。Compose 与应用插件默认使用独立 bridge 网络。远程数据库访问必须明确开启并限源放行；Docker 发布端口与 UFW 分开处理。
 
@@ -135,7 +135,7 @@ make release                       # Linux amd64 包与 SHA256SUMS
 
 ## 本版行为与维护
 
-软件市场采用逐行列表，Nginx/MySQL/PHP/Redis 提供带左侧菜单的实例设置。新增 PHP 独立站点 FPM、网站三类列表、流量游标及到期策略；面板设置提供五个标签页、HTTP/HTTPS 与 120 秒重新连接确认。原有账号和 Docker 入口保留。
+插件市场合并运行环境和插件，提供已安装、运行环境、免费、安全、Docker、专业版及企业版分类；已安装实例在分类内逐一管理。列表保持紧凑风格，Nginx/MySQL/PHP/Redis 提供带左侧菜单的实例设置。新增 PHP 独立站点 FPM、网站三类列表、流量游标及到期策略；面板设置提供五个标签页、HTTP/HTTPS 与 120 秒重新连接确认。原有账号和 Docker 入口保留。
 
 28 个目标版本已固定上游地址与 SHA-256；目录可见不等于全部系统组合通过验收。旧 PHP 配方 r3 包含私有依赖和兼容修复，未经过对应系统验收的组合仍明确拒绝安装。源码编译使用低权限用户；已签名的预编译配方按系统选择，未发布的包不能选择安装。
 
@@ -145,10 +145,13 @@ make release                       # Linux amd64 包与 SHA256SUMS
 
 PHP Session 提供文件、受管 Redis 和本机 memcached 三种存储。memcached 支持端口及可选 SASL 认证，保存前验证真实会话读写，重载后通过私有 FastCGI 检查有效配置；失败恢复原文件。需要预先安装本机 memcached 服务及对应 PHP 扩展，版本默认配置仅由新网站继承，现有网站可单独修改。
 
-本轮新增 MySQL、PHP、Redis 的 64 个系统组合，加上此前 24 个组合，共 88 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统安装验收。PHP、Redis、Nginx 1.30.6 和 PostgreSQL 18.0 也提供对应已验收的编译方式；MySQL、Node.js 使用官方主软件二进制。新增版本的完整支持范围及剩余工作见 [软件管理实现说明](软件管理实现说明.md)。`ov port`、`ov ssl on/off` 会显示新地址，需在 120 秒内重新连接确认，未确认时禁止更新。
+本轮补齐其余 12 个 Nginx 版本在四系统的 48 个组合，累计 136 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统验收，其中 112 个组合同时提供编译安装。Nginx 另验证准确版本、HTTPS、HTTP/2 和正则重写；MySQL、Node.js 使用官方主软件二进制。新增版本的完整支持范围及剩余工作见 [软件管理实现说明](软件管理实现说明.md)。`ov port`、`ov ssl on/off` 会显示新地址，需在 120 秒内重新连接确认，未确认时禁止更新。
 
 应用进程功能已下线：旧 `/apps` 跳转网站“其他项目”，旧服务和文件保留，关联网站改为外部应用，不再因网站到期停止旧进程。后端拒绝旧应用变更，待执行任务取消并审计。新项目可使用反向代理连接外部服务或 Docker。
 
 软件实例名称由后端生成 `软件-准确版本`，同一准确版本只能保留一个实例（历史重复记录保留管理）。卸载保留数据与版本占用，明确“清理记录”后才能重装；不同版本可以并存。无已验证极速包时展示原因，不会在安装失败后更换方式。
 
 文件操作由 root 执行器处理，面板仍以普通用户运行。运行时/设备目录只显示基础信息，面板密钥、认证库、内部元数据和关键目录整体操作受保护。文件内容及 `.env` 不进入日志或审计。文件功能、限制与回退步骤见 [运维手册](docs/operations.md#服务器文件管理)。
+
+
+rc.8 的 Nginx 新增 48 组合引用独立软件 Release `software-44268894751`。原始报告见 [rc.8 原生验收](docs/releases/v0.1.3-rc.8-native-acceptance.json)，默认推荐仍为 1.30.6。

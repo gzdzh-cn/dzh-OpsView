@@ -46,6 +46,8 @@ type Entry struct {
 	Description     string              `json:"description"`
 }
 type Plugin struct {
+	Category        string           `json:"category,omitempty"`
+	Edition         string           `json:"edition,omitempty"`
 	ID              string           `json:"id"`
 	Name            string           `json:"name"`
 	Version         string           `json:"version"`

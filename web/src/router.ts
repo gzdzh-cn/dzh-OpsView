@@ -48,7 +48,7 @@ export const router = createRouter({
     {
       path: '/software',
       component: pages['/software'],
-      meta: { title: '软件与插件', caption: '按需安装，让服务器恰到好处' },
+      meta: { title: '插件市场', caption: '按需安装，让服务器恰到好处' },
     },
     {
       path: '/files',

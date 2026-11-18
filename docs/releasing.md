@@ -56,7 +56,7 @@ bash opsview-linux-amd64/deploy/install.sh
 
 当前功能以根目录注明的预发布测试版交付，固定版本安装和更新命令见根目录安装教程。GitHub Actions 手动运行，或推送 `codex/software-management` 分支触发 **Build candidate (no production update)**：执行 API 生成、Go race/vet、前端构建、浏览器测试、四系统包测试、面板 systemd 安装回归后上传候选附件；不创建正式 Release、不改 latest、不连接现有服务器。
 
-**Publish verified native packages** 按 `packages/catalog/native-targets.json` 生成矩阵。当前新增目标为 MySQL、PHP、Redis 的 16 个准确版本 × 四系统，共 64 个组合；每个任务先构建或安装官方包，再在独立干净系统安装二进制。两次都必须通过真实 systemd 启动及协议检查，PHP 另验证版本、常用内置扩展和实际 intl 格式化。历史六个推荐版本的 24 组合报告继续保留。只有通过的组合才能进入固定 URL/SHA-256 的受信任目录；常用 PECL 扩展完整矩阵和公网验收仍单独进行。
+**Publish verified native packages** 按 `packages/catalog/native-targets.json` 生成矩阵。当前新增目标为 Nginx 的 12 个准确版本 × 四系统，共 48 个组合；每个任务先构建或安装官方包，再在独立干净系统安装二进制。两次都必须通过真实 systemd 启动及协议检查，Nginx 另验证准确版本、可信证书 HTTPS、HTTP/2 和 PCRE 正则重写；旧版私有 PCRE 固定摘要并保留许可证。历史 24 个推荐组合与 rc.7 的 64 个 MySQL/PHP/Redis 组合报告继续保留。只有通过的组合才能进入固定 URL/SHA-256 的受信任目录；常用 PECL 扩展完整矩阵和公网验收仍单独进行。
 
 软件包与面板分别发布，不覆盖既有软件 Release。维护者先推送与验收提交一致的 `software-<run-id>` 标签；若集成令牌创建 Release 时返回 403，可推送 `software-publish-<run-id>` 触发 **Publish accepted software artifacts**，它按当前声明矩阵核对原始工作流各任务的最新结果、全部报告、文件摘要及原始软件标签后复用产物发布。首批已发布为 `software-44057101979`，原始报告随仓库保存。
 

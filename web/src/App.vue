@@ -34,7 +34,7 @@ const nav = [
   { path: '/sites', label: '网站', icon: Connection },
   { path: '/databases', label: '数据库', icon: Coin },
   { path: '/docker', label: 'Docker', icon: Box },
-  { path: '/software', label: '软件与插件', icon: Grid },
+  { path: '/software', label: '插件市场', icon: Grid },
   { path: '/files', label: '文件', icon: Folder },
   { path: '/backups', label: '备份与计划', icon: Clock },
   { path: '/system', label: '系统与安全', icon: Lock },

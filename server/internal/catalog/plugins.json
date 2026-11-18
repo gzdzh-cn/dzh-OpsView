@@ -24,7 +24,9 @@
     "platforms": [
       "linux/amd64"
     ],
-    "builtin": true
+    "builtin": true,
+    "category": "docker",
+    "edition": "free"
   },
   {
     "id": "adminer",
@@ -51,7 +53,9 @@
     "platforms": [
       "linux/amd64"
     ],
-    "builtin": true
+    "builtin": true,
+    "category": "docker",
+    "edition": "free"
   },
   {
     "id": "s3-backup",
@@ -100,6 +104,8 @@
     "platforms": [
       "linux/amd64"
     ],
-    "builtin": true
+    "builtin": true,
+    "category": "free",
+    "edition": "free"
   }
 ]

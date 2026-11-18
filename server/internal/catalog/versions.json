@@ -433,10 +433,84 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "0652b760b3b772d2ec17b47c2fc15d9a95e6fe35cd5b877eadc1a62d9bc75af1",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04",
+        "ubuntu:24.04"
+      ],
+      "source": [
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04",
+        "ubuntu:24.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.31.8-debian-12.tar.gz",
+        "sha256": "4e60e062e15f2848e82a58a1e1da6cd67df1ff8fa4c4f1eb5f452e00daa44783",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/13f34925b771b384b51cf3abfac18081/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.31.8-debian-13.tar.gz",
+        "sha256": "2649f684baa328d71160b6b5b8ed2d853251a4befa5751d5af2412f0d78c96f3",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/ffd2aa6fba3bbb44919164182d141639/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.31.8-ubuntu-22.04.tar.gz",
+        "sha256": "c943c3fe699550b3742bda3cbf7bb9028363b1d174bd1aa07d7ca8a2ff68ed38",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/0ca3076addcf5ee06f17ee5cf609625a/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.31.8-ubuntu-24.04.tar.gz",
+        "sha256": "a8b31e835dc84e86aa4ff4450db004a6a9a36fa562ed53fb9726b9f6eb09c2de",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/e483c39b7320e9bc64d8f8b10f26c944/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.29.8",
@@ -449,10 +523,84 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "7f1b985dace8fe706dfc288b83927c928f0ae60bcb7507c2d4e0025eca7280c3",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "debian:12",
+        "ubuntu:22.04",
+        "debian:13",
+        "ubuntu:24.04"
+      ],
+      "source": [
+        "debian:12",
+        "ubuntu:22.04",
+        "debian:13",
+        "ubuntu:24.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.29.8-debian-12.tar.gz",
+        "sha256": "832971b8af5aeefbddd929718549185668e05bb19a8b1c552c6639f9b34b3524",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/05102c2178d5b34daba45568c5f00084/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.29.8-ubuntu-22.04.tar.gz",
+        "sha256": "b976fffbc2852eda5e8a681c221bb9cdf73db8a79b62e523cc2187165534e068",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/9071bf13b547aa921beb9da84ffe666b/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.29.8-debian-13.tar.gz",
+        "sha256": "42bc47a932873c44a39ef3ca04dfd0fdd98061f093fe8cc5ed244096c874e7c8",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/ea67835f12edc9c419ea4cc1dcece391/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.29.8-ubuntu-24.04.tar.gz",
+        "sha256": "d0f03966dc97eff135e968aec81ec3229c8f39c6615f3b96c648f08a08568146",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/384439116e481085dd119eaed502d47b/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.28.3",
@@ -465,10 +613,84 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "2c96a946bfb0882a21744ed429770a2123ae1828c7c48665092993ddee91a918",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04",
+        "ubuntu:24.04"
+      ],
+      "source": [
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04",
+        "ubuntu:24.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.3-debian-12.tar.gz",
+        "sha256": "c3d123b453332566d8681eb500348c9f5fd8441f67f287b9979978bad4439b52",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/cb0ad3e34134be1a843a2c67a522096d/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.3-debian-13.tar.gz",
+        "sha256": "0b941d55a12a55ac8b657b35064b2ad3e2a97a8dd1d4e180d87350fb0d02ed99",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/5322783e4ad7b995dfec2170e0771cc0/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.3-ubuntu-22.04.tar.gz",
+        "sha256": "7bff1b4c03921cbe5fafbb49bffd5d1ed407144235701a5506fe18780b731a5c",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/f7708e2aafd7117ea5341328b61ac08b/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.3-ubuntu-24.04.tar.gz",
+        "sha256": "5aaa08b64264825b7d8625097a5180f5394cda579a00fa6981c9ce8d3511a132",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/6b8f5fd30e71ced377000ccfec45b956/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.24.0",
@@ -481,10 +703,84 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "77a2541637b92a621e3ee76776c8b7b40cf6d707e69ba53a940283e30ff2f55d",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "debian:13",
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:12"
+      ],
+      "source": [
+        "debian:13",
+        "ubuntu:24.04",
+        "ubuntu:22.04",
+        "debian:12"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.24.0-debian-13.tar.gz",
+        "sha256": "9be043b65bb4f0a0795f06bc0dede52de9cc838af1592c4f7290ab5f31b83965",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/836282c423c0adfa9ce5b47dc9ec61eb/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.24.0-ubuntu-24.04.tar.gz",
+        "sha256": "a76694ab30c3e9434d327d5a1d612cb9c0f7ab928eb02a773caa2ac8ae3a0356",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/f34be2c808e11d9f93e5b9e1c14b36a7/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.24.0-ubuntu-22.04.tar.gz",
+        "sha256": "7c01f889dd81678614ccf0e59cc74e10c3f555b096fde3e274e02ac2b7e46c0b",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/d0286e93c443d8620ca1cd79e2e4e26c/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.24.0-debian-12.tar.gz",
+        "sha256": "082c6d490a2f945b72a73de01d16e6e53d2167980a17fee0a8bafd5eee2d56a8",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/65299b61c11c0abda778579b0729a029/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.23.4",
@@ -497,10 +793,84 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "d43300e36bb249a7e6edc60bca1b0fc372a0bafce2f346d76acfb677a8790fc0",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "ubuntu:24.04",
+        "debian:13",
+        "debian:12",
+        "ubuntu:22.04"
+      ],
+      "source": [
+        "ubuntu:24.04",
+        "debian:13",
+        "debian:12",
+        "ubuntu:22.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.23.4-ubuntu-24.04.tar.gz",
+        "sha256": "30f09733701e3547d973febb50288b8068c7c0fe3191aa476175815a878d768b",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/4eb2cc23ea0e4a793c54e7069983dad4/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.23.4-debian-13.tar.gz",
+        "sha256": "9b8806f6175b307aff38c9c87f8925d24d56a7435d2342049e774ba8e675e5fe",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/fb251ee69530bc4ef4f025401f6e738d/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.23.4-debian-12.tar.gz",
+        "sha256": "c644673740c9ff9d94e97aab0fca37f45d5933d1dc55010b6d49bfc490b8b72b",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/d2fa147dc55ee87c44bae3b6c8b168d9/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.23.4-ubuntu-22.04.tar.gz",
+        "sha256": "7bef716b13da943291662b875135a39bb3b151099d388ac7cf5ac96d93a4cb01",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/bfb7252c3a153080b0128cdafa1eec1e/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.22.1",
@@ -513,10 +883,84 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "9ebb333a9e82b952acd3e2b4aeb1d4ff6406f72491bab6cd9fe69f0dea737f31",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "debian:12",
+        "ubuntu:22.04",
+        "debian:13",
+        "ubuntu:24.04"
+      ],
+      "source": [
+        "debian:12",
+        "ubuntu:22.04",
+        "debian:13",
+        "ubuntu:24.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.22.1-debian-12.tar.gz",
+        "sha256": "c3433fbf3edf48af92d9b10e9d9a15f9f2550f50ac0e2190e2ace8fc3992bca2",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/1b4c31f04398cbe256692f49caa960ff/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.22.1-ubuntu-22.04.tar.gz",
+        "sha256": "6870be2125ef57861370514ee86bd12fac0308c42a10c6c9f4db844611d0f6ff",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/05ab8c8ede0a8d6232ddfe00d73cc37b/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.22.1-debian-13.tar.gz",
+        "sha256": "251d8193d98bc9153a245c533753f979a62ad34761aeae749ff167c9c10f5ef9",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/a5a15963a5d7ae54a19ca04c965564ff/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.22.1-ubuntu-24.04.tar.gz",
+        "sha256": "c07e926263f355aa0c19e0f0dd7e8d1eb1c194fc9e2cce71cb94ba89e87e7e17",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/577a5010c1b3f9370fa2799ea6a264d9/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.21.6",
@@ -529,10 +973,84 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "66dc7081488811e9f925719e34d1b4504c2801c81dee2920e5452a86b11405ae",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "ubuntu:22.04",
+        "debian:12",
+        "ubuntu:24.04",
+        "debian:13"
+      ],
+      "source": [
+        "ubuntu:22.04",
+        "debian:12",
+        "ubuntu:24.04",
+        "debian:13"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.21.6-ubuntu-22.04.tar.gz",
+        "sha256": "a7e394a5d0d874681233ff0884e169ddfed94f5b5c749ac7403645477f192d22",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/f36c2d64fd4c3e9783d86c1b7f1622dc/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.21.6-debian-12.tar.gz",
+        "sha256": "6ea4bae9f41fd3ab6414167831fceaab5de555203b768bb2dabb7dfd15e2b58e",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/1b976dc7319831c4240beb35f9fbb72b/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.21.6-ubuntu-24.04.tar.gz",
+        "sha256": "1f513f89fbb62f5a49c2d7bee7a766af5316cafc41c6d235246e84a8cdf2b036",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/26cdb30a5238025a15561e2fd1b9f447/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.21.6-debian-13.tar.gz",
+        "sha256": "55e2a0495c6f6c3349e511db9a792f0db2ec11d67fd1896d289831c4b65db352",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/5b5ff50f47f20a128901f5e5d00eaffb/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.20.2",
@@ -545,10 +1063,80 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "958876757782190a1653e14dc26dfc7ba263de310e04c113e11e97d1bef45a42",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "debian:12",
+        "ubuntu:24.04",
+        "debian:13",
+        "ubuntu:22.04"
+      ],
+      "source": [
+        "debian:12",
+        "ubuntu:24.04",
+        "debian:13",
+        "ubuntu:22.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.20.2-debian-12.tar.gz",
+        "sha256": "8984674256bf3e5c5a9a617be93bda9d44476adb19e77167990c527c05e04d2d",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/ccfbda9152a159af0e2d2db9214ca8b6/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.20.2-ubuntu-24.04.tar.gz",
+        "sha256": "5f3cba41201c3c57033acd01f29f73d642a93844afa69ab7074437167b7a8bac",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/c5ca59ed3d46f4e1108c746e2df07ec2/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.20.2-debian-13.tar.gz",
+        "sha256": "bdc1f6ee2916a5978a1a15553361b54a00bba3ea9b16682a858e407421a4b5f1",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/e7627d9ef535ea15b8f125bbfd2b64c6/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.20.2-ubuntu-22.04.tar.gz",
+        "sha256": "520215f04b04c021b11bb9b4ab44befcd9b38ac7d4f2542e6775f9fc3b190c38",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/a6d0e14823fdf5d603d6502e94ab5bc9/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.19.10",
@@ -561,10 +1149,80 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "e8d0290ff561986ad7cd6c33307e12e11b137186c4403a6a5ccdb4914c082d88",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12",
+        "ubuntu:24.04"
+      ],
+      "source": [
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12",
+        "ubuntu:24.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.19.10-ubuntu-22.04.tar.gz",
+        "sha256": "5861e7151ed3aec2c620b4c2ad185d4b86cc71d90fcd5c37d3e57f1f70b3d1e0",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/9dbd0dc19c28d5465b0d9f0bbfc11a23/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.19.10-debian-13.tar.gz",
+        "sha256": "ccbaa565ea568bccb7328b93d7ecee760173f9e17b73cf513e186541b46a4925",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/667bf371d2dbdc20018bd4168cbbcdd5/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.19.10-debian-12.tar.gz",
+        "sha256": "093dfd44686495b35af0114cf34ac9ee0d9a405c5597f9c1190d36e071cd4b30",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/018ad87222b8387e49050384c2500e69/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.19.10-ubuntu-24.04.tar.gz",
+        "sha256": "491f11f4c087deacd4770091b5e1a92f2b3646f4c18813843ebf57740cccc4a8",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/2c1cca3fe657600ccf87b3ea9f65cc15/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "nginx-1.18.0",
@@ -577,10 +1235,80 @@
     "description": "官方固定版本；安装前验证 SHA-256。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
     ],
     "sha256": "4c373e7ab5bf91d34a4f11a0c9496561061ba5eee6020db272a17a7228d35f99",
-    "recommended": false
+    "recommended": false,
+    "verifiedSystems": {
+      "binary": [
+        "ubuntu:24.04",
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04"
+      ],
+      "source": [
+        "ubuntu:24.04",
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.18.0-ubuntu-24.04.tar.gz",
+        "sha256": "dd8829bb4101a74c3d47e6b01f4de09856b2c0f42dcf92b7865b7c27a7a8b9b3",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/5e911cc97f4c5999a64d9f0a91d3b753/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.18.0-debian-12.tar.gz",
+        "sha256": "b8cc2f28a5dbf1f2bb2ceedd7257219d9807f220fe1022e53e1945a3c3221b4a",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/51c2cd00b912d0f59d8d0b6c0109d021/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.18.0-debian-13.tar.gz",
+        "sha256": "a98867e90f294abed841625cd2a02d72a24bad7297a5fb48d241ccfc3db80ec4",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/5f37be5b0dbdf8c814448b48ca315991/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.18.0-ubuntu-22.04.tar.gz",
+        "sha256": "7a6031fb204c92f7258b512fdf019a99ec74d02d2dc3b145ceefa93d79d0a3e4",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/5b7d84da45819c6a2717bd2f78318972/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      }
+    ]
   },
   {
     "id": "php-7.0.33",
@@ -2172,7 +2900,81 @@
     "description": "固定版本与来源；安装时再次验证完整性。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
+    ],
+    "verifiedSystems": {
+      "binary": [
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12",
+        "ubuntu:24.04"
+      ],
+      "source": [
+        "ubuntu:22.04",
+        "debian:13",
+        "debian:12",
+        "ubuntu:24.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.0-ubuntu-22.04.tar.gz",
+        "sha256": "302acd00ac5e732c845a9bf2a4a1723ff56f5ce11f060a94de0cd56ca3aa1164",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/65d80bb1458ae547ebe362574ba17496/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.0-debian-13.tar.gz",
+        "sha256": "d256345aaaf25932229890d3b0c6648c9d5efd0c171563d0a236348519acc540",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/cead509ee07630957a60543d2d20548d/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.0-debian-12.tar.gz",
+        "sha256": "857e944a46bfa35f19db9ea7e856348980d11313938c8d8559046cd18a8b990f",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/9c80b855bb2a4e7d9dafd45514c59358/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.28.0-ubuntu-24.04.tar.gz",
+        "sha256": "bec22b8615fccca3ccc75af11e0cd0e879606ed25d08a0171058aa26d30131b0",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/d4c4ae0a97d4107b38a28cf86ddb47aa/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      }
     ]
   },
   {
@@ -2337,7 +3139,81 @@
     "description": "固定版本与来源；安装时再次验证完整性。",
     "recipeRevision": "3",
     "methods": [
+      "binary",
       "source"
+    ],
+    "verifiedSystems": {
+      "binary": [
+        "ubuntu:24.04",
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04"
+      ],
+      "source": [
+        "ubuntu:24.04",
+        "debian:12",
+        "debian:13",
+        "ubuntu:22.04"
+      ]
+    },
+    "binaries": [
+      {
+        "system": "ubuntu:24.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.26.3-ubuntu-24.04.tar.gz",
+        "sha256": "3ecc8a69119e2125931320d7531743a8da9b38c33e9e61ce3e4d49a748126498",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/2d4581f8002fe966792db22c666417ed/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:12",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.26.3-debian-12.tar.gz",
+        "sha256": "0671e39346f41552a02ed664d5099280a868ed073f1592ae9f8799fa0aa53d22",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/834cb338b7ed32b4228dd670ee3c67ef/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "debian:13",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.26.3-debian-13.tar.gz",
+        "sha256": "70e856254d68c63cda7edfd752ea47bfeae1968225824f613e8ca1d15356e029",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/dc6076cd75f5e554d5c47590646a5b83/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3t64:amd64",
+          "libzstd1:amd64",
+          "zlib1g:amd64"
+        ]
+      },
+      {
+        "system": "ubuntu:22.04",
+        "source": "https://github.com/gzdzh-cn/dzh-OpsView/releases/download/software-44268894751/nginx-1.26.3-ubuntu-22.04.tar.gz",
+        "sha256": "601300cf4837f3efb7db725361533ab9e051c121f3d2ee411675fb72daab439d",
+        "buildPrefix": "/var/lib/opsview/fast-acceptance/instances/15b81e8f8d229d448c576d20ad815b33/runtime",
+        "runtimePackages": [
+          "ca-certificates",
+          "libc6:amd64",
+          "libcrypt1:amd64",
+          "libpcre2-8-0:amd64",
+          "libssl3:amd64",
+          "zlib1g:amd64"
+        ]
+      }
     ]
   },
   {

@@ -34,7 +34,7 @@ test('sidebar navigates all embedded management pages without missing assets', a
     ['/sites', '网站'],
     ['/databases', '数据库'],
     ['/docker', 'Docker'],
-    ['/software', '软件与插件'],
+    ['/software', '插件市场'],
     ['/files', '文件'],
     ['/backups', '备份与计划'],
     ['/system', '系统与安全'],
@@ -566,7 +566,7 @@ test('application entry retires to other websites and plugins use row lists', as
   await expect(page.locator('.sidebar a[href="/apps"]')).toHaveCount(0)
   await page.goto('/software')
   await page.getByRole('tab', { name: '插件市场', exact: true }).click()
-  await expect(page.locator('.list-panel .el-table')).toBeVisible()
+  await expect(page.locator('.software-list .el-table')).toBeVisible()
   await expect(page.locator('.plugin-card')).toHaveCount(0)
   await page.getByRole('tab', { name: '仓库管理', exact: true }).click()
   await expect(
@@ -701,7 +701,7 @@ test('slow independent reads never block navigation and warm switches meet laten
   await expect(page.getByRole('main', { name: '概览', exact: true })).toBeVisible()
   await expect(page.locator('.page-skeleton')).toBeVisible()
   await page.locator('.sidebar a[href="/software"]').click()
-  await expect(page.getByRole('tab', { name: '核心软件', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '插件市场', exact: true })).toBeVisible()
   await expect(page.locator('.software-list .el-table__body tr').first()).toBeVisible()
   await page.locator('.sidebar a[href="/databases"]').click()
   await expect(page.getByRole('main', { name: '数据库', exact: true })).toBeVisible()
@@ -710,7 +710,7 @@ test('slow independent reads never block navigation and warm switches meet laten
     const samples: number[] = []
     for (let i = 0; i < 20; i++) {
       const target = i % 2 === 0 ? '/software' : '/databases'
-      const label = i % 2 === 0 ? '软件与插件' : '数据库'
+      const label = i % 2 === 0 ? '插件市场' : '数据库'
       const start = performance.now()
       ;(document.querySelector(`.sidebar a[href="${target}"]`) as HTMLElement).click()
       await new Promise<void>((resolve, reject) => {
@@ -992,11 +992,11 @@ test('database install guidance selects its software despite saved market tab', 
   )
   await page.route('**/api/v1/databases?*', (route) => route.fulfill({ json: { rows: [] } }))
   await page.goto('/software')
-  await page.getByRole('tab', { name: '插件市场', exact: true }).click()
+  await page.getByRole('tab', { name: '仓库管理', exact: true }).click()
   await page.getByRole('link', { name: '数据库', exact: true }).click()
   await page.getByRole('tab', { name: 'PostgreSQL', exact: true }).click()
   await page.getByRole('button', { name: '前往软件市场安装' }).click()
-  await expect(page.getByRole('tab', { name: '核心软件', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: '插件市场', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   )
@@ -1212,4 +1212,130 @@ test('software market filter is a button and installed versions have no duplicat
   await expect(pluginRow.getByRole('button', { name: '设置', exact: true })).toBeEnabled()
   await expect(pluginRow.getByRole('button', { name: '安装', exact: true })).toHaveCount(0)
   await expect(pluginRow.getByRole('button', { name: '升级', exact: true })).toHaveCount(0)
+})
+
+test('unified market categories keep every installed version without a separate instance list', async ({
+  page,
+}) => {
+  const php = (id: string, version: string) => ({
+    id,
+    kind: 'instance',
+    name: 'php-' + version,
+    status: 'ready',
+    revision: 1,
+    config: { software: 'php', version, mode: 'native', port: 9000 },
+  })
+  const backup = {
+    id: 'backup-market',
+    kind: 'plugin',
+    name: 'backup-tool',
+    status: 'ready',
+    revision: 1,
+    config: { pluginId: 'backup-tool', version: '1.0.0' },
+  }
+  const missing = {
+    ...backup,
+    id: 'missing-market',
+    name: 'local-plugin',
+    config: { pluginId: 'local-plugin', version: '2.0.0' },
+  }
+  await page.route('**/api/v1/resources', (route) =>
+    route.fulfill({ json: [php('php-old', '7.4.33'), php('php-new', '8.4.27'), backup, missing] }),
+  )
+  await page.route('**/api/v1/plugins', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'backup-tool',
+          name: '备份工具',
+          version: '1.0.0',
+          type: 'backup',
+          builtin: true,
+          form: [],
+        },
+        {
+          id: 'docker-tool',
+          name: 'Docker工具',
+          version: '1.0.0',
+          type: 'application',
+          form: [],
+          permissions: ['docker.compose'],
+        },
+        {
+          id: 'security-tool',
+          name: '安全检查',
+          version: '1.0.0',
+          type: 'operations',
+          category: 'security',
+          form: [],
+        },
+        {
+          id: 'pro-tool',
+          name: '专业扩展',
+          version: '1.0.0',
+          type: 'operations',
+          edition: 'professional',
+          form: [],
+        },
+        {
+          id: 'enterprise-tool',
+          name: '企业扩展',
+          version: '1.0.0',
+          type: 'operations',
+          edition: 'enterprise',
+          form: [],
+        },
+      ],
+    }),
+  )
+  await page.goto('/software')
+  await expect(page.getByRole('tab', { name: '核心软件', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '已配置实例', exact: true })).toHaveCount(0)
+  await expect(page.getByText('备份工具', { exact: true })).toBeVisible()
+  const categories = page.getByRole('group', { name: '应用分类', exact: true })
+  await categories.getByRole('button', { name: '已安装', exact: true }).click()
+  await expect(page.getByText('local-plugin', { exact: true })).toBeVisible()
+  const rows = page.locator('.software-list .el-table__body tr')
+  await expect(rows).toHaveCount(4)
+  await expect(
+    rows.filter({ hasText: 'php-7.4.33' }).getByRole('button', { name: '设置', exact: true }),
+  ).toBeEnabled()
+  await expect(
+    rows.filter({ hasText: 'php-8.4.27' }).getByRole('button', { name: '设置', exact: true }),
+  ).toBeEnabled()
+  await expect(
+    page.locator('.software-list').getByRole('button', { name: '安装', exact: true }),
+  ).toHaveCount(0)
+  await categories.getByRole('button', { name: 'Docker应用', exact: true }).click()
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toContainText('Docker工具')
+  await categories.getByRole('button', { name: '安全应用', exact: true }).click()
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toContainText('安全检查')
+  await categories.getByRole('button', { name: '专业版应用', exact: true }).click()
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toContainText('专业扩展')
+  await categories.getByRole('button', { name: '企业版应用', exact: true }).click()
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toContainText('企业扩展')
+  await categories.getByRole('button', { name: '运行环境', exact: true }).click()
+  await expect(rows).toHaveCount(6)
+  await categories.getByRole('button', { name: '免费应用', exact: true }).click()
+  await expect(page.getByText('专业扩展', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('企业扩展', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('备份工具', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: '网站', exact: true }).click()
+  await page.getByRole('link', { name: '插件市场', exact: true }).click()
+  await expect(categories.getByRole('button', { name: '免费应用', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(categories.getByRole('button', { name: '企业版应用', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
+  await page.screenshot({
+    path: '../.opsview/screenshots/market-categories-mobile.png',
+    animations: 'disabled',
+    fullPage: true,
+  })
 })

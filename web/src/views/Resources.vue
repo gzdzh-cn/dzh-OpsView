@@ -438,7 +438,7 @@ async function sync(row: Resource) {
       <p>
         {{
           kind === 'site'
-            ? '先在软件与插件中安装 Nginx，再绑定域名、上传静态文件或配置反向代理。'
+            ? '先在插件市场中安装 Nginx，再绑定域名、上传静态文件或配置反向代理。'
             : kind === 'database'
               ? '先安装 MySQL 或 PostgreSQL 实例，再创建独立数据库和专用用户。'
               : kind === 'firewall'
