@@ -92,7 +92,7 @@ sudo bash opsview-linux-amd64/deploy/install.sh
 | 系统与安全 | UFW/DOCKER-USER 规则、监听与发布端口、120 秒确认回退、服务与日志、审计 |
 | 面板设置 | 五类设置行、管理员/TOTP/会话、HTTP/HTTPS、地址/端口/访问限制、120 秒重新连接确认、证书及加密备份 |
 
-新增 Nginx/MySQL/PHP/Redis 共 28 个目标版本，保留既有 PostgreSQL、Node.js 和历史容器实例。首批极速安装已开放 Nginx 1.30.6、PHP 8.4.27、Redis 8.10.3、PostgreSQL 18.0、MySQL 8.4.13、Node.js 22.23.5 × 四系统，共 24 个 Linux amd64 组合，全部通过真实 systemd/协议及独立干净系统安装，对应证据见验收记录。其余组合按验证结果开放；完整版本与限制见 [软件管理实现说明](软件管理实现说明.md)。目录是项目快照，**不代表上游最新版本**。所有下载固定摘要，容器固定镜像摘要；业务软件不会自动升级，自定义目录不执行任意 root Shell 配方。
+新增 Nginx/MySQL/PHP/Redis 共 28 个目标版本，保留既有 PostgreSQL、Node.js 和历史容器实例。本轮新增 MySQL、PHP、Redis 的 64 个系统组合，加上此前 24 个组合，共 88 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统安装验收。PHP、Redis、Nginx 1.30.6 和 PostgreSQL 18.0 也提供对应已验收的编译方式；MySQL、Node.js 使用官方主软件二进制。其余 Nginx 及旧 PostgreSQL 条目仍按实际验证结果开放；完整版本与限制见 [软件管理实现说明](软件管理实现说明.md)。目录是项目快照，**不代表上游最新版本**。所有下载固定摘要，容器固定镜像摘要；业务软件不会自动升级，自定义目录不执行任意 root Shell 配方。
 
 历史核心 Nginx 和数据库容器继续管理，使用 Linux 宿主机网络：数据库默认监听 loopback，多实例通过端口区分。Compose 与应用插件默认使用独立 bridge 网络。远程数据库访问必须明确开启并限源放行；Docker 发布端口与 UFW 分开处理。
 
@@ -137,7 +137,7 @@ make release                       # Linux amd64 包与 SHA256SUMS
 
 软件市场采用逐行列表，Nginx/MySQL/PHP/Redis 提供带左侧菜单的实例设置。新增 PHP 独立站点 FPM、网站三类列表、流量游标及到期策略；面板设置提供五个标签页、HTTP/HTTPS 与 120 秒重新连接确认。原有账号和 Docker 入口保留。
 
-28 个目标版本已固定上游地址与 SHA-256；目录可见不等于全部系统组合通过验收。旧 PHP 隔离依赖组合会明确拒绝安装。源码编译使用低权限用户；已签名的预编译配方按系统选择，未发布的包不能选择安装。
+28 个目标版本已固定上游地址与 SHA-256；目录可见不等于全部系统组合通过验收。旧 PHP 配方 r3 包含私有依赖和兼容修复，未经过对应系统验收的组合仍明确拒绝安装。源码编译使用低权限用户；已签名的预编译配方按系统选择，未发布的包不能选择安装。
 
 当前已实现范围、未完成项和验证证据见根目录 [软件管理实现说明](软件管理实现说明.md)。GitHub Actions 的 **Build candidate (no production update)** 生成候选附件；**Publish verified native packages** 在四系统分别构建、用真实 systemd 验证并在干净系统复验运行包。两者不自动更新服务器或替换 latest。
 
@@ -145,7 +145,7 @@ make release                       # Linux amd64 包与 SHA256SUMS
 
 PHP Session 提供文件、受管 Redis 和本机 memcached 三种存储。memcached 支持端口及可选 SASL 认证，保存前验证真实会话读写，重载后通过私有 FastCGI 检查有效配置；失败恢复原文件。需要预先安装本机 memcached 服务及对应 PHP 扩展，版本默认配置仅由新网站继承，现有网站可单独修改。
 
-本轮六个推荐软件的 24 个极速组合均已验收；Nginx、PHP、Redis、PostgreSQL 同时开放四系统编译安装。MySQL、Node.js 使用固定摘要的官方二进制。新增版本的完整支持范围及剩余工作见 [软件管理实现说明](软件管理实现说明.md)。`ov port`、`ov ssl on/off` 会显示新地址，需在 120 秒内重新连接确认，未确认时禁止更新。
+本轮新增 MySQL、PHP、Redis 的 64 个系统组合，加上此前 24 个组合，共 88 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统安装验收。PHP、Redis、Nginx 1.30.6 和 PostgreSQL 18.0 也提供对应已验收的编译方式；MySQL、Node.js 使用官方主软件二进制。新增版本的完整支持范围及剩余工作见 [软件管理实现说明](软件管理实现说明.md)。`ov port`、`ov ssl on/off` 会显示新地址，需在 120 秒内重新连接确认，未确认时禁止更新。
 
 应用进程功能已下线：旧 `/apps` 跳转网站“其他项目”，旧服务和文件保留，关联网站改为外部应用，不再因网站到期停止旧进程。后端拒绝旧应用变更，待执行任务取消并审计。新项目可使用反向代理连接外部服务或 Docker。
 
