@@ -67,7 +67,11 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 	log("以低权限构建用户编译；完整日志持续输出")
 	switch entry.Software {
 	case "nginx":
-		if err := build("./configure", "--prefix="+runtimePath, "--with-http_ssl_module", "--with-http_v2_module", "--with-http_stub_status_module", "--with-threads"); err != nil {
+		args, err := e.nginxConfigureArgs(ctx, entry.Version, base, builder, log)
+		if err != nil {
+			return err
+		}
+		if err := build(args...); err != nil {
 			return err
 		}
 	case "php":
@@ -104,6 +108,19 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 		}
 	}
 	staged := stage + runtimePath
+	if entry.Software == "nginx" && nginxNeedsPCRE1(entry.Version) {
+		license, err := os.ReadFile(filepath.Join(base, "pcre-license"))
+		if err != nil {
+			return err
+		}
+		if err = os.MkdirAll(filepath.Join(staged, "licenses"), 0755); err != nil {
+			return err
+		}
+		if err = security.WriteAtomic(filepath.Join(staged, "licenses", "PCRE-LICENCE"), license, 0644); err != nil {
+			return err
+		}
+		_ = os.Remove(filepath.Join(base, "pcre-license"))
+	}
 	if dependencyPrefix != "" {
 		if err := os.Rename(dependencyPrefix, staged+"/compat"); err != nil {
 			return err

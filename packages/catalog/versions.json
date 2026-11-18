@@ -431,7 +431,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -447,7 +447,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -463,7 +463,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -479,7 +479,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -495,7 +495,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -511,7 +511,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -527,7 +527,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -543,7 +543,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -559,7 +559,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -575,7 +575,7 @@
       "linux/amd64"
     ],
     "description": "官方固定版本；安装前验证 SHA-256。",
-    "recipeRevision": "1",
+    "recipeRevision": "3",
     "methods": [
       "source"
     ],
@@ -2169,7 +2169,11 @@
     "platforms": [
       "linux/amd64"
     ],
-    "description": "固定版本与来源；安装时再次验证完整性。"
+    "description": "固定版本与来源；安装时再次验证完整性。",
+    "recipeRevision": "3",
+    "methods": [
+      "source"
+    ]
   },
   {
     "id": "mysql-8.4.8",
@@ -2330,7 +2334,11 @@
     "platforms": [
       "linux/amd64"
     ],
-    "description": "固定版本与来源；安装时再次验证完整性。"
+    "description": "固定版本与来源；安装时再次验证完整性。",
+    "recipeRevision": "3",
+    "methods": [
+      "source"
+    ]
   },
   {
     "id": "postgresql-17.6",

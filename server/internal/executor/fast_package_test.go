@@ -178,6 +178,7 @@ func TestFastPackageAcceptance(t *testing.T) {
 			}
 		}
 		if entry.Software == "nginx" {
+			verifyNginxPackage(t, ctx, r, base, entry.Version, log)
 			probe := r
 			probe.Config = cloneConfig(r.Config)
 			probe.Config["port"] = r.Config["statusPort"]
