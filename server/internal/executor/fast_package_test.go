@@ -197,6 +197,11 @@ func TestFastPackageAcceptance(t *testing.T) {
 			if err = run(ctx, log, "", nil, nil, "tar", "--dereference", "--hard-dereference", "-czf", archive, "-C", base+"/runtime", "."); err != nil {
 				t.Fatal(err)
 			}
+			// Published runtime archives contain no instance data or credentials.
+			// The host upload action must read files created by root under umask 0027.
+			if err = os.Chmod(archive, 0644); err != nil {
+				t.Fatal(err)
+			}
 			digest, er := hashFile(archive)
 			if er != nil {
 				t.Fatal(er)
