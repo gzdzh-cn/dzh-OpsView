@@ -64,7 +64,7 @@ func (e *Engine) prepareMySQLLegacyClients(ctx context.Context, version, base st
 		return err
 	}
 	archive := filepath.Join(e.Root, "downloads", "ncurses-6.5.archive")
-	if err := download(ctx, sourceURL, digest, archive, log); err != nil {
+	if err := downloadPinnedMirrors(ctx, []string{sourceURL, "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz"}, digest, archive, log); err != nil {
 		return err
 	}
 	work := filepath.Join(base, ".ncurses-build")
@@ -128,4 +128,28 @@ func (e *Engine) prepareMySQLLegacyClients(ctx context.Context, version, base st
 		}
 		return run(ctx, log, "", nil, nil, "patchelf", "--add-rpath", "$ORIGIN/../lib/opsview-compat", p)
 	})
+}
+
+// Mirrors contain the same pinned archive. Never change the expected digest or
+// extract an incomplete response, and preserve cancellation before any retry.
+func downloadPinnedMirrors(ctx context.Context, sources []string, digest, path string, log func(string)) error {
+	failures := []error{}
+	for i, source := range sources {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if i > 0 {
+			log("尝试备用依赖源，继续校验相同 SHA-256")
+		}
+		if err := download(ctx, source, digest, path, log); err != nil {
+			failures = append(failures, err)
+			log("依赖源失败：" + err.Error())
+		} else {
+			return nil
+		}
+	}
+	if len(failures) == 0 {
+		return errors.New("没有受信任依赖源")
+	}
+	return errors.Join(failures...)
 }
