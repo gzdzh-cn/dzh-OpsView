@@ -440,6 +440,8 @@ rc.8 发布前复核：使用实际 Linux amd64 发布二进制在隔离 Ubuntu 
 
 测试发现并修复：UFW 内部限速链误识别、IPv6 插入偏移、末条插入、firewalld 默认区域禁 Ping 不生效、默认区域 active 文字差异及旧版 firewalld 重载清空外部链。产品在存在外部链时拒绝 firewalld reload/启停，测试明确断言此保护，并仅在移除测试自建哨兵后验证允许的重载。容器内置 DNS NAT 仅在隔离夹具初始化时移除，不在产品中放宽保护。
 
+本地 Linux arm64 隔离容器已分别通过 Ubuntu 22.04/24.04、Debian 12/13 的 UFW/firewalld 测试；新增真实出站阻断及删除恢复在 Ubuntu 24.04 firewalld、Debian 13 UFW 通过。
+
 四系统 Linux amd64 矩阵、实际发布二进制、systemd 安装/更新和公开附件检查由 GitHub 候选/发布工作流继续验证；最终结果以对应工作流结论为准。隔离容器测试不能替代整机重启、独立公网、云安全组及所有 Docker/自定义防火墙组合验收。
 
 升级与旧版完整元数据恢复见 [运维说明](operations.md#rc11-系统防火墙更新与回退)。发布后使用 `ov backup`、`ov update --version v0.1.3-rc.11`；不能只装旧二进制退回 schema 3。

@@ -173,6 +173,44 @@ func TestLinuxFirewallAdmin(t *testing.T) {
 	if !found {
 		t.Fatal("region state missing")
 	}
+
+	if peer := os.Getenv("OPSVIEW_FIREWALL_PEER_IP"); peer != "" {
+		// Verify an actual outgoing connection, including first firewalld policy creation.
+		outgoing := rule
+		outgoing.Direction = "out"
+		outgoing.Source = "any"
+		outgoing.Destination = peer
+		outgoing.Ports = "18901"
+		outgoing.Action = "deny"
+		save(outgoing, "")
+		address := net.JoinHostPort(peer, "18901")
+		if conn, er := net.DialTimeout("tcp", address, time.Second); er == nil {
+			conn.Close()
+			t.Fatal("outgoing deny did not block")
+		}
+		current, er := e.firewallSnapshot(ctx)
+		if er != nil {
+			t.Fatal(er)
+		}
+		found := false
+		for _, r := range current.Rules {
+			if r.Direction == "out" && r.Ports == "18901" && r.Destination == peer {
+				found = true
+				if _, er = e.firewallAdmin(ctx, model.Operation{Name: "system.firewall-admin-delete", Params: model.Config{"revision": current.Revision, "id": r.ID}}, func(string) {}); er != nil {
+					t.Fatal(er)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Fatal("outgoing rule missing")
+		}
+		conn, er := net.DialTimeout("tcp", address, time.Second)
+		if er != nil {
+			t.Fatal("outgoing removal did not restore connection", er)
+		}
+		conn.Close()
+	}
 	// Docker/foreign NAT sentinels live only in this disposable network namespace.
 	for _, args := range [][]string{{"-N", "DOCKER-USER"}, {"-A", "DOCKER-USER", "-s", "198.51.100.0/24", "-j", "DROP"}, {"-t", "nat", "-N", "FOREIGN-NAT"}, {"-t", "nat", "-A", "FOREIGN-NAT", "-p", "tcp", "--dport", "19999", "-j", "RETURN"}} {
 		if _, er := native(ctx, "iptables", args...); er != nil {
