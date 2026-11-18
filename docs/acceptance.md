@@ -380,3 +380,21 @@ rc.8 发布前复核：使用实际 Linux amd64 发布二进制在隔离 Ubuntu 
 - 本地已通过：6 项 Playwright（含全部侧栏、紧凑布局、文件编辑冲突、路径草稿、大小缓存/取消/失效及备注）、7 项 Vitest、前端类型检查/生产构建，以及 Go public/controller 测试。
 - 发布前本地完整复核：`make api check`（Go 全量 race/vet、前端类型/构建、7 项 Vitest）、16 项安装器检查及全部 31 项 Playwright 通过；缓存菜单切换 P95 为 66.8ms。
 - GitHub 完整发布检查和公开安装结果待本次工作流完成后追加。未连接或更新用户服务器；没有新增数据库迁移。
+
+
+### rc.9 发布与公开安装验证完成
+
+发布提交 `7ba8daf8f272c77ebe9835be1da99414403df6f9`，标签 `v0.1.3-rc.9`。[发布流水线 44279841917](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44279841917) 的 `build`、`publish`、`verify-public-install` 及全部步骤成功。
+
+- Go 全量 race/vet、前端类型/构建和 7 项 Vitest、安装器及 Linux 文件检查通过；网站真实部署、MySQL/PostgreSQL/Redis 管理、日志轮转及 PHP Session 验证通过。
+- 源码服务和实际 Linux 发布二进制分别完成全部 31 项 Playwright，均通过；真实 systemd 首次安装、正常更新和故障回退通过。
+- GitHub 临时 Ubuntu 24.04 从公开固定标签下载、校验、安装、登录、改端口和执行 ov 更新验证通过。
+- [常规检查 44279804418](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44279804418) 的 check/deployment/websites、[候选构建 44279804498](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44279804498) 全部通过。
+- 已在独立工作站从公开固定标签下载三个附件，核对摘要、bootstrap 与仓库一致、归档内四个二进制和安装/更新脚本、rc.9 版本及发布说明。首次本机网络超时后重试成功。
+
+```text
+9c2e3c1bb2cd947255f3211b97a299ae9fee76bf3efd8cfa7340e234a21d1a58  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
+
+更新：`ov backup`、`ov update --version v0.1.3-rc.9`。本次未连接或更新用户服务器；测试版不替换默认 latest，SQLite schema 保持 3，历史版本与业务数据保留。此验收追加不修改已公开标签及发布附件。
