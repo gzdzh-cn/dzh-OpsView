@@ -2,13 +2,15 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.3-rc.4 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.3-rc.5 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
-本轮全站紧凑布局、菜单切换提速与受保护文件隐藏以 `v0.1.3-rc.4` 发布测试。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
+本轮数据库 MySQL/PostgreSQL/Redis 三标签、账号与表工具、回收站及 Redis 键管理以 `v0.1.3-rc.5` 发布测试。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
 
 本版统一全站业务列表，文件管理扩展至服务器根目录，移除应用进程入口并保留旧服务，增加 Docker 引擎状态与 API 协商；软件市场只提供原生极速/编译安装。继续验证内嵌资源及实际发布二进制的侧栏导航。
 
 功能、架构、安装维护方式和当前限制的完整介绍见 [项目介绍](项目介绍.md)。
+
+rc.5 将 SQLite schema 升至 3。同名数据库可分布于不同实例，已有资源 ID 与管理员保留。降级至 rc.4 必须恢复**升级前完整元数据快照和旧程序**，不能只替换二进制；操作步骤及能力边界见 [数据库管理说明](docs/database-management.md) 和 [运维手册](docs/operations.md#rc5-数据库迁移与回退)。
 
 ## 本地启动
 
@@ -44,9 +46,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.4/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.4/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.4
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.5/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.5/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.5
 # 已安装面板：
-ov update --version v0.1.3-rc.4
+ov update --version v0.1.3-rc.5
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
@@ -80,7 +82,7 @@ sudo bash opsview-linux-amd64/deploy/install.sh
 | --- | --- |
 | 概览 | CPU、内存、磁盘、网络、负载，快捷入口和任务提醒 |
 | 网站 | PHP/反代/其他项目三类列表，独立 FPM、运行目录、多路径代理、流量及到期策略；证书、配置历史、漂移检查及重载回退 |
-| 数据库 | MySQL/PostgreSQL 多实例，建库与专用用户，修改密码及来源，SQL 导入和流式导出，逻辑备份、新库恢复、验证后迁移 |
+| 数据库 | MySQL/PostgreSQL/Redis 三标签、多实例；同步纳管、账号权限/改密、身份验证查看密码、表结构与维护、备份及 30 天回收恢复；Redis SCAN、五类键编辑、TTL 与下载 |
 | Docker | 未安装/停止/兼容状态与 API 1.41–1.47 协商，容器应用模板、引擎安装，容器启停、日志、资源快照，按摘要拉取镜像，管理网络与卷，受限 Compose 项目 |
 | 软件与插件 | 统一逐行市场、原生极速/编译安装、自动名称及准确版本占用；四类软件实例设置、配置修订与回退；签名源、Redis/Adminer/S3 扩展及低权限 worker |
 | 文件 | 服务器 / 目录、收藏/备注、流式分块上传/续传（2 GiB）、Range 下载、修订编辑、批量复制/移动、ZIP/TAR.GZ、权限及 30 天回收站 |

@@ -29,8 +29,18 @@ import (
 func (e *Engine) backup(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.backupUnlocked(ctx, op, log)
+}
+func (e *Engine) backupUnlocked(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
 	r := op.Resource
 	action := strings.TrimPrefix(op.Name, "backup.")
+	if stored, err := e.load(r.ID); err == nil && stored.Config.Bool("recycleOnly") {
+		r = stored
+		op.Resource = stored
+	}
+	if r.Config.Bool("recycleOnly") && action != "backup" {
+		return nil, errors.New("回收备份须通过数据库回收站操作")
+	}
 	if action == "delete" {
 		if _, err := e.load(r.ID); err != nil {
 			return nil, err
@@ -41,6 +51,9 @@ func (e *Engine) backup(ctx context.Context, op model.Operation, log func(string
 	target, err := e.load(r.Config.String("targetId"))
 	if err != nil {
 		return nil, err
+	}
+	if target.Status == "recycled" {
+		return nil, errors.New("已回收数据库仅能通过回收站恢复")
 	}
 	if action == "restore" {
 		return e.restore(ctx, op, target, log)
@@ -251,7 +264,7 @@ func (e *Engine) dumpDatabase(ctx context.Context, inst, target model.Resource, 
 	}
 	defer out.Close()
 	binary := "mysqldump"
-	args := []string{"--protocol=TCP", "-h127.0.0.1", "-P" + strconv.Itoa(inst.Config.Int("port")), "-uroot", "--single-transaction", "--routines", "--events", "--triggers", "--set-gtid-purged=OFF", target.Name}
+	args := []string{"--protocol=TCP", "-h127.0.0.1", "-P" + strconv.Itoa(inst.Config.Int("port")), "-uroot", "--single-transaction", "--routines", "--events", "--triggers", "--set-gtid-purged=OFF", "--", target.Name}
 	env := []string{"MYSQL_PWD=" + inst.Config.String("password")}
 	if inst.Config.String("software") == "postgresql" {
 		binary = "pg_dump"
@@ -260,14 +273,15 @@ func (e *Engine) dumpDatabase(ctx context.Context, inst, target model.Resource, 
 	}
 	var cmd *exec.Cmd
 	if inst.Config.String("mode") == "docker" {
-		all := append([]string{"exec", "-e", env[0], "opsview-" + inst.ID, binary}, args...)
+		all := append([]string{"exec", "-e", strings.SplitN(env[0], "=", 2)[0], "opsview-" + inst.ID, binary}, args...)
 		cmd = exec.CommandContext(ctx, "docker", all...)
+		cmd.Env = append(os.Environ(), env...)
 	} else {
 		cmd = exec.CommandContext(ctx, filepath.Join(e.Root, "instances", inst.ID, "runtime", "bin", binary), args...)
 		cmd.Env = append(os.Environ(), env...)
 	}
 	cmd.Stdout = out
-	cmd.Stderr = &logWriter{fn: log}
+	cmd.Stderr = &logWriter{fn: func(string) {}}
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("数据库导出失败：%w", err)
 	}
@@ -277,7 +291,8 @@ func (e *Engine) dumpDatabase(ctx context.Context, inst, target model.Resource, 
 		globals := []string{"-h", "127.0.0.1", "-p", strconv.Itoa(inst.Config.Int("port")), "-U", "postgres", "--roles-only"}
 		var rolesCmd *exec.Cmd
 		if inst.Config.String("mode") == "docker" {
-			rolesCmd = exec.CommandContext(ctx, "docker", append([]string{"exec", "-e", env[0], "opsview-" + inst.ID, "pg_dumpall"}, globals...)...)
+			rolesCmd = exec.CommandContext(ctx, "docker", append([]string{"exec", "-e", strings.SplitN(env[0], "=", 2)[0], "opsview-" + inst.ID, "pg_dumpall"}, globals...)...)
+			rolesCmd.Env = append(os.Environ(), env...)
 		} else {
 			rolesCmd = exec.CommandContext(ctx, filepath.Join(e.Root, "instances", inst.ID, "runtime/bin/pg_dumpall"), globals...)
 			rolesCmd.Env = append(os.Environ(), env...)
@@ -390,9 +405,31 @@ func (e *Engine) restoreDatabase(ctx context.Context, op model.Operation, target
 
 	recovered := model.Resource{ID: security.ID(), Kind: "database", Name: name, Config: mapClone(target.Config)}
 	recovered.Config["username"] = name
+	recovered.Config["password"] = security.ID() + security.ID()
+	recovered.Config["imported"] = false
+	recovered.Config["owner"] = name
+	recovered.Config["managedAccount"] = true
+	for _, key := range []string{"recyclePhase", "recycleBackupId", "expiresAt"} {
+		delete(recovered.Config, key)
+	}
+	if targetID := op.Params.String("targetInstanceId"); targetID != "" && targetID != inst.ID {
+		next, er := e.load(targetID)
+		if er != nil || next.Kind != "instance" || next.Config.String("software") != inst.Config.String("software") {
+			return nil, errors.New("恢复目标须为同引擎实例")
+		}
+		if databaseBranch(next) != databaseBranch(inst) {
+			return nil, errors.New("跨大版本恢复请使用已验证的迁移流程")
+		}
+		inst = next
+		recovered.Config["instanceId"] = inst.ID
+	}
 	recovered.Config["source"] = "127.0.0.1"
 	recovered.Config["allowRemote"] = false
 	if _, err = e.database(ctx, model.Operation{Name: "database.create", Resource: recovered, Params: model.Config{}}, log); err != nil {
+		return nil, err
+	}
+	recovered.Status = "restoring"
+	if err = e.save(recovered); err != nil {
 		return nil, err
 	}
 	if inst.Config.String("software") == "mysql" {
@@ -417,7 +454,7 @@ func (e *Engine) restoreDatabase(ctx context.Context, op model.Operation, target
 		if err = scanner.Err(); err != nil {
 			return nil, err
 		}
-		if err = e.sql(ctx, inst, name, strings.NewReader(filtered.String()), log); err != nil {
+		if err = e.sql(ctx, inst, name, strings.NewReader(filtered.String()), func(string) {}); err != nil {
 			return nil, err
 		}
 	} else {
@@ -437,6 +474,9 @@ func (e *Engine) restoreDatabase(ctx context.Context, op model.Operation, target
 	log("已恢复到新数据库 " + name + "，请验证后切换连接")
 	recovered.Status = "ready"
 	recovered.Config["engine"] = inst.Config.String("software")
+	if err = e.save(recovered); err != nil {
+		return nil, err
+	}
 	return model.Config{"restoredDatabase": name, "linkedDatabase": recovered}, nil
 }
 func logicSQLName(s string) bool {

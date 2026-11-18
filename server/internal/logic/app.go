@@ -52,6 +52,12 @@ func (a *App) Start() {
 	a.schedule = cron.New()
 	a.schedule.Start()
 	a.ReloadSchedules()
+	instances, _ := a.Store.Resources("instance")
+	for _, i := range instances {
+		if i.Config.String("software") == "mysql" || i.Config.String("software") == "postgresql" {
+			_, _ = a.Store.Enqueue(model.Operation{Name: "dbadmin.reconcile", Resource: i, Params: model.Config{}})
+		}
+	}
 }
 func (a *App) Stop() {
 	if a.schedule != nil {
@@ -91,6 +97,18 @@ func (a *App) ReloadSchedules() {
 			log.Printf("schedule %s: %v", r.ID, e)
 		}
 	}
+	_, _ = a.schedule.AddFunc("23 * * * *", func() {
+		databases, err := a.Store.Resources("database")
+		if err != nil {
+			return
+		}
+		for _, db := range databases {
+			expires, err := time.Parse(time.RFC3339, db.Config.String("expiresAt"))
+			if db.Status == "recycled" && err == nil && time.Now().After(expires) {
+				_, _ = a.Store.Enqueue(model.Operation{Name: "dbadmin.purge", Resource: db, Params: model.Config{"confirmed": true}})
+			}
+		}
+	})
 	_, _ = a.schedule.AddFunc("17 * * * *", func() {
 		sites, err := a.Store.Resources("site")
 		if err != nil {
@@ -120,6 +138,17 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 	}
 	if p == nil {
 		p = model.Config{}
+	}
+	if r.Kind == "database" {
+		if r.Status == "recycled" {
+			return model.Task{}, errors.New("数据库已回收")
+		}
+		if action == "delete" {
+			return a.Store.Enqueue(model.Operation{Name: "dbadmin.recycle", Resource: r, Params: p})
+		}
+		if action == "access" {
+			return model.Task{}, errors.New("请使用数据库专用权限或密码操作")
+		}
 	}
 	allowed := map[string]map[string]bool{
 		"site": {"apply": true, "delete": true, "renew": true, "certificate": true, "configuration": true, "logs": true, "stop": true, "resume": true}, "instance": {"install": true, "start": true, "stop": true, "restart": true, "uninstall": true, "reload": true, "configure": true, "guardian": true, "extension": true, "port": true, "snapshot": true, "purge-binlogs": true, "rotate-log": true, "delete-log-archive": true, "move-storage": true, "switch-version": true, "session": true}, "database": {"create": true, "access": true, "delete": true, "import": true, "migrate": true}, "app": {"apply": true, "start": true, "stop": true, "restart": true, "delete": true, "logs": true}, "compose": {"apply": true, "start": true, "stop": true, "delete": true, "logs": true}, "firewall": {"apply": true, "confirm": true, "delete": true}, "backup": {"backup": true, "restore": true, "delete": true}, "plugin": {"install": true, "check": true, "uninstall": true}}
@@ -156,9 +185,15 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 		p["instance"] = i
 	}
 	if r.Kind == "backup" {
+		if r.Config.Bool("recycleOnly") {
+			return model.Task{}, errors.New("回收备份只能从回收站管理")
+		}
 		target, e := a.Store.Resource(r.Config.String("targetId"))
 		if e != nil {
 			return model.Task{}, errors.New("备份目标不存在")
+		}
+		if target.Status == "recycled" {
+			return model.Task{}, errors.New("备份目标已回收，请使用回收站恢复")
 		}
 		if target.Kind != "site" && target.Kind != "app" && target.Kind != "database" && !(target.Kind == "instance" && target.Config.String("software") == "redis" && target.Config.String("mode") == "native") {
 			return model.Task{}, errors.New("仅支持网站、应用、数据库和原生 Redis 备份")
@@ -216,6 +251,28 @@ func (a *App) runNext(ctx context.Context) {
 			r.Status = "error"
 			_ = a.Store.Update(&r)
 		}
+		return
+	}
+	if strings.HasPrefix(op.Name, "dbadmin.") {
+		var resources []model.Resource
+		raw, _ := json.Marshal(data["resources"])
+		_ = json.Unmarshal(raw, &resources)
+		if e = a.Store.ApplyDatabaseResources(resources); e == nil {
+			var ids []string
+			raw, _ = json.Marshal(data["deletedIds"])
+			_ = json.Unmarshal(raw, &ids)
+			for _, id := range ids {
+				if e = a.Store.Delete(id); e != nil {
+					break
+				}
+			}
+		}
+		if e != nil {
+			_ = a.Store.Finish(t.ID, "failed", "实际操作已完成，元数据写入失败，请同步检查")
+			return
+		}
+		_ = a.Store.Finish(t.ID, "succeeded", "")
+		a.Store.Event(t.ID, "任务完成")
 		return
 	}
 	if strings.HasPrefix(op.Name, "files.") {

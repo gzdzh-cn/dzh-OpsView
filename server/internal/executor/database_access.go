@@ -15,10 +15,13 @@ import (
 )
 
 func (e *Engine) configurePGAccess(ctx context.Context, inst model.Resource, log func(string)) error {
-	rules := "# Managed by OpsView\nlocal all all scram-sha-256\nhost all postgres 127.0.0.1/32 scram-sha-256\nhost all postgres ::1/128 scram-sha-256\n"
+	rules := "# BEGIN OpsView database access\n"
 	for _, db := range e.states() {
-		if db.Kind != "database" || db.Config.String("instanceId") != inst.ID {
+		if db.Kind != "database" || db.Status == "recycled" || db.Config.String("instanceId") != inst.ID {
 			continue
+		}
+		if strings.ContainsAny(db.Name+db.Config.String("username"), "\x00\r\n") {
+			return errors.New("账号或数据库名不能用于访问配置")
 		}
 		source := db.Config.String("source")
 		if source == "" {
@@ -31,18 +34,42 @@ func (e *Engine) configurePGAccess(ctx context.Context, inst model.Resource, log
 				source += "/32"
 			}
 		}
-		rules += fmt.Sprintf("host %s %s %s scram-sha-256\n", db.Name, db.Config.String("username"), source)
+		rules += fmt.Sprintf("host %s %s %s scram-sha-256\nhost %s %s 0.0.0.0/0 reject\nhost %s %s ::/0 reject\n", dbQuote(db.Name, true), dbQuote(db.Config.String("username"), true), source, dbQuote(db.Name, true), dbQuote(db.Config.String("username"), true), dbQuote(db.Name, true), dbQuote(db.Config.String("username"), true))
 	}
-	rules += "host all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n"
+	rules += "# END OpsView database access\n"
 	rel := "data/pg_hba.conf"
 	if inst.Config.String("mode") == "docker" {
 		rel = "data/pgdata/pg_hba.conf"
 	}
 	base := filepath.Join(e.Root, "instances", inst.ID)
-	if err := writeOwned(base, rel, []byte(rules)); err != nil {
+	old, err := os.ReadFile(filepath.Join(base, rel))
+	if err != nil {
 		return err
 	}
-	return e.sql(ctx, inst, "", strings.NewReader("SELECT pg_reload_conf();"), log)
+	preserved := string(old)
+	if strings.HasPrefix(preserved, "# Managed by OpsView\n") {
+		preserved = "local all all scram-sha-256\nhost all postgres 127.0.0.1/32 scram-sha-256\nhost all postgres ::1/128 scram-sha-256\n"
+	} else if strings.HasPrefix(preserved, "# BEGIN OpsView database access\n") {
+		if at := strings.Index(preserved, "# END OpsView database access\n"); at >= 0 {
+			preserved = preserved[at+len("# END OpsView database access\n"):]
+		} else {
+			return errors.New("受管访问规则不完整，请核对配置")
+		}
+	}
+	if err := writeOwned(base, rel, []byte(rules+preserved)); err != nil {
+		return err
+	}
+	invalid, checkErr := e.scalar(ctx, inst, "", "SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL;")
+	if checkErr != nil || invalid != 0 {
+		_ = writeOwned(base, rel, old)
+		return errors.New("访问规则校验失败，已保留旧规则")
+	}
+	if err := e.sql(ctx, inst, "", strings.NewReader("SELECT pg_reload_conf();"), func(string) {}); err != nil {
+		_ = writeOwned(base, rel, old)
+		_ = e.sql(context.Background(), inst, "", strings.NewReader("SELECT pg_reload_conf();"), func(string) {})
+		return err
+	}
+	return nil
 }
 func writeOwned(base, rel string, data []byte) error {
 	root, err := os.OpenRoot(base)
@@ -124,6 +151,9 @@ func (e *Engine) migrateDatabase(ctx context.Context, op model.Operation, source
 	if err != nil {
 		return nil, err
 	}
+	if !logicSQLName(source.Name) || !logicSQLName(source.Config.String("username")) {
+		return nil, errors.New("此纳管库或账号名称不适用于自动迁移，请手动导出恢复为新库")
+	}
 	if !op.Params.Bool("maintenanceConfirmed") {
 		return nil, errors.New("迁移前请停止应用写入，并明确确认维护窗口")
 	}
@@ -138,6 +168,9 @@ func (e *Engine) migrateDatabase(ctx context.Context, op model.Operation, source
 	toMajor, _ := strconv.Atoi(strings.Split(targetInst.Config.String("version"), ".")[0])
 	if toMajor < fromMajor {
 		return nil, errors.New("禁止将数据库迁移到较低的大版本")
+	}
+	if sourceInst.Config.String("software") == "postgresql" && toMajor != fromMajor {
+		return nil, errors.New("PostgreSQL 自动迁移仅验证同大版本实例；跨大版本需独立兼容性验收")
 	}
 
 	if sourceInst.Config.String("software") == "mysql" && (fromMajor != 8 || toMajor != 8 || !strings.HasPrefix(sourceInst.Config.String("version"), "8.4.") || !strings.HasPrefix(targetInst.Config.String("version"), "8.4.")) {
@@ -182,7 +215,7 @@ func (e *Engine) migrateDatabase(ctx context.Context, op model.Operation, source
 		if err != nil {
 			return nil, err
 		}
-		err = e.sql(ctx, targetInst, target.Name, f, log)
+		err = e.sql(ctx, targetInst, target.Name, f, func(string) {})
 		f.Close()
 		if err != nil {
 			return nil, fmt.Errorf("目标导入失败，源库保持不变：%w", err)
@@ -234,8 +267,8 @@ func (e *Engine) pgRestore(ctx context.Context, inst, target model.Resource, pat
 	args := []string{"-h", "127.0.0.1", "-p", strconv.Itoa(inst.Config.Int("port")), "-U", "postgres", "--no-owner", "--no-acl", "--exit-on-error", "--role=" + target.Config.String("username"), "-d", target.Name}
 	env := []string{"PGPASSWORD=" + inst.Config.String("password")}
 	if inst.Config.String("mode") == "docker" {
-		all := append([]string{"exec", "-i", "-e", env[0], "opsview-" + inst.ID, "pg_restore"}, args...)
-		return run(ctx, log, "", nil, file, "docker", all...)
+		all := append([]string{"exec", "-i", "-e", strings.SplitN(env[0], "=", 2)[0], "opsview-" + inst.ID, "pg_restore"}, args...)
+		return run(ctx, func(string) {}, "", env, file, "docker", all...)
 	}
-	return run(ctx, log, "", env, file, filepath.Join(e.Root, "instances", inst.ID, "runtime/bin/pg_restore"), args...)
+	return run(ctx, func(string) {}, "", env, file, filepath.Join(e.Root, "instances", inst.ID, "runtime/bin/pg_restore"), args...)
 }

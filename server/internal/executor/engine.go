@@ -164,10 +164,21 @@ func (e *Engine) Execute(ctx context.Context, op model.Operation, log func(strin
 	if op.Params == nil {
 		op.Params = model.Config{}
 	}
+	if op.Name == "database.delete" {
+		op.Name = "dbadmin.recycle"
+	}
 	if op.Resource.ID != "" && !logic.Name.MatchString(op.Resource.ID) {
 		return nil, errors.New("资源标识无效")
 	}
-	if !strings.HasPrefix(op.Name, "system.") && !strings.HasPrefix(op.Name, "docker.") && !strings.HasPrefix(op.Name, "files.") && !strings.HasPrefix(op.Name, "catalog.") && !strings.HasPrefix(op.Name, "plugin.") {
+	storedDatabase := strings.HasPrefix(op.Name, "database.") && op.Name != "database.create"
+	if storedDatabase {
+		stored, err := e.load(op.Resource.ID)
+		if err != nil || stored.Kind != "database" || stored.Status == "recycled" {
+			return nil, errors.New("受管数据库不可用")
+		}
+		op.Resource = stored
+	}
+	if !storedDatabase && !strings.HasPrefix(op.Name, "system.") && !strings.HasPrefix(op.Name, "docker.") && !strings.HasPrefix(op.Name, "files.") && !strings.HasPrefix(op.Name, "catalog.") && !strings.HasPrefix(op.Name, "plugin.") && !strings.HasPrefix(op.Name, "dbadmin.") && !strings.HasPrefix(op.Name, "redisdata.") {
 		if err := logic.Validate(op.Resource); err != nil {
 			return nil, err
 		}
@@ -176,6 +187,10 @@ func (e *Engine) Execute(ctx context.Context, op model.Operation, log func(strin
 		return nil, err
 	}
 	switch {
+	case strings.HasPrefix(op.Name, "dbadmin."):
+		return e.databaseAdmin(ctx, op, log)
+	case strings.HasPrefix(op.Name, "redisdata."):
+		return e.redisData(ctx, op)
 	case strings.HasPrefix(op.Name, "instance."):
 		action := strings.TrimPrefix(op.Name, "instance.")
 		if action != "install" && action != "start" && action != "stop" && action != "restart" && action != "uninstall" {

@@ -17,7 +17,7 @@ import (
 func sqlLiteral(s string) string {
 	return "'" + strings.ReplaceAll(strings.ReplaceAll(s, "\\", "\\\\"), "'", "''") + "'"
 }
-func pgLiteral(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+func pgLiteral(s string) string { return "E" + sqlLiteral(s) }
 func (e *Engine) database(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
 	r := op.Resource
 	inst, err := e.load(r.Config.String("instanceId"))
@@ -51,6 +51,24 @@ func (e *Engine) database(ctx context.Context, op model.Operation, log func(stri
 	sqlText := ""
 	switch action {
 	case "create":
+		if !validDBPassword(r.Config.String("password")) {
+			return nil, errors.New("新数据库需要有效密码")
+		}
+		encoding := r.Config.String("encoding")
+		if encoding == "" {
+			if software == "mysql" {
+				encoding = "utf8mb4"
+			} else {
+				encoding = "UTF8"
+			}
+		}
+		collation := r.Config.String("collation")
+		if !logicSQLName(encoding) || (collation != "" && !logicSQLName(collation)) {
+			return nil, errors.New("编码或排序规则无效")
+		}
+		r.Config["encoding"] = encoding
+		r.Config["owner"] = username
+		r.Config["managedAccount"] = true
 		if _, err = e.load(r.ID); err == nil {
 			return nil, errors.New("数据库已登记，禁止重复创建")
 		}
@@ -58,46 +76,18 @@ func (e *Engine) database(ctx context.Context, op model.Operation, log func(stri
 			return nil, err
 		}
 		if software == "mysql" {
-			sqlText = fmt.Sprintf("CREATE DATABASE `%s` CHARACTER SET utf8mb4;\nCREATE USER %s@%s IDENTIFIED BY %s;\nGRANT ALL PRIVILEGES ON `%s`.* TO %s@%s;", r.Name, sqlLiteral(username), sqlLiteral(source), sqlLiteral(r.Config.String("password")), r.Name, sqlLiteral(username), sqlLiteral(source))
-		} else {
-			sqlText = fmt.Sprintf("CREATE ROLE \"%s\" LOGIN PASSWORD %s;\nCREATE DATABASE \"%s\" OWNER \"%s\";", username, pgLiteral(r.Config.String("password")), r.Name, username)
-		}
-
-	case "access":
-		stored, err := e.load(r.ID)
-		if err != nil {
-			return nil, err
-		}
-		if stored.Name != r.Name || stored.Config.String("username") != username || stored.Config.String("instanceId") != inst.ID {
-			return nil, errors.New("修改访问设置不能改变数据库名、用户名或关联实例")
-		}
-		if software == "mysql" {
-			if stored.Config.String("source") != source {
-				sqlText = fmt.Sprintf("CREATE USER %s@%s IDENTIFIED BY %s; GRANT ALL PRIVILEGES ON `%s`.* TO %s@%s; DROP USER %s@%s;", sqlLiteral(username), sqlLiteral(source), sqlLiteral(r.Config.String("password")), r.Name, sqlLiteral(username), sqlLiteral(source), sqlLiteral(username), sqlLiteral(stored.Config.String("source")))
-			} else {
-				sqlText = fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY %s;", sqlLiteral(username), sqlLiteral(source), sqlLiteral(r.Config.String("password")))
+			sqlText = fmt.Sprintf("CREATE DATABASE `%s` CHARACTER SET utf8mb4;\nCREATE USER %s@%s IDENTIFIED BY %s;\nGRANT ALL PRIVILEGES ON `%s`.* TO %s@%s;", r.Name, sqlLiteral(username), sqlLiteral(mysqlAccountHost(source)), sqlLiteral(r.Config.String("password")), r.Name, sqlLiteral(username), sqlLiteral(mysqlAccountHost(source)))
+			sqlText = strings.Replace(sqlText, "CHARACTER SET utf8mb4", "CHARACTER SET "+encoding, 1)
+			if collation != "" {
+				sqlText = strings.Replace(sqlText, "CHARACTER SET "+encoding+";", "CHARACTER SET "+encoding+" COLLATE "+collation+";", 1)
 			}
 		} else {
-			sqlText = fmt.Sprintf("ALTER ROLE \"%s\" LOGIN PASSWORD %s;", username, pgLiteral(r.Config.String("password")))
+			sqlText = fmt.Sprintf("CREATE ROLE \"%s\" LOGIN PASSWORD %s;\nCREATE DATABASE \"%s\" OWNER \"%s\";", username, pgLiteral(r.Config.String("password")), r.Name, username)
+			sqlText = strings.TrimSuffix(sqlText, ";") + " ENCODING " + pgLiteral(encoding) + " TEMPLATE template0;"
 		}
-		if _, err := e.firewall(ctx, model.Operation{Name: "firewall.delete", Resource: databaseFirewall(stored, inst), Params: model.Config{}}, log); err != nil {
-			log("旧关联规则不存在或已回退，将按新访问设置重新检查")
-		}
-	case "delete":
-		stored, err := e.load(r.ID)
-		if err != nil {
-			return nil, err
-		}
-		if !op.Params.Bool("confirmDataDeletion") {
-			return nil, errors.New("删除数据库需要明确确认不可恢复的数据删除")
-		}
-		r = stored
-		username = r.Config.String("username")
-		if software == "mysql" {
-			sqlText = fmt.Sprintf("DROP DATABASE `%s`; DROP USER %s@%s;", r.Name, sqlLiteral(username), sqlLiteral(r.Config.String("source")))
-		} else {
-			sqlText = fmt.Sprintf("DROP DATABASE \"%s\"; DROP ROLE \"%s\";", r.Name, username)
-		}
+
+	case "access", "delete":
+		return nil, errors.New("请使用数据库专用访问或回收操作")
 	case "import":
 		if _, err = e.load(r.ID); err != nil {
 			return nil, err
@@ -111,14 +101,17 @@ func (e *Engine) database(ctx context.Context, op model.Operation, log func(stri
 			return nil, err
 		}
 		defer file.Close()
-		err = e.sql(ctx, inst, r.Name, file, log)
-		return model.Config{}, err
+		err = e.sql(ctx, inst, r.Name, file, func(string) {})
+		if err != nil {
+			return nil, errors.New("SQL 导入失败，请检查格式、版本及实际数据；查询内容不写入任务日志")
+		}
+		return model.Config{}, nil
 	case "migrate":
 		return e.migrateDatabase(ctx, op, inst, log)
 	default:
 		return nil, errors.New("数据库操作无效")
 	}
-	if err = e.sql(ctx, inst, "", strings.NewReader(sqlText), log); err != nil {
+	if err = e.dbRun(ctx, inst, "", sqlText); err != nil {
 		return nil, err
 	}
 	if action == "delete" {
@@ -145,7 +138,7 @@ func (e *Engine) database(ctx context.Context, op model.Operation, log func(stri
 			return nil, err
 		}
 	}
-	result := model.Config{"engine": software}
+	result := model.Config{"engine": software, "encoding": r.Config["encoding"], "collation": r.Config["collation"], "owner": r.Config["owner"], "managedAccount": r.Config["managedAccount"]}
 	if remote {
 		fw := databaseFirewall(r, inst)
 		data, err := e.firewall(ctx, model.Operation{Name: "firewall.apply", Resource: fw, Params: model.Config{}}, log)
@@ -184,11 +177,11 @@ func (e *Engine) sql(ctx context.Context, inst model.Resource, db string, input 
 			args[len(args)-1] = db
 		}
 	} else if db != "" {
-		args = append(args, db)
+		args = append(args, "--", db)
 	}
 	if inst.Config.String("mode") == "docker" {
-		execArgs := []string{"exec", "-i", "-e", env[0], "opsview-" + inst.ID, binary}
-		return run(ctx, log, "", nil, input, "docker", append(execArgs, args...)...)
+		execArgs := []string{"exec", "-i", "-e", strings.SplitN(env[0], "=", 2)[0], "opsview-" + inst.ID, binary}
+		return run(ctx, log, "", env, input, "docker", append(execArgs, args...)...)
 	}
 	path := filepath.Join(e.Root, "instances", inst.ID, "runtime", "bin", binary)
 	return run(ctx, log, "", env, input, path, args...)
@@ -287,4 +280,13 @@ func mapClone(c model.Config) model.Config {
 		out[k] = v
 	}
 	return out
+}
+
+// All supported MySQL versions accept IPv4 netmasks; CIDR prefix syntax is
+// newer than MySQL 5.7. Keep user-facing CIDR and render the account host here.
+func mysqlAccountHost(source string) string {
+	if _, network, err := net.ParseCIDR(source); err == nil && network.IP.To4() != nil {
+		return network.IP.String() + "/" + net.IP(network.Mask).String()
+	}
+	return source
 }

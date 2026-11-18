@@ -26,7 +26,8 @@ type attempt struct {
 }
 type authState struct {
 	sync.Mutex
-	attempts map[string]attempt
+	attempts    map[string]attempt
+	credentials map[string]time.Time
 }
 
 func (c *Controller) currentAdmin() (admin, error) {

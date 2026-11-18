@@ -88,16 +88,19 @@ const instances = computed(() =>
     .filter((r) =>
       props.kind === 'site'
         ? r.config.software === 'nginx'
-        : ['mysql', 'postgresql'].includes(r.config.software),
+        : ['mysql', 'postgresql'].includes(r.config.software) &&
+          (!props.initial?.softwareFilter || props.initial.softwareFilter === r.config.software),
     ),
 )
 const targets = computed(() =>
-  panel.resources.filter((r) =>
-    props.kind === 'schedule'
-      ? r.kind === (form.value.operation === 'renew' ? 'site' : 'backup')
-      : ['site', 'database', 'app'].includes(r.kind) ||
-        (r.kind === 'instance' && r.config.software === 'redis' && r.config.mode === 'native'),
-  ),
+  panel.resources
+    .filter((r) => r.status !== 'recycled')
+    .filter((r) =>
+      props.kind === 'schedule'
+        ? r.kind === (form.value.operation === 'renew' ? 'site' : 'backup')
+        : ['site', 'database', 'app'].includes(r.kind) ||
+          (r.kind === 'instance' && r.config.software === 'redis' && r.config.mode === 'native'),
+    ),
 )
 const version = computed(() => panel.catalog.find((v) => v.id === form.value.catalogId))
 const catalogOptions = computed(() =>
@@ -407,6 +410,22 @@ void api
               show-password
               placeholder="至少 12 位"
             />
+          </el-form-item>
+          <el-form-item label="字符集/编码">
+            <el-input
+              v-model="form.encoding"
+              :placeholder="
+                instances.find((i) => i.id === form.instanceId)?.config.software === 'mysql'
+                  ? 'utf8mb4'
+                  : 'UTF8'
+              "
+            />
+          </el-form-item>
+          <el-form-item
+            v-if="instances.find((i) => i.id === form.instanceId)?.config.software === 'mysql'"
+            label="排序规则"
+          >
+            <el-input v-model="form.collation" placeholder="实例默认" />
           </el-form-item>
           <el-form-item label="连接来源" class="wide">
             <el-input v-model="form.source" placeholder="127.0.0.1 或来源 IP/CIDR" />

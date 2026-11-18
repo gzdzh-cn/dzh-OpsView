@@ -3,6 +3,8 @@ import { usePageState } from '../composables/pageState'
 import PluginMarket from '../components/PluginMarket.vue'
 import DataList from '../components/DataList.vue'
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+const route = useRoute()
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import { usePanel } from '../stores/panel'
@@ -21,47 +23,56 @@ const panel = usePanel(),
   importName = ref(''),
   importText = ref(''),
   busy = ref(false)
+watch(
+  () => route.query.software,
+  (value) => {
+    if (value) tab.value = 'software'
+  },
+  { immediate: true },
+)
 const groups = computed(() =>
-  ['nginx', 'mysql', 'php', 'redis', 'postgresql', 'nodejs'].map((software) => ({
-    software,
-    versions: panel.catalog.filter((v) => v.software === software),
-    title:
-      software === 'php'
-        ? 'PHP'
-        : software === 'redis'
-          ? 'Redis'
-          : software === 'nginx'
-            ? 'Nginx'
-            : software === 'mysql'
-              ? 'MySQL'
-              : software === 'nodejs'
-                ? 'Node.js'
-                : 'PostgreSQL',
-    symbol:
-      software === 'php'
-        ? 'PHP'
-        : software === 'redis'
-          ? 'R'
-          : software === 'nginx'
-            ? 'N'
-            : software === 'mysql'
-              ? 'M'
-              : software === 'nodejs'
-                ? 'JS'
-                : 'P',
-    description:
-      software === 'php'
-        ? '多版本 PHP 与独立 FPM，为每个网站选择运行环境和扩展。'
-        : software === 'redis'
-          ? '高性能内存数据库与缓存，支持持久化、实例隔离和资源控制。'
-          : software === 'nginx'
-            ? '高性能 Web 服务与反向代理，连接域名、静态站点和你的应用。'
-            : software === 'mysql'
-              ? '为业务应用提供可靠的关系型数据存储，独立版本与实例管理。'
-              : software === 'nodejs'
-                ? '安装独立的 Node.js LTS 运行时，为应用选择准确版本的可执行文件。'
-                : '功能丰富的开源关系型数据库，为复杂查询与数据应用提供支持。',
-  })),
+  ['nginx', 'mysql', 'php', 'redis', 'postgresql', 'nodejs']
+    .map((software) => ({
+      software,
+      versions: panel.catalog.filter((v) => v.software === software),
+      title:
+        software === 'php'
+          ? 'PHP'
+          : software === 'redis'
+            ? 'Redis'
+            : software === 'nginx'
+              ? 'Nginx'
+              : software === 'mysql'
+                ? 'MySQL'
+                : software === 'nodejs'
+                  ? 'Node.js'
+                  : 'PostgreSQL',
+      symbol:
+        software === 'php'
+          ? 'PHP'
+          : software === 'redis'
+            ? 'R'
+            : software === 'nginx'
+              ? 'N'
+              : software === 'mysql'
+                ? 'M'
+                : software === 'nodejs'
+                  ? 'JS'
+                  : 'P',
+      description:
+        software === 'php'
+          ? '多版本 PHP 与独立 FPM，为每个网站选择运行环境和扩展。'
+          : software === 'redis'
+            ? '高性能内存数据库与缓存，支持持久化、实例隔离和资源控制。'
+            : software === 'nginx'
+              ? '高性能 Web 服务与反向代理，连接域名、静态站点和你的应用。'
+              : software === 'mysql'
+                ? '为业务应用提供可靠的关系型数据存储，独立版本与实例管理。'
+                : software === 'nodejs'
+                  ? '安装独立的 Node.js LTS 运行时，为应用选择准确版本的可执行文件。'
+                  : '功能丰富的开源关系型数据库，为复杂查询与数据应用提供支持。',
+    }))
+    .filter((group) => !route.query.software || group.software === route.query.software),
 )
 const versions = ref<Record<string, string>>({})
 const settingsOpen = ref(false),
@@ -184,6 +195,9 @@ async function importPackage() {
   </el-tabs>
   <template v-if="tab === 'software'">
     <div class="surface software-list">
+      <div v-if="route.query.software" class="page-toolbar">
+        <router-link to="/software">显示全部软件</router-link>
+      </div>
       <DataList
         :key="'Market-1' + ':' + tab"
         :state-key="'Market-1' + ':' + tab"

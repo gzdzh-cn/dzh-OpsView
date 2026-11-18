@@ -63,6 +63,11 @@ func (c *Controller) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/setup", c.setup)
 	mux.HandleFunc("POST /api/v1/auth/login", c.login)
 	routes := map[string]http.HandlerFunc{
+		"GET /api/v1/databases":                   c.databases,
+		"GET /api/v1/databases/{id}/{operation}":  c.databaseOperation,
+		"POST /api/v1/databases/{id}/{operation}": c.databaseOperation,
+		"POST /api/v1/databases/{id}/credential":  c.databaseCredential,
+		"POST /api/v1/redis/{id}/{operation}":     c.redisOperation,
 		"POST /api/v1/tasks/{id}/cancel":          c.cancelTask,
 		"POST /api/v1/auth/username":              c.username,
 		"POST /api/v1/settings/certificate/issue": c.issuePanelCertificate,
@@ -274,6 +279,11 @@ func (c *Controller) validate(res *model.Resource) error {
 			return errors.New("此版本未提供原生安装配方")
 		}
 	}
+	if res.Kind == "database" && res.Status == "pending" {
+		for _, key := range []string{"imported", "owner", "managedAccount", "recyclePhase", "recycleBackupId", "expiresAt"} {
+			delete(res.Config, key)
+		}
+	}
 	if res.Kind == "schedule" {
 		if _, e := cron.ParseStandard(res.Config.String("cron")); e != nil {
 			return errors.New("Cron 表达式无效，使用五段格式")
@@ -287,8 +297,16 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "资源不存在")
 		return
 	}
+	if res.Kind == "backup" && res.Config.Bool("recycleOnly") {
+		fail(w, 409, "回收站专属备份仅能通过数据库回收站操作")
+		return
+	}
 	if res.Kind == "app" {
 		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
+		return
+	}
+	if res.Kind == "database" && res.Status != "pending" {
+		fail(w, 409, "请使用数据库专用权限、密码及备注接口")
 		return
 	}
 	if res.Kind == "instance" {
@@ -351,6 +369,10 @@ func (c *Controller) deleteResource(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "资源不存在")
 		return
 	}
+	if res.Kind == "backup" && res.Config.Bool("recycleOnly") {
+		fail(w, 409, "回收站专属备份仅能通过数据库回收站操作")
+		return
+	}
 	if res.Kind == "app" {
 		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
 		return
@@ -385,6 +407,10 @@ func (c *Controller) action(w http.ResponseWriter, r *http.Request) {
 	res, e := c.App.Store.Resource(r.PathValue("id"))
 	if e != nil {
 		fail(w, 404, "资源不存在")
+		return
+	}
+	if res.Kind == "backup" && res.Config.Bool("recycleOnly") {
+		fail(w, 409, "回收站专属备份仅能通过数据库回收站操作")
 		return
 	}
 	if res.Kind == "app" {

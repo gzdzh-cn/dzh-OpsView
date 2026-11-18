@@ -100,7 +100,7 @@ func Validate(r model.Resource) error {
 		if !Name.MatchString(c.String("instanceId")) {
 			return errors.New("请选择数据库实例")
 		}
-		if len(c.String("password")) < 12 || len(c.String("password")) > 128 || strings.ContainsAny(c.String("password"), "\x00\n\r") {
+		if !(c.Bool("imported") && c.String("password") == "") && (len(c.String("password")) < 12 || len(c.String("password")) > 128 || strings.ContainsAny(c.String("password"), "\x00\n\r")) {
 			return errors.New("密码需为 12–128 位且不包含换行")
 		}
 		if c.String("source") == "" {

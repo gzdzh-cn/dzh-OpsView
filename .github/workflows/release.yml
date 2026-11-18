@@ -52,6 +52,11 @@ jobs:
         working-directory: web
       - run: npm run test:e2e
         working-directory: web
+      - name: Test SQL and Redis management in disposable Linux databases
+        working-directory: server
+        env:
+          OPSVIEW_DATABASE_INTEGRATION: '1'
+        run: go test ./internal/executor -run 'TestLive(Database|Redis)' -v -timeout 12m
       - run: ./scripts/test-log-rotation.sh
       - run: ./scripts/test-php-session.sh
       - run: make release

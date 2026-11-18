@@ -10,6 +10,10 @@ import (
 // Every retained instance occupies its exact software version, including failed
 // installations and uninstalled instances whose business data is retained.
 func (s *Store) migrateV2() error {
+	var schemaVersion int
+	if err := s.DB.QueryRow("PRAGMA user_version").Scan(&schemaVersion); err != nil {
+		return err
+	}
 	if _, err := s.DB.Exec(`CREATE TABLE IF NOT EXISTS software_versions (software TEXT NOT NULL, version TEXT NOT NULL, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE, PRIMARY KEY(software,version));`); err != nil {
 		return err
 	}
@@ -56,8 +60,10 @@ func (s *Store) migrateV2() error {
 	if _, err = tx.Exec(`UPDATE tasks SET state='cancelled',error='应用进程功能已下线，旧服务与数据保留',updated_at=? WHERE operation LIKE 'app.%' AND state='queued'`, Now()); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`PRAGMA user_version=2`); err != nil {
-		return err
+	if schemaVersion < 2 {
+		if _, err = tx.Exec(`PRAGMA user_version=2`); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

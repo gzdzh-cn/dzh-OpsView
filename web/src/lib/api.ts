@@ -32,10 +32,13 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
     options.method &&
     !['GET', 'HEAD'].includes(options.method.toUpperCase()) &&
     !path.startsWith('/auth') &&
-    !path.startsWith('/files')
+    !path.startsWith('/files') &&
+    !path.startsWith('/redis') &&
+    !path.endsWith('/credential')
   ) {
     queries.invalidate(
       (key) =>
+        (path.startsWith('/databases') && key.startsWith('/databases')) ||
         key === '/resources' ||
         key === '/tasks' ||
         key === '/overview' ||
@@ -55,6 +58,21 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
     )
   }
   return data as T
+}
+export async function downloadPOST(path: string, body: unknown, filename: string) {
+  const response = await fetch('/api/v1' + path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) throw new Error('下载失败，请检查实例和键状态')
+  const url = URL.createObjectURL(await response.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 export const post = <T = any>(path: string, body: unknown = {}) =>
   api<T>(path, { method: 'POST', body: JSON.stringify(body) })

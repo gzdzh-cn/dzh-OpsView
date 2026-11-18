@@ -36,13 +36,13 @@ MySQL 与 PostgreSQL 的实例、数据目录、端口及原生用户独立。�
 
 远程访问需要已启用且兼容的 UFW，创建规则后在安全页面 120 秒内确认。最后一条关联远程规则撤回时，执行器尝试恢复 loopback 绑定。云安全组需另外检查。应用使用不同容器网络时，不能把容器内 `127.0.0.1` 当作宿主机数据库地址。
 
-“访问与密码”修改专用用户的密码及来源，不支持直接修改数据库名、用户名或所在实例。建库任务若已完成 SQL 步骤但远程网络步骤失败，可使用此入口重新应用访问设置。失败现场保留，先核对任务日志再操作。
+“改密”与“连接来源”分别修改账号密码和来源，不支持直接修改数据库名、用户名或所在实例。建库任务若已完成 SQL 步骤但远程网络步骤失败，可使用此入口重新应用访问设置。失败现场保留，先核对任务日志再操作。
 
 SQL 导入使用对应实例的 `imports/` 目录，服务器文件页上传上限为 2 GiB、文本编辑 10 MiB；大文件可由主机管理员传入此目录后提交导入。导出使用对应实例自带客户端。PostgreSQL 导出是含 `database.dump` 和 `roles.sql` 的 tar.gz，MySQL 为 SQL 文件。导入文件属于受信任的数据库管理输入，不运行宿主机 Shell。
 
-数据库备份恢复只写入新的数据库名，创建同名专用用户、复用原密码并默认限制为本机，成功后登记为新的受管理数据库。新数据库尚需检查应用兼容性后切换连接。PostgreSQL 角色备份作为灾难恢复参考保留；首版不会把整个角色清单自动恢复到已有服务器，以免覆盖其他用户。
+数据库备份恢复只写入新的数据库名，创建同名专用用户、生成新的随机密码并默认限制为本机，成功后登记为新的受管理数据库。新数据库尚需检查应用兼容性后切换连接。PostgreSQL 角色备份作为灾难恢复参考保留；首版不会把整个角色清单自动恢复到已有服务器，以免覆盖其他用户。
 
-迁移前必须停止应用写入。MySQL 自动迁移限定 8.4 LTS 内，PostgreSQL 限定 public schema 的表并禁止降大版本；验证表及行数后切换面板关联。它不能替代应用层校验。源实例和库保留，执行器记录 migration-source 以防误卸载；首版清理源快照需本机人工审核，未提供自动清理按钮。
+迁移前必须停止应用写入。MySQL 自动迁移限定 8.4 LTS 内，PostgreSQL 限定同大版本及 public schema 的表；验证表及行数后切换面板关联。它不能替代应用层校验。源实例和库保留，执行器记录 migration-source 以防误卸载；首版清理源快照需本机人工审核，未提供自动清理按钮。
 
 ## 备份及面板配置恢复
 
@@ -74,7 +74,7 @@ sudo ov update --version v0.1.1
 sudo bash opsview-linux-amd64/deploy/update.sh
 ```
 
-更新脚本停止面板及执行器，完整备份面板目录、旧二进制、受控更新脚本、运行配置、ov 入口与 systemd 单元；替换后检查两个服务及 HTTPS 健康接口，失败时把失败数据目录移出并恢复完整旧目录、二进制和单元。备份保存于 `/var/lib/opsview/updates/`，含主密钥，须限制访问并按需离线保存。自定义 systemd 配置使用 `systemctl edit` 的 drop-in，主单元随发布包更新。与端口管理冲突的 ExecStart 覆盖会拒绝更新。v0.1.3 的 schema 为 2（旧版本为 1）；数据库来自较新 schema 时拒绝打开。
+更新脚本停止面板及执行器，完整备份面板目录、旧二进制、受控更新脚本、运行配置、ov 入口与 systemd 单元；替换后检查两个服务及 HTTPS 健康接口，失败时把失败数据目录移出并恢复完整旧目录、二进制和单元。备份保存于 `/var/lib/opsview/updates/`，含主密钥，须限制访问并按需离线保存。自定义 systemd 配置使用 `systemctl edit` 的 drop-in，主单元随发布包更新。与端口管理冲突的 ExecStart 覆盖会拒绝更新。v0.1.3-rc.5 的 schema 为 3（rc.1–rc.4 为 2）；数据库来自较新 schema 时拒绝打开。
 
 已安装的 `opsview` 命令默认使用 `/var/lib/opsview/panel`。root 执行维护命令时，会转为 opsview 用户，避免创建 root 所属 WAL；信任公钥命令保留 root 权限。开发二进制默认使用当前目录的 `.opsview`，可用 `--data` 指定。
 
@@ -178,7 +178,7 @@ ZIP/TAR.GZ 归档限制为 10000 项、总展开量 8 GiB，拒绝绝对/越界�
 
 ```bash
 ov backup
-ov update --version v0.1.3-rc.4
+ov update --version v0.1.3-rc.5
 ```
 
 本版本不触发用户服务器自动更新，正式 latest 入口独立管理。
@@ -198,4 +198,35 @@ GitHub 的集成令牌可能拒绝为修改工作流的提交创建发布标签�
 
 文件列表、搜索、收藏和最近访问隐藏禁止访问项目及其链接，包括面板认证数据、密钥、内部临时数据和 `/proc`、`/sys`、`/dev`、`/run`。`/etc`、`/usr`、`/var` 等目录仍可浏览；整目录危险操作限制保持。开启“显示隐藏文件”可查看普通 `.env`，不会显示受保护项目。直接输入受保护路径也会拒绝，不删除实际文件。
 
-测试版更新：`ov update --version v0.1.3-rc.4`。自动更新失败会按安装器流程回退；需要主动退回上一版时执行 `ov update --version v0.1.3-rc.3`。本版没有数据库迁移，不需重置账号或业务数据。
+测试版更新：`ov update --version v0.1.3-rc.5`。自动更新失败会按安装器流程回退；需要主动退回上一版时执行 `ov update --version v0.1.3-rc.3`。本版没有数据库迁移，不需重置账号或业务数据。
+
+## rc.5 数据库迁移与回退
+
+rc.5 增量迁移到 SQLite schema 3，新增数据库账号绑定及回收记录，库名唯一性调整为“同实例内唯一”。数据库资源、管理员、备份与关联网站的原 ID 保留。数据库新页面操作见 [数据库管理说明](database-management.md)。
+
+升级前执行 `ov backup`，再执行 `ov update --version v0.1.3-rc.5`。更新器停服后自动复制完整面板目录（包括 SQLite、WAL 和 master.key）、旧二进制/更新脚本、systemd 单元、运行配置与 ov 入口至终端打印的 `/var/lib/opsview/updates/<时间-进程号>/`。更新失败自动恢复这份快照。
+
+成功升级后回退 rc.4，**不能只执行旧版本更新命令**，旧程序会拒绝 schema 3。选择本次更新之前的快照，在没有后台变更任务时以 root 执行以下步骤；先将占位路径替换为已核对的真实目录：
+
+```bash
+OPSVIEW_ROLLBACK=/var/lib/opsview/updates/替换为本次升级前快照目录
+# 下面检查必须全部成功，确认快照来自 rc.4，并包含原主密钥。
+test -f "$OPSVIEW_ROLLBACK/panel/opsview.db" && test -f "$OPSVIEW_ROLLBACK/panel/master.key" && test -x "$OPSVIEW_ROLLBACK/bin/opsview" || exit 1
+systemctl stop opsview-panel.service opsview-executor.service
+OPSVIEW_SAVED=/var/lib/opsview/updates/before-manual-rollback-$(date -u +%Y%m%dT%H%M%SZ)
+install -d -m 0700 "$OPSVIEW_SAVED"
+mv /var/lib/opsview/panel "$OPSVIEW_SAVED/panel"
+mv /opt/opsview/bin "$OPSVIEW_SAVED/bin"
+cp -a "$OPSVIEW_ROLLBACK/panel" /var/lib/opsview/panel
+cp -a "$OPSVIEW_ROLLBACK/bin" /opt/opsview/bin
+cp -a "$OPSVIEW_ROLLBACK/units/opsview-panel.service" "$OPSVIEW_ROLLBACK/units/opsview-executor.service" /etc/systemd/system/
+cp -a "$OPSVIEW_ROLLBACK/panel.json" /etc/opsview/panel.json
+ln -sfn /opt/opsview/bin/opsview /usr/local/bin/ov
+systemctl daemon-reload
+systemctl reset-failed opsview-panel.service opsview-executor.service
+systemctl start opsview-executor.service opsview-panel.service
+ov status
+ov info
+```
+
+保留 systemd drop-in。快照含密钥，禁止放入网站目录或公开分享。此操作恢复面板元数据，不撤销 rc.5 期间已执行的建库、改密、删库或 Redis 写入；若升级后已操作业务，先单独备份业务并核对执行器与元数据关联，再决定回退。SQL 回收备份在执行器备份目录中加密保存，需保留对应 `backup.key`，面板元数据备份不能替代业务备份。

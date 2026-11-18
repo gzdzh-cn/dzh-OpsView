@@ -37,7 +37,7 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if schemaVersion > 2 {
+	if schemaVersion > 3 {
 		db.Close()
 		return nil, errors.New("面板数据库来自较新版本，禁止降级打开")
 	}
@@ -57,6 +57,10 @@ func Open(dir string) (*Store, error) {
 		return nil, e
 	}
 	if e = s.migrateV2(); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = s.migrateV3(); e != nil {
 		db.Close()
 		return nil, e
 	}
@@ -148,6 +152,11 @@ func (s *Store) Create(r *model.Resource) error {
 	if e != nil {
 		return e
 	}
+	if r.Kind == "database" {
+		if _, e = tx.Exec(`INSERT INTO database_bindings VALUES(?,?,?,?,?)`, r.ID, r.Config.String("instanceId"), r.Name, r.Config.String("username"), r.Config.Bool("imported")); e != nil {
+			return e
+		}
+	}
 	if sw != "" && ver != "" {
 		if _, e = tx.Exec(`INSERT INTO software_versions VALUES(?,?,?)`, sw, ver, r.ID); e != nil {
 			return e
@@ -156,13 +165,31 @@ func (s *Store) Create(r *model.Resource) error {
 	return tx.Commit()
 }
 func (s *Store) Update(r *model.Resource) error {
-	res, e := s.DB.Exec(`UPDATE resources SET name=?,status=?,config=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, r.Name, r.Status, s.encode(r.Config), Now(), r.ID, r.Revision)
+	tx, e := s.DB.Begin()
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	res, e := tx.Exec(`UPDATE resources SET name=?,status=?,config=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, r.Name, r.Status, s.encode(r.Config), Now(), r.ID, r.Revision)
 	if e != nil {
 		return e
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return errors.New("资源已被修改，请刷新后重试")
+	}
+	if r.Kind == "database" {
+		if _, e = tx.Exec(`DELETE FROM database_bindings WHERE resource_id=?`, r.ID); e != nil {
+			return e
+		}
+		if r.Status != "recycled" {
+			if _, e = tx.Exec(`INSERT INTO database_bindings VALUES(?,?,?,?,?)`, r.ID, r.Config.String("instanceId"), r.Name, r.Config.String("username"), r.Config.Bool("imported")); e != nil {
+				return e
+			}
+		}
+	}
+	if e = tx.Commit(); e != nil {
+		return e
 	}
 	r.Revision++
 	return nil

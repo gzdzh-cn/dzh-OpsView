@@ -846,3 +846,160 @@ test('a failed route chunk offers recovery instead of an inert menu', async ({ p
   await expect(page.getByRole('main', { name: '备份与计划', exact: true })).toBeVisible()
   await expect(page.getByRole('tab', { name: '备份任务', exact: true })).toBeVisible()
 })
+
+test('database tabs keep distinct compact tables and independent Redis browsing', async ({
+  page,
+}) => {
+  const instances = ['mysql', 'postgresql', 'redis'].map((software, index) => ({
+    id: 'db-instance-' + software,
+    kind: 'instance',
+    name: software + '-test',
+    status: 'ready',
+    revision: 1,
+    createdAt: '',
+    updatedAt: '',
+    config: { software, mode: 'native', version: 'test', port: 3306 + index },
+  }))
+  await page.route('**/api/v1/resources', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: instances }) : route.continue(),
+  )
+  await page.route('**/api/v1/databases?*', (route) => {
+    const url = new URL(route.request().url())
+    const engine = url.searchParams.get('engine')
+    return route.fulfill({
+      json: {
+        rows: [
+          {
+            id: 'db-' + engine,
+            kind: 'database',
+            name: 'example_' + engine,
+            status: 'ready',
+            revision: 1,
+            config: {
+              username: 'appuser',
+              owner: 'appowner',
+              instanceId: 'db-instance-' + engine,
+              instanceName: engine + '-test',
+              encoding: engine === 'mysql' ? 'utf8mb4' : 'UTF8',
+              hasPassword: true,
+            },
+          },
+        ],
+      },
+    })
+  })
+  let written: Record<string, any> | undefined
+  let recycleRequest: Record<string, any> | undefined
+  await page.route('**/api/v1/databases/*/capabilities', (route) =>
+    route.fulfill({ json: { connected: true } }),
+  )
+  await page.route('**/api/v1/databases/*/credential', (route) =>
+    route.fulfill({ json: { password: 'fixture-business-secret', displaySeconds: 30 } }),
+  )
+  await page.route('**/api/v1/databases/*/recycle', (route) => {
+    recycleRequest = route.request().postDataJSON()
+    return route.fulfill({ status: 202, json: { id: 'fixture-recycle', state: 'queued' } })
+  })
+  await page.route('**/api/v1/redis/**', (route) => {
+    const op = route.request().url().split('/').at(-1)
+    if (op === 'write') {
+      written = route.request().postDataJSON()
+      return route.fulfill({ json: { ok: true } })
+    }
+    return route.fulfill({
+      json:
+        op === 'databases'
+          ? { count: 16 }
+          : op === 'read'
+            ? {
+                type: 'string',
+                key: 'c2Vzc2lvbg==',
+                content: { text: 'current-value', base64: 'Y3VycmVudC12YWx1ZQ==', binary: false },
+                editable: true,
+                complete: true,
+                revision: 'revision-1',
+                ttlMillis: 30000,
+                cursor: '0',
+              }
+            : {
+                cursor: '0',
+                rows: [
+                  {
+                    key: 'c2Vzc2lvbg==',
+                    name: 'session',
+                    type: 'string',
+                    length: 12,
+                    ttlMillis: 30000,
+                  },
+                ],
+              },
+    })
+  })
+  await page.goto('/databases')
+  await expect(
+    page.getByRole('columnheader', { name: '字符集/排序规则', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('tab', { name: 'PostgreSQL', exact: true }).click()
+  await expect(page.getByRole('columnheader', { name: '所有者', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '编码', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'Redis', exact: true }).click()
+  await expect(page.getByRole('columnheader', { name: '键名', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'session', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '添加数据库', exact: true })).toHaveCount(0)
+  await page.getByRole('tab', { name: 'MySQL', exact: true }).click()
+  await expect(page.getByRole('cell', { name: 'example_mysql', exact: true })).toBeVisible()
+  await page.screenshot({ path: '../.opsview/screenshots/database-mysql.png', fullPage: true })
+  await page.getByRole('button', { name: '•••••• 查看' }).click()
+  const credential = page.getByRole('dialog', { name: '查看业务账号密码 · example_mysql' })
+  await credential.getByPlaceholder('当前管理员密码').fill('fixture-password')
+  await credential.getByRole('button', { name: '验证并查看' }).click()
+  await expect(credential.getByText('fixture-business-secret', { exact: true })).toBeVisible()
+  await credential.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(page.getByText('fixture-business-secret', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '更多数据库操作' }).click()
+  await page.getByRole('menuitem', { name: '删除并回收' }).click()
+  const recycle = page.getByRole('dialog', { name: '删除并进入回收站 · example_mysql' })
+  await expect(recycle.getByRole('button', { name: '确认提交' })).toBeDisabled()
+  await recycle.getByText('已停止业务写入，确认删除此数据库', { exact: true }).click()
+  await recycle.getByRole('button', { name: '确认提交' }).click()
+  await expect(recycle).not.toBeVisible()
+  expect(recycleRequest).toMatchObject({ maintenanceConfirmed: true, confirmDataDeletion: true })
+  await page.getByRole('tab', { name: 'Redis', exact: true }).click()
+  await page.screenshot({ path: '../.opsview/screenshots/database-redis.png', fullPage: true })
+  await page.getByRole('button', { name: '管理', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Redis 键管理' })
+  await expect(editor.getByPlaceholder('单次编辑最多 1 MiB')).toHaveValue('current-value')
+  await editor.getByPlaceholder('单次编辑最多 1 MiB').fill('edited-value')
+  await editor.getByRole('button', { name: '保存（保留 TTL）' }).click()
+  await expect(editor).not.toBeVisible()
+  expect(written).toMatchObject({
+    operation: 'set',
+    revision: 'revision-1',
+    value: Buffer.from('edited-value').toString('base64'),
+    db: 0,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('tab', { name: 'Redis', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
+})
+
+test('database install guidance selects its software despite saved market tab', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/resources', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: [] }) : route.continue(),
+  )
+  await page.route('**/api/v1/databases?*', (route) => route.fulfill({ json: { rows: [] } }))
+  await page.goto('/software')
+  await page.getByRole('tab', { name: '插件市场', exact: true }).click()
+  await page.getByRole('link', { name: '数据库', exact: true }).click()
+  await page.getByRole('tab', { name: 'PostgreSQL', exact: true }).click()
+  await page.getByRole('button', { name: '前往软件市场安装' }).click()
+  await expect(page.getByRole('tab', { name: '核心软件', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByRole('cell', { name: /PostgreSQL/ })).toBeVisible()
+  await page.getByRole('link', { name: '显示全部软件' }).click()
+  await expect(page.getByRole('cell', { name: /MySQL/ })).toBeVisible()
+})

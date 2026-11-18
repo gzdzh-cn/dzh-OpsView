@@ -3,7 +3,7 @@ import { createRouter, createWebHistory, type RouteComponent } from 'vue-router'
 const pages: Record<string, () => Promise<RouteComponent>> = {
   '/': () => import('./views/Overview.vue').then((module) => module.default),
   '/sites': () => import('./views/Sites.vue').then((module) => module.default),
-  '/databases': () => import('./views/Resources.vue').then((module) => module.default),
+  '/databases': () => import('./views/Databases.vue').then((module) => module.default),
   '/docker': () => import('./views/Docker.vue').then((module) => module.default),
   '/software': () => import('./views/Market.vue').then((module) => module.default),
   '/files': () => import('./views/Files.vue').then((module) => module.default),
@@ -37,7 +37,6 @@ export const router = createRouter({
     {
       path: '/databases',
       component: pages['/databases'],
-      props: { kind: 'database' },
       meta: { title: '数据库', caption: '独立实例，清晰管理每一份数据' },
     },
     {

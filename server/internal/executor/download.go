@@ -33,6 +33,19 @@ func (e *Engine) handleDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 404)
 		return
 	}
+	if op.Name == "redisdata.download" && stored.Kind == "instance" && stored.Config.String("software") == "redis" {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="redis-value.redis-dump"`)
+		transfer := &downloadWriter{ResponseWriter: w}
+		if err = e.redisDownload(r.Context(), stored, op.Params, transfer); err != nil {
+			if transfer.started {
+				panic(http.ErrAbortHandler)
+			}
+			w.Header().Del("Content-Length")
+			http.Error(w, "Redis 下载失败", 422)
+		}
+		return
+	}
 	var path, name string
 	if op.Name == "backup.download" && stored.Kind == "backup" {
 		name = op.Params.String("artifact")
@@ -108,6 +121,22 @@ func (c *Client) Download(ctx context.Context, op model.Operation, w http.Respon
 			w.Header().Set(h, value)
 		}
 	}
-	_, err = io.Copy(w, res.Body)
+	copied, err := io.Copy(w, res.Body)
+	if err != nil && copied > 0 {
+		panic(http.ErrAbortHandler)
+	}
+	if err != nil {
+		w.Header().Del("Content-Length")
+	}
 	return err
+}
+
+type downloadWriter struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (w *downloadWriter) Write(p []byte) (int, error) {
+	w.started = true
+	return w.ResponseWriter.Write(p)
 }

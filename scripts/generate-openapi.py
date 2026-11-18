@@ -96,5 +96,30 @@ add('/runtime/confirm','post','使用一次性确认凭证提交重新连接结�
 add('/settings/certificate/issue','post','提交域名或公网 IP ACME 申请',ref('Task'),obj({'host':string,'email':string,'acceptTerms':{'type':'boolean'}}),status='202')
 add('/auth/username','post','修改用户名，失效旧会话并保留双因素认证',body=obj({'username':string,'password':string,'code':string}))
 add('/tasks/{id}/cancel','post','取消软件安装或文件任务；变更阶段保留可恢复副本',body=config,status='202')
+# Dedicated SQL/Redis APIs: sensitive requests bypass the navigation cache.
+integer = {"type":"integer"}
+boolean = {"type":"boolean"}
+schemas['DatabaseList'] = obj({'rows':{'type':'array','items':ref('Resource')}})
+schemas['DatabaseCredentialRequest'] = obj({'password':{'type':'string','writeOnly':True},'code':{'type':'string','writeOnly':True}},[])
+schemas['DatabaseCredential'] = obj({'password':{'type':'string','description':'仅当前弹窗保留 30 秒；禁止缓存'},'displaySeconds':integer})
+schemas['DatabaseAction'] = obj({'name':string,'username':string,'source':string,'password':{'type':'string','writeOnly':True,'minLength':12,'maxLength':128},'level':{'type':'string','enum':['readonly','readwrite','admin']},'schema':string,'table':string,'operation':{'type':'string','enum':['check','optimize','repair','analyze','vacuum']},'confirmed':boolean,'maintenanceConfirmed':boolean,'confirmDataDeletion':boolean,'sharedConfirmed':boolean,'allowRemote':boolean,'databaseName':string,'targetInstanceId':string,'revision':integer,'note':{'type':'string','maxLength':1000}},[])
+add('/databases','get','按引擎/实例读取数据库或回收站；仅返回遮盖密码、可用操作及备份元数据',ref('DatabaseList'))
+paths['/api/v1/databases']['get']['parameters']=[{'name':key,'in':'query','schema':schema} for key,schema in [('engine',{'type':'string','enum':['mysql','postgresql']}),('instanceId',string),('recycled',boolean)]]
+for op in ['capabilities','inventory','permissions','tables','structure']:
+    add('/databases/{id}/'+op,'get','读取数据库 '+op+'；由执行器校验实际实例和对象')
+    if op=='structure':
+        paths['/api/v1/databases/{id}/'+op]['get']['parameters'] += [{'name':key,'in':'query','required':True,'schema':string} for key in ['schema','table']]
+for op in ['adopt','password','grant','access','maintain','recycle','restore','purge']:
+    add('/databases/{id}/'+op,'post','提交数据库 '+op+' 任务；实例串行；回收必须先备份并确认维护窗口',ref('Task'),ref('DatabaseAction'),status='202')
+add('/databases/{id}/note','post','仅更新备注；revision 冲突返回 409',body=ref('DatabaseAction'))
+add('/databases/{id}/credential','post','验证当前管理员密码和 TOTP；授权限当前会话 5 分钟；响应 no-store',ref('DatabaseCredential'),ref('DatabaseCredentialRequest'))
+paths['/api/v1/databases/{id}/credential']['post']['responses']['200']['headers']={'Cache-Control':{'schema':{'type':'string','enum':['no-store']}}}
+schemas['RedisInput']=obj({'db':{'type':'integer','minimum':0,'maximum':65535},'cursor':string,'pattern':{'type':'string','maxLength':1024},'key':{'type':'string','format':'byte'},'type':{'type':'string','enum':['string','hash','list','set','zset','stream']},'operation':{'type':'string','enum':['set','remove-member','delete','rename','ttl']},'revision':string,'value':{'type':'string','format':'byte','description':'解码后单次编辑最多 1 MiB'},'field':{'type':'string','format':'byte'},'target':{'type':'string','format':'byte'},'index':string,'score':string,'ttl':{'type':'integer','minimum':-1,'maximum':2147483647},'confirmed':boolean},[])
+schemas['RedisKey']=obj({'key':{'type':'string','format':'byte'},'name':string,'binary':boolean,'type':string,'ttlMillis':integer,'length':integer,'revision':string,'cursor':string,'editable':boolean,'complete':boolean,'notice':string,'content':{}},['key','name','binary','type','ttlMillis','length'])
+schemas['RedisScan']=obj({'cursor':string,'rows':{'type':'array','items':ref('RedisKey')}})
+for op in ['databases','scan','read','write','download']:
+    response = ref('RedisScan') if op=='scan' else ref('RedisKey') if op=='read' else config
+    add('/redis/{id}/'+op,'post','结构化 Redis '+op+'；无任意命令；WATCH 修订冲突返回 409；不缓存值',response,ref('RedisInput'))
+paths['/api/v1/redis/{id}/download']['post']['responses']['200']['content']={'application/octet-stream':{'schema':{'type':'string','format':'binary','description':'Redis DUMP 序列化，最大 2 GiB'}}}
 spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session","description":"HTTPS 会话，Secure Cookie"},"httpSession":{"type":"apiKey","in":"cookie","name":"opsview_session_http","description":"HTTP 会话，与 HTTPS Cookie 分离以兼容关闭 SSL"}}}}
 (root/'server/internal/api/openapi.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n')
