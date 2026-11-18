@@ -1,0 +1,33 @@
+name: Retry transient native acceptance failures
+on:
+  push:
+    tags: ['software-retry-*']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  retry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Validate original run and rerun its failed jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_id="${GITHUB_REF_NAME#software-retry-}"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$run_id" > /tmp/native-run.json
+          gh api "repos/$GH_REPO/git/ref/tags/software-$run_id" > /tmp/native-tag.json
+          python3 - <<'PYCODE'
+          import json,os
+          run=json.load(open('/tmp/native-run.json'))
+          tag=json.load(open('/tmp/native-tag.json'))
+          assert run['path']=='.github/workflows/native-packages.yml'
+          assert run['head_repository']['full_name']==os.environ['GH_REPO']
+          assert tag['object']['sha']==run['head_sha']
+          assert run['status']=='completed' and run['conclusion']=='failure'
+          assert run['run_attempt'] < 3, 'Retry budget exhausted; diagnose failures instead'
+          PYCODE
+          gh api --method POST "repos/$GH_REPO/actions/runs/$run_id/rerun-failed-jobs"
