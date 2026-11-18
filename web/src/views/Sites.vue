@@ -7,7 +7,8 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePanel } from '../stores/panel'
 import { action, api, put, errorText, size, date, type Resource, type Config } from '../lib/api'
-import ResourceForm from '../components/ResourceForm.vue'
+import SiteCreate from '../components/SiteCreate.vue'
+import SiteTools from '../components/SiteTools.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import SiteRuntimeOptions from '../components/SiteRuntimeOptions.vue'
 const route = useRoute()
@@ -44,7 +45,7 @@ const rows = computed(() =>
     .filter(
       (r) =>
         (tab.value === 'other'
-          ? ['static', 'app'].includes(r.config.type)
+          ? ['static', 'app', 'managed'].includes(r.config.type)
           : r.config.type === tab.value) &&
         (r.name + ' ' + r.config.domains + ' ' + r.config.note)
           .toLowerCase()
@@ -52,7 +53,7 @@ const rows = computed(() =>
     ),
 )
 const initial = computed(() => ({
-  type: tab.value === 'other' ? 'static' : tab.value,
+  type: tab.value === 'other' ? 'managed' : tab.value,
   instanceId: nginx.value.find((r) => r.status === 'ready')?.id || nginx.value[0]?.id,
 }))
 const relatedBackups = computed(() =>
@@ -146,6 +147,7 @@ function status(row: Resource) {
         : row.status
 }
 function appPort(row: Resource) {
+  if (row.config.type === 'managed') return row.config.port || '—'
   return panel.resources.find((r) => r.id === row.config.legacyAppId)?.config.port || '—'
 }
 async function save() {
@@ -181,7 +183,12 @@ async function run(row: Resource, op: string, params: Config = {}) {
 async function loadLogs() {
   if (!selected.value) return
   try {
-    logs.value = (await api(`/sites/${selected.value.id}/logs`)).content || '暂无日志'
+    logs.value =
+      (
+        await api(
+          `/sites/${selected.value.id}/${page.value === 'process' ? 'process-logs' : 'logs'}`,
+        )
+      ).content || '暂无日志'
   } catch (e) {
     error.value = errorText(e)
   }
@@ -209,6 +216,15 @@ async function loadLogs() {
       <el-button type="primary" @click="openCreate">
         添加{{ tab === 'php' ? 'PHP 项目' : tab === 'proxy' ? '反向代理' : '项目' }}
       </el-button>
+      <SiteTools
+        :nginx="nginx"
+        @settings="
+          (row, key) => {
+            open(row)
+            page = key
+          }
+        "
+      />
       <el-input v-model="filter" placeholder="搜索名称、域名或备注" clearable />
       <span>{{ rows.length }} 个项目</span>
     </div>
@@ -355,7 +371,7 @@ async function loadLogs() {
       </DataList>
     </div>
   </template>
-  <ResourceForm v-model="createOpen" kind="site" :initial="initial" :editing="editing" />
+  <SiteCreate v-model="createOpen" :initial="initial" :editing="editing" />
   <el-dialog
     v-model="settingsOpen"
     :title="selected?.name + ' · 网站设置'"
@@ -372,6 +388,7 @@ async function loadLogs() {
             ['expiry', '到期时间'],
             ['note', '备注'],
             ['logs', '网站日志'],
+            ...(selected?.config.type === 'managed' ? [['process', '应用进程']] : []),
             ['backup', '网站备份'],
           ]"
           :key="key"
@@ -379,7 +396,7 @@ async function loadLogs() {
           @click="
             () => {
               page = key
-              if (key === 'logs') loadLogs()
+              if (key === 'logs' || key === 'process') loadLogs()
             }
           "
         >
@@ -465,6 +482,28 @@ async function loadLogs() {
           <el-input v-model="draft.note" type="textarea" maxlength="1000" :rows="6" />
           <el-button type="primary" @click="save">保存备注</el-button>
         </template>
+        <template v-else-if="page === 'process'">
+          <p>执行文件：{{ selected?.config.executable }}</p>
+          <p>
+            端口：{{ selected?.config.port }} · 开机启动：{{
+              selected?.config.autoStart ? '开启' : '关闭'
+            }}
+          </p>
+          <el-button
+            v-if="selected"
+            @click="
+              () => {
+                settingsOpen = false
+                edit(selected!)
+              }
+            "
+          >
+            编辑进程配置
+          </el-button>
+          <el-button v-if="selected" @click="run(selected, 'apply')">重新部署进程</el-button>
+          <el-button @click="loadLogs">读取进程日志</el-button>
+          <pre>{{ logs }}</pre>
+        </template>
         <template v-else-if="page === 'logs'">
           <el-button @click="loadLogs">刷新日志</el-button>
           <pre>{{ logs }}</pre>
@@ -493,11 +532,13 @@ async function loadLogs() {
 .site-toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin: 22px 0;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
 }
 .site-toolbar .el-input {
-  width: 280px;
+  width: 230px;
+  margin-left: auto;
 }
 .site-toolbar > span {
   margin-left: auto;

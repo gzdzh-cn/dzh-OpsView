@@ -54,3 +54,14 @@ jobs:
       - run: make release
       - name: Exercise real systemd installation and rollback
         run: sudo env GITHUB_ACTIONS=true bash scripts/test-deployment.sh
+
+  websites:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: ./scripts/test-sites-linux.sh

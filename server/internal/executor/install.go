@@ -181,6 +181,10 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 		}
 		return nil, err
 	}
+	if r.Config.String("software") == "nginx" {
+		e.siteMu.Lock()
+		defer e.siteMu.Unlock()
+	}
 	if action == "uninstall" {
 		if r.Config.String("software") == "nodejs" {
 			log("运行时文件保留，以免影响已部署的应用")
@@ -453,7 +457,11 @@ func ensureUser(ctx context.Context, user, home string, log func(string)) error 
 	return run(ctx, log, "", nil, nil, "useradd", "--system", "--home-dir", home, "--shell", "/usr/sbin/nologin", user)
 }
 func installUnit(ctx context.Context, r model.Resource, body string, log func(string)) error {
-	unit := "[Unit]\nDescription=OpsView " + r.Kind + " " + r.ID + "\nAfter=network.target\n[Service]\n" + body + "Restart=on-failure\nRestartSec=3\nTimeoutStartSec=180\nUMask=0027\n[Install]\nWantedBy=multi-user.target\n"
+	limits := ""
+	if r.Kind == "site-process" {
+		limits = "StartLimitIntervalSec=60\nStartLimitBurst=5\n"
+	}
+	unit := "[Unit]\n" + limits + "Description=OpsView " + r.Kind + " " + r.ID + "\nAfter=network.target\n[Service]\n" + body + "Restart=on-failure\nRestartSec=3\nTimeoutStartSec=180\nUMask=0027\n[Install]\nWantedBy=multi-user.target\n"
 	if err := security.WriteAtomic(filepath.Join("/etc/systemd/system", serviceName(r)), []byte(unit), 0644); err != nil {
 		return err
 	}

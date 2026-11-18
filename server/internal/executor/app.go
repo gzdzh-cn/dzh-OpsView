@@ -34,6 +34,15 @@ func (e *Engine) app(ctx context.Context, op model.Operation, log func(string)) 
 		}
 	}
 	base := filepath.Join(e.Root, "apps", r.ID)
+	if r.Kind == "site-process" {
+		base = r.Config.String("workingDirectory")
+		if err := logic.ValidateSiteRoot(base); err != nil {
+			return nil, err
+		}
+		if _, err := safePath("/", strings.TrimPrefix(base, "/")); err != nil {
+			return nil, err
+		}
+	}
 	if action == "apply" {
 		u, err := user.Lookup(r.Config.String("user"))
 		if err != nil || u.Uid == "0" || u.Username == "opsview" {
@@ -112,7 +121,7 @@ func (e *Engine) app(ctx context.Context, op model.Operation, log func(string)) 
 			return nil, err
 		}
 		body := fmt.Sprintf("User=%s\nWorkingDirectory=%s\nEnvironmentFile=%s\nExecStart=%s\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=true\nReadWritePaths=%s\n", r.Config.String("user"), base, envPath, strings.Join(parts, " "), base)
-		if err = run(ctx, log, "", nil, nil, "chown", r.Config.String("user"), base); err != nil {
+		if err = run(ctx, log, "", nil, nil, "chown", "--no-dereference", r.Config.String("user"), base); err != nil {
 			return nil, err
 		}
 		if err = installUnit(ctx, r, body, log); err != nil {
@@ -160,7 +169,11 @@ func (e *Engine) app(ctx context.Context, op model.Operation, log func(string)) 
 	}
 	return model.Config{}, systemctl(ctx, log, action, serviceName(r))
 }
-func unitQuote(s string) string { s = strings.ReplaceAll(s, "%", "%%"); return strconv.Quote(s) }
+func unitQuote(s string) string {
+	s = strings.ReplaceAll(s, "%", "%%")
+	s = strings.ReplaceAll(s, "$", "$$")
+	return strconv.Quote(s)
+}
 func (e *Engine) compose(ctx context.Context, op model.Operation, log func(string)) (result model.Config, retErr error) {
 	r := op.Resource
 	action := strings.TrimPrefix(op.Name, "compose.")

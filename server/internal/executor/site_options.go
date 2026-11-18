@@ -32,6 +32,9 @@ func prepareSiteRunningDirectory(root, directory string) error {
 			if er = scoped.Mkdir(p, 0755); er != nil {
 				return er
 			}
+			if er = scoped.Chmod(p, 0755); er != nil {
+				return er
+			}
 			continue
 		}
 		if er != nil {
@@ -49,7 +52,7 @@ func siteRunningRoot(r model.Resource, base string) string {
 	if dir == "/" {
 		dir = ""
 	}
-	return filepath.Join(base, "www", dir)
+	return filepath.Join(siteDocumentRoot(r, base), dir)
 }
 
 func siteIndex(r model.Resource) string {

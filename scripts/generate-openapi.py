@@ -89,7 +89,7 @@ schemas['PHPSessionClean']=obj({'operation':{'type':'string','enum':['clean']},'
 paths['/api/v1/instances/{id}/session']['get']['responses']['200']['content']['application/json']['schema']=ref('PHPSession')
 add('/resources/{id}/actions/session','post','验证并修改所选 PHP 范围的 Session，或清理过期文件',ref('Task'),{'oneOf':[ref('PHPSessionSave'),ref('PHPSessionClean')]},status='202')
 add('/instances/{id}/validate','post','校验候选配置，不替换运行配置',body=ref('ConfigurationChange'))
-for view in ['traffic','logs']:add('/sites/{id}/'+view,'get','读取网站'+view)
+for view in ['traffic','logs','security','process-logs']:add('/sites/{id}/'+view,'get','读取网站'+view)
 add('/settings/runtime','get','读取 root 管理的面板运行配置')
 add('/settings/runtime','put','暂存访问设置；120 秒重新连接确认，否则回退',body=config)
 add('/runtime/confirm','post','使用一次性确认凭证提交重新连接结果',body=obj({'token':string}),public=True)

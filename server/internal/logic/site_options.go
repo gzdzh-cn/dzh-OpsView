@@ -90,6 +90,9 @@ func SiteProxyRoutes(c model.Config) ([]ProxyRoute, error) {
 }
 
 func ValidateSiteOptions(c model.Config) error {
+	if err := ValidateSiteCreate(c); err != nil {
+		return err
+	}
 	dir := c.String("runningDirectory")
 	if dir != "" && dir != "/" && (!regexp.MustCompile(`^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$`).MatchString(dir) || len(dir) > 256 || path.Clean(dir) != dir || strings.HasPrefix(dir, ".") || strings.Contains(dir, "/.") || strings.Contains(dir, "..")) {
 		return errors.New("运行目录须为网站根目录下的相对目录，例如 public，不允许隐藏目录或目录跳转")

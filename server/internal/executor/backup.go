@@ -88,6 +88,12 @@ func (e *Engine) backupUnlocked(ctx context.Context, op model.Operation, log fun
 			suffix = ""
 		}
 		root := filepath.Join(e.Root, folder, target.ID, suffix)
+		if target.Kind == "site" {
+			root, err = e.trustedSiteRoot(target)
+			if err != nil {
+				return nil, err
+			}
+		}
 		log("文件备份采用在线文件快照，不保证应用事务一致性")
 		if err = archiveDirectory(root, plain); err != nil {
 			return nil, err

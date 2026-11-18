@@ -80,6 +80,9 @@ func checkFilePolicyPaths(path string, internal bool, private []string) error {
 	return nil
 }
 func (e *Engine) criticalFilePath(path string) bool {
+	if path == "/www" || path == "/www/wwwroot" {
+		return true
+	}
 	for _, p := range []string{"/", "/boot", "/etc", "/home", "/root", "/usr", "/usr/bin", "/usr/sbin", "/usr/lib", "/bin", "/sbin", "/lib", "/lib64", "/var", "/var/lib", "/opt", "/srv", "/tmp", "/mnt", "/media", e.Root} {
 		if path == p {
 			return true

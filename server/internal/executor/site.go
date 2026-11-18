@@ -72,8 +72,14 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	base := filepath.Join(e.Root, "sites", r.ID)
 	confpath := filepath.Join(e.Root, "instances", inst.ID, "conf", "sites", r.ID+".conf")
 	action := strings.TrimPrefix(op.Name, "site.")
+	if action == "security" {
+		return e.siteSecurity(r)
+	}
 	if action == "traffic" {
 		return e.siteTraffic(r)
+	}
+	if stored, er := e.load(r.ID); er == nil {
+		r.Config["documentRoot"] = siteDocumentRoot(stored, base)
 	}
 	if action == "resume" || action == "stop" {
 		stored, er := e.load(r.ID)
@@ -119,6 +125,18 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		}
 		return model.Config{"current": string(current), "managed": stored.Config.String("renderedConfig"), "drift": stored.Config.String("configHash") != security.Hash(string(current)), "history": history}, nil
 	}
+	if action == "process-logs" {
+		stored, er := e.load(r.ID)
+		if er != nil {
+			return nil, er
+		}
+		if stored.Config.String("type") != "managed" {
+			return nil, errors.New("此站点未托管应用进程")
+		}
+		proc := managedSiteProcess(stored)
+		text, er := output(ctx, "journalctl", "-u", serviceName(proc), "-n", "200", "--no-pager")
+		return model.Config{"content": text}, er
+	}
 	if action == "logs" {
 		text, err := tail(filepath.Join(e.Root, "sites", r.ID, "logs", "access.json"), 200)
 		return model.Config{"content": text}, err
@@ -144,6 +162,14 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 			return nil, err
 		}
 		_ = stored
+		e.stopSiteProcesses(ctx, stored)
+		if stored.Config.String("type") == "managed" {
+			proc := managedSiteProcess(stored)
+			if _, err = e.app(ctx, model.Operation{Name: "app.delete", Resource: proc, Params: model.Config{}}, log); err != nil {
+				return nil, err
+			}
+		}
+		_ = os.Remove(filepath.Join(e.Root, "state", r.ID+".document-root"))
 		log("站点配置已移除，站点文件仍保留")
 		return model.Config{}, e.forget(r.ID)
 	}
@@ -151,6 +177,9 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		return nil, errors.New("网站操作无效")
 	}
 
+	if inst.Config.String("mode") == "docker" && r.Config.String("rootDirectory") != "" {
+		return nil, errors.New("历史容器 Nginx 未挂载 /www/wwwroot，请使用原生 Nginx 创建新站点")
+	}
 	if err = e.ensureNginxObservability(inst); err != nil {
 		return nil, err
 	}
@@ -169,20 +198,28 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if err = os.MkdirAll(base+"/logs", 0755); err != nil {
 		return nil, err
 	}
-	if err = os.MkdirAll(base+"/www", 0755); err != nil {
+	if err = os.Chmod(base, 0711); err != nil {
 		return nil, err
 	}
-	if err = prepareSiteRunningDirectory(base+"/www", r.Config.String("runningDirectory")); err != nil {
+	if err = e.prepareSiteRoot(&r, base); err != nil {
+		return nil, err
+	}
+	if err = prepareSiteRunningDirectory(siteDocumentRoot(r, base), r.Config.String("runningDirectory")); err != nil {
 		return nil, err
 	}
 	if err = os.MkdirAll(base+"/acme/.well-known/acme-challenge", 0755); err != nil {
 		return nil, err
 	}
+	for _, p := range []string{"acme", "acme/.well-known", "acme/.well-known/acme-challenge"} {
+		if err = os.Chmod(filepath.Join(base, p), 0755); err != nil {
+			return nil, err
+		}
+	}
 	if err = os.MkdirAll(base+"/cert", 0700); err != nil {
 		return nil, err
 	}
-	if _, err = os.Stat(base + "/www/index.html"); os.IsNotExist(err) {
-		_ = security.WriteAtomic(base+"/www/index.html", []byte("<!doctype html><html lang=zh-CN><meta charset=utf-8><title>站点已就绪</title><h1>站点已就绪</h1><p>由 OpsView 管理。</p></html>"), 0644)
+	if _, err = os.Stat(siteDocumentRoot(r, base) + "/index.html"); os.IsNotExist(err) {
+		_ = security.WriteAtomic(siteDocumentRoot(r, base)+"/index.html", []byte("<!doctype html><html lang=zh-CN><meta charset=utf-8><title>站点已就绪</title><h1>站点已就绪</h1><p>由 OpsView 管理。</p></html>"), 0644)
 	}
 	old, readErr := os.ReadFile(confpath)
 	if readErr != nil && !os.IsNotExist(readErr) {
@@ -311,6 +348,19 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 			return nil, err
 		}
 	}
+	if r.Config.String("type") == "managed" && !siteUnavailable(r) && (action == "apply" || action == "certificate") {
+		restore, processErr := e.setupManagedSite(ctx, r, log)
+		if processErr != nil {
+			return nil, processErr
+		}
+		defer func() {
+			if retErr != nil {
+				if restoreErr := restore(); restoreErr != nil {
+					retErr = fmt.Errorf("网站应用失败且进程回退未完成：%w", retErr)
+				}
+			}
+		}()
+	}
 	r.Config["probeToken"] = security.ID()
 	candidate := []byte(e.renderSite(r, inst, base))
 	if err = e.applyNginx(ctx, inst, confpath, candidate, old, log); err != nil {
@@ -335,7 +385,7 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	}
 	r.Config["renderedConfig"] = string(candidate)
 	r.Config["configHash"] = security.Hash(string(candidate))
-	r.Config["documentRoot"] = base + "/www"
+	r.Config["documentRoot"] = siteDocumentRoot(r, base)
 	r.Config["runningRoot"] = siteRunningRoot(r, base)
 	r.Status = "ready"
 	if siteUnavailable(r) {
@@ -359,7 +409,7 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if siteUnavailable(r) {
 		e.stopSiteProcesses(ctx, r)
 	}
-	return model.Config{"configHash": r.Config["configHash"], "documentRoot": base + "/www", "runningRoot": r.Config["runningRoot"], "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}, nil
+	return model.Config{"configHash": r.Config["configHash"], "documentRoot": siteDocumentRoot(r, base), "runningRoot": r.Config["runningRoot"], "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}, nil
 }
 func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 	domains := strings.Join(strings.Fields(r.Config.String("domains")), " ")
@@ -367,6 +417,7 @@ func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 
 	conf += " access_log " + base + "/logs/access.json opsview_json;\n error_log " + base + "/logs/error.log warn;\n"
 	conf += r.Config.String("advanced") + "\n"
+	conf += siteSecurityConfig(r)
 	if token := r.Config.String("probeToken"); token != "" {
 		conf += fmt.Sprintf(" location = /.opsview-health-%s { add_header X-OpsView-Revision %s always; return 204; }\n", token, token)
 	}
@@ -383,17 +434,17 @@ func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 		return conf + " location / { return 403; }\n}\n"
 	}
 	if r.Config.String("type") == "php" {
-		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / { " + redirect + siteTryFiles(r) + " }\n location ~ /\\.(?!well-known/) { deny all; }\n location ~ \\.php$ { " + redirect + "try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
+		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / { " + redirect + siteTryFiles(r) + " }\n location ~ \\.php$ { " + redirect + "try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
 		return conf + "}\n"
 	}
-	if r.Config.String("type") == "proxy" || r.Config.String("type") == "app" {
+	if r.Config.String("type") == "proxy" || r.Config.String("type") == "app" || r.Config.String("type") == "managed" {
 		if routes, _ := logic.SiteProxyRoutes(r.Config); len(routes) > 0 {
 			upstreams, locations := renderProxyRoutes(r, redirect)
 			return upstreams + conf + locations + "}\n"
 		}
-		conf += " location / {\n" + redirect + "  proxy_pass " + r.Config.String("upstream") + ";\n  proxy_http_version 1.1;\n  proxy_set_header Host $host;\n  proxy_set_header Upgrade $http_upgrade;\n  proxy_set_header Connection $opsview_connection;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n }\n"
+		conf += " location / {\n" + redirect + "  proxy_pass " + siteUpstream(r) + ";\n  proxy_http_version 1.1;\n  proxy_set_header Host " + siteProxyHost(r) + ";\n  proxy_set_header Upgrade $http_upgrade;\n  proxy_set_header Connection $opsview_connection;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n }\n"
 	} else {
-		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location ~ /\\.(?!well-known/) { deny all; }\n location / {\n" + redirect + " " + siteTryFiles(r) + " }\n"
+		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / {\n" + redirect + " " + siteTryFiles(r) + " }\n"
 	}
 	return conf + "}\n"
 }

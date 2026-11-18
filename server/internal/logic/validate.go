@@ -38,7 +38,7 @@ func Validate(r model.Resource) error {
 		if !Name.MatchString(c.String("instanceId")) {
 			return errors.New("请选择 Nginx 实例")
 		}
-		if c.String("type") != "static" && c.String("type") != "proxy" && c.String("type") != "php" && c.String("type") != "app" {
+		if c.String("type") != "static" && c.String("type") != "proxy" && c.String("type") != "php" && c.String("type") != "app" && c.String("type") != "managed" {
 			return errors.New("网站类型无效")
 		}
 		if c.String("type") == "php" && !Name.MatchString(c.String("phpInstanceId")) {

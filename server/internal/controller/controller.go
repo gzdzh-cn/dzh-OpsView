@@ -228,6 +228,13 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 	if res.Config == nil {
 		res.Config = model.Config{}
 	}
+	if res.Kind == "site" {
+		delete(res.Config, "documentRoot")
+		delete(res.Config, "runningRoot")
+		if res.Config.String("rootDirectory") == "" && res.Config.String("type") != "proxy" {
+			res.Config["rootDirectory"] = logic.DefaultSiteRoot(res.Config.String("domains"))
+		}
+	}
 	if e := c.validate(&res); e != nil {
 		fail(w, 400, e.Error())
 		return
@@ -338,6 +345,19 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 		b.Config["externalApplication"] = true
 		b.Config["legacyAppId"] = res.Config.String("legacyAppId")
 		delete(b.Config, "appId")
+	}
+	if res.Kind == "site" {
+		for _, key := range []string{"documentRoot", "runningRoot"} {
+			b.Config[key] = res.Config[key]
+		}
+		if res.Config.String("documentRoot") != "" && b.Config.String("rootDirectory") != res.Config.String("rootDirectory") {
+			fail(w, 409, "已部署站点不支持通过编辑迁移根目录")
+			return
+		}
+		if res.Config.String("type") != b.Config.String("type") {
+			fail(w, 409, "已创建站点不能修改项目类型")
+			return
+		}
 	}
 	security.PreserveMasked(b.Config, res.Config)
 

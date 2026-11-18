@@ -271,3 +271,11 @@ Go 测试覆盖 schema 2 → 3 保留密文及关联、同实例重名拒绝、�
 82ebdc037acef77758de8551af2e65dbc5fa212780dee8cc2682f7684385c3e8  opsview-linux-amd64.tar.gz
 3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
 ```
+
+## 2026-11-18 rc.6 网站创建
+
+- 三类专用建站弹窗、域名自动目录、手动路径保留、发送 Host、顶部统计/基础扫描/安全/Nginx 操作；旧站点根目录不迁移。
+- 网站内 `managed` 进程使用非 root systemd 服务；默认独立用户，JSON argv 不通过 Shell；运行失败和后续网站应用失败有服务配置回退。
+- 本地 Go race/vet、前端类型检查与构建、7 项 Vitest、安装器 16 项通过。浏览器新增目录生成、托管参数和 Nginx 确认检查，完整套件共 26 项。
+- 已加入 `TestLinuxWebsiteCreation`，在显式允许的临时 GitHub Ubuntu 24.04 systemd 主机执行，使用发行版 Nginx/PHP 验证新根目录、真实 HTTP、PHP、非 root 进程、失败回退、到期停用及生产 umask。该测试不替代每个软件版本的安装矩阵。
+- 发布及公开安装工作流通过后补充最终运行记录。未自动更新用户服务器。

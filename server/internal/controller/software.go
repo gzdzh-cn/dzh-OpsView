@@ -81,13 +81,14 @@ func (c *Controller) softwareValidate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Controller) siteRead(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	resource, err := c.App.Store.Resource(r.PathValue("id"))
 	if err != nil || resource.Kind != "site" {
 		fail(w, 404, "网站不存在")
 		return
 	}
 	view := r.PathValue("view")
-	if view != "traffic" && view != "logs" {
+	if view != "traffic" && view != "logs" && view != "security" && view != "process-logs" {
 		fail(w, 404, "网站接口不存在")
 		return
 	}

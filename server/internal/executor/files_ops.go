@@ -634,7 +634,11 @@ func (e *Engine) files(ctx context.Context, op model.Operation, log func(string)
 	folder := ""
 	switch r.Kind {
 	case "site":
-		folder = filepath.Join(e.Root, "sites", r.ID, "www")
+		var err error
+		folder, err = e.trustedSiteRoot(r)
+		if err != nil {
+			return nil, err
+		}
 	case "app":
 		folder = filepath.Join(e.Root, "apps", r.ID)
 	case "instance":

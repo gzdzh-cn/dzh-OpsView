@@ -43,6 +43,12 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 			return err
 		}
 	}
+	if err = os.Chmod(base, 0711); err != nil {
+		return err
+	}
+	if err = os.Chmod(base+"/run", 0755); err != nil {
+		return err
+	}
 	if _, err = safePath(base, "sessions"); err != nil {
 		return err
 	}
@@ -51,6 +57,16 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 	}
 	if err = run(ctx, log, "", nil, nil, "chown", "-R", user+":"+user, base+"/logs", base+"/sessions"); err != nil {
 		return err
+	}
+	if root := r.Config.String("documentRoot"); root != "" {
+		if _, er := e.load(r.ID); er != nil {
+			if _, er = safePath("/", strings.TrimPrefix(root, "/")); er != nil {
+				return er
+			}
+			if er = run(ctx, log, "", nil, nil, "chown", "--no-dereference", user+":"+user, root); er != nil {
+				return er
+			}
+		}
 	}
 	// Existing site documents retain explicit overrides when domains, notes or certificates change.
 	ini, err := os.ReadFile(base + "/conf/php.ini")
@@ -314,6 +330,11 @@ func nginxStatusServer(port int, token string) string {
 	return fmt.Sprintf("server { listen 127.0.0.1:%d; server_name 127.0.0.1; location = /opsview-status { stub_status; access_log off; } location = /.opsview-health-%s { add_header X-OpsView-Revision %s always; return 204; } location / { return 404; } }\n", port, token, token)
 }
 func (e *Engine) stopSiteProcesses(ctx context.Context, r model.Resource) {
+	if r.Config.String("type") == "managed" {
+		proc := managedSiteProcess(r)
+		_ = systemctl(ctx, func(string) {}, "disable", serviceName(proc))
+		_ = systemctl(ctx, func(string) {}, "stop", serviceName(proc))
+	}
 	if r.Config.String("type") == "php" {
 		_ = systemctl(ctx, func(string) {}, "disable", phpSiteUnit(r))
 		_ = systemctl(ctx, func(string) {}, "stop", phpSiteUnit(r))

@@ -64,9 +64,9 @@ test('invalid site never becomes a deployed resource', async ({ page }) => {
   await page.goto('/sites')
   await page.getByRole('tab', { name: '其他项目', exact: true }).click()
   await page.getByRole('button', { name: '添加项目', exact: true }).click()
-  await page.getByPlaceholder('字母、数字、横线或下划线，例如 my-app').fill('e2e-invalid-site')
+  await page.getByPlaceholder('默认使用第一个域名').fill('e2e-invalid-site')
   await page
-    .getByPlaceholder('example.com www.example.com，以空格分隔')
+    .getByRole('textbox', { name: '绑定域名', exact: true })
     .fill('example.com;include /etc/passwd')
   await page.getByRole('button', { name: '创建并部署' }).click()
   await expect(page.locator('.el-dialog .el-alert')).toBeVisible()
@@ -205,8 +205,9 @@ test('proxy editor submits multiple paths and upstreams', async ({ page }) => {
   await page.goto('/sites')
   await page.getByRole('tab', { name: '反向代理', exact: true }).click()
   await page.getByRole('button', { name: '添加反向代理', exact: true }).click()
-  await page.getByPlaceholder('字母、数字、横线或下划线，例如 my-app').fill('proxy-editor-test')
-  await page.getByPlaceholder('example.com www.example.com，以空格分隔').fill('proxy.example.com')
+  await page.getByPlaceholder('默认使用第一个域名').fill('proxy-editor-test')
+  await page.getByRole('textbox', { name: '绑定域名', exact: true }).fill('proxy.example.com')
+  await page.getByRole('dialog').getByRole('button', { name: '高级设置' }).click()
   await page.getByRole('button', { name: '添加路径规则', exact: true }).click()
   await page
     .locator('.proxy-route textarea')
@@ -1002,4 +1003,120 @@ test('database install guidance selects its software despite saved market tab', 
   await expect(page.getByRole('cell', { name: /PostgreSQL/ })).toBeVisible()
   await page.getByRole('link', { name: '显示全部软件' }).click()
   await expect(page.getByRole('cell', { name: /MySQL/ })).toBeVisible()
+})
+
+test('site dialogs follow domains, preserve manual roots and submit managed processes', async ({
+  page,
+}) => {
+  let submitted: any
+  const php = {
+    ...nginxFixture,
+    id: 'php-fixture',
+    name: 'php-8.4',
+    config: { software: 'php', version: '8.4.27', mode: 'native' },
+  }
+  await page.route('**/api/v1/resources', async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: [nginxFixture, php] })
+    submitted = route.request().postDataJSON()
+    return route.fulfill({
+      json: { ...submitted, id: 'site-create-fixture', revision: 1, status: 'pending' },
+    })
+  })
+  await page.route('**/api/v1/resources/site-create-fixture/actions/*', (route) =>
+    route.fulfill({ status: 202, json: { id: 'site-task' } }),
+  )
+  await page.goto('/sites')
+  await page.getByRole('tab', { name: 'PHP 项目', exact: true }).click()
+  await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog
+    .getByRole('textbox', { name: '绑定域名', exact: true })
+    .fill('php.example.com\nwww.php.example.com')
+  await expect(dialog.getByRole('textbox', { name: '根目录', exact: true })).toHaveValue(
+    '/www/wwwroot/php.example.com',
+  )
+  await expect(dialog.getByPlaceholder('默认使用第一个域名')).toHaveValue('php.example.com')
+  await dialog
+    .getByRole('textbox', { name: '根目录', exact: true })
+    .fill('/www/wwwroot/custom-project')
+  await dialog.getByRole('textbox', { name: '绑定域名', exact: true }).fill('changed.example.com')
+  await expect(dialog.getByRole('textbox', { name: '根目录', exact: true })).toHaveValue(
+    '/www/wwwroot/custom-project',
+  )
+  await page.screenshot({
+    path: '../.opsview/screenshots/site-create-php.png',
+    animations: 'disabled',
+    fullPage: true,
+  })
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('tab', { name: '其他项目', exact: true }).click()
+  await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  await dialog.getByRole('textbox', { name: '绑定域名', exact: true }).fill('app.example.com')
+  await dialog.getByPlaceholder('绝对路径，例如 /usr/bin/node').fill('/usr/bin/node')
+  await dialog.getByPlaceholder('JSON 数组，例如 ["server.js"]').fill('["server.js"]')
+  await expect(dialog.getByRole('textbox', { name: '根目录', exact: true })).toHaveValue(
+    '/www/wwwroot/app.example.com',
+  )
+  await page.screenshot({
+    path: '../.opsview/screenshots/site-create-process.png',
+    animations: 'disabled',
+    fullPage: true,
+  })
+  await dialog.getByRole('button', { name: '创建并部署', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeHidden()
+  expect(submitted.config.type).toBe('managed')
+  expect(submitted.config.user).toBe('isolated')
+  expect(submitted.config.rootDirectory).toBe('/www/wwwroot/app.example.com')
+  expect(submitted.config.executable).toBe('/usr/bin/node')
+  expect(submitted.config.autoStart).toBe(true)
+})
+
+test('website toolbar displays real results and confirms Nginx restart', async ({ page }) => {
+  const site = {
+    id: 'tool-site',
+    kind: 'site',
+    name: 'tools.example.com',
+    revision: 1,
+    status: 'ready',
+    config: {
+      type: 'static',
+      instanceId: nginxFixture.id,
+      domains: 'tools.example.com',
+      documentRoot: '/www/wwwroot/tools.example.com',
+    },
+  }
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture, site] }))
+  await page.route('**/api/v1/sites/tool-site/traffic', (route) =>
+    route.fulfill({ json: { todayBytes: 2048, timezone: 'Asia/Shanghai', hours: {} } }),
+  )
+  await page.route('**/api/v1/sites/tool-site/security', (route) =>
+    route.fulfill({
+      json: {
+        checkedAt: '2026-11-18T10:00:00Z',
+        checks: [{ name: '敏感文件检查', status: 'warning', detail: '发现 .env（文件）' }],
+      },
+    }),
+  )
+  let restarts = 0
+  await page.route('**/api/v1/resources/nginx-fixture/actions/restart', (route) => {
+    restarts++
+    return route.fulfill({ status: 202, json: { id: 'restart-task' } })
+  })
+  await page.goto('/sites')
+  await page.getByRole('button', { name: '网站统计', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('2.0 KB')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '漏洞扫描', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('1 项需核对')
+  await expect(page.getByRole('dialog')).toContainText('不包含 CVE 数据库')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '网站安全', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('安全响应头')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Nginx 1.30.6 ▾', exact: true }).click()
+  await page.getByText('重启 Nginx', { exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('影响 1 个关联网站')
+  expect(restarts).toBe(0)
+  await page.getByRole('button', { name: '确认', exact: true }).click()
+  await expect.poll(() => restarts).toBe(1)
 })
