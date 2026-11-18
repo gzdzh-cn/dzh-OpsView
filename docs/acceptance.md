@@ -319,3 +319,22 @@ dd1eb470aad2491b80b3a7b15cc94bcac5c81b5ca79a27c01c46bda9a4a893f8  opsview-linux-
 独立软件预发布 `software-44244762924` 已公开，包含 48 个 PHP/Redis 软件包、版本目录及总报告，共 50 个附件。16 个 MySQL 系统组合使用原有固定来源/摘要的官方包，不重新打包上游主软件。新增报告见 [原始验收 JSON](releases/v0.1.3-rc.7-native-acceptance.json)；加上先前 24 个组合，当前目录累计 88 个极速、64 个编译安装系统组合。
 
 ncurses 另增加固定摘要的 GNU 镜像回退。已分别下载两个源，SHA-256 均为 `136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6`；Go race 测试验证 HTTP 403 后镜像下载、摘要错误不覆盖已校验文件、取消不再请求。添加镜像不改变已验收软件包内容及摘要，最终面板发布继续执行全量检查。
+
+### rc.7 面板发布验证完成
+
+发布提交 `e76a36e2a144e5c98990464d6935f624836bb849`、标签 `v0.1.3-rc.7`。[发布流水线 44249330265](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44249330265) 的 `build`、`publish`、`verify-public-install` 全部成功，各步骤无跳过。
+
+- Go race/vet、前端类型检查/生产构建/单元测试、安装器、Linux 文件与真实网站部署检查通过。
+- 27 项浏览器流程及真实数据库集成、日志轮转、PHP Session 检查通过；生成发布包后再次用包内二进制验证导航。
+- 真实 systemd 安装、更新和故障回退，以及公开附件安装、登录、改端口和 `ov update` 通过。
+- 独立下载公开 `install.sh` 并与公开 `SHA256SUMS` 核对；GitHub 附件摘要与校验清单一致。完整面板包公开下载和实际安装由 CI 验证。
+- 独立下载公开 PHP 8.2.35 / Debian 12 极速包（10,677,900 字节），SHA-256 `661a8a7e6dff9dfd572e0e22e489acc670751e252b6cc01e072c4d664906cbe8` 与已提升目录一致。
+
+公开面板附件摘要：
+
+```text
+2d0c143fa319303c0e06d8bdad29b8ff4fdf87622d7880259e94beb39a4cdd02  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
+
+本版为预发布测试版，使用 `ov backup`、`ov update --version v0.1.3-rc.7` 显式更新；未连接或自动更新用户服务器。更新不自动安装或升级业务软件，SQLite schema 保持 3。此验收记录追加不改写已公开标签和附件。
