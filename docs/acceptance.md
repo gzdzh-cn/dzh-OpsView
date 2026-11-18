@@ -445,3 +445,23 @@ rc.8 发布前复核：使用实际 Linux amd64 发布二进制在隔离 Ubuntu 
 四系统 Linux amd64 矩阵、实际发布二进制、systemd 安装/更新和公开附件检查由 GitHub 候选/发布工作流继续验证；最终结果以对应工作流结论为准。隔离容器测试不能替代整机重启、独立公网、云安全组及所有 Docker/自定义防火墙组合验收。
 
 升级与旧版完整元数据恢复见 [运维说明](operations.md#rc11-系统防火墙更新与回退)。发布后使用 `ov backup`、`ov update --version v0.1.3-rc.11`；不能只装旧二进制退回 schema 3。
+
+### rc.11 发布与公开安装验证完成
+
+发布提交 `c96b5d5c7342b5c422fe4dc1a2fbcf58cdfbf5a9`，标签 `v0.1.3-rc.11`。[发布流水线 44352698545](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44352698545) 的 build、publish、verify-public-install 全部成功。
+
+- Go 全量 race/vet、前端类型检查、生产构建、7 项 Vitest、安装器及 Linux 文件检查通过；真实 SSH/UFW、网站部署、MySQL/PostgreSQL/Redis、日志轮转和 PHP Session 检查通过。
+- Linux amd64 的 Ubuntu 22.04/24.04、Debian 12/13 均完成 UFW/firewalld 独立客户端实际流量测试，含 IPv4/IPv6、出站规则、转发、地区过滤、管理连接回退及 Fail2ban 封禁/解封。
+- 源码服务及实际发布二进制分别完成 34 项 Playwright；源码服务缓存导航 P95 为 100ms。真实 systemd 安装、更新和故障回退通过。
+- 临时 Ubuntu 24.04 从公开固定版本附件下载、校验、安装、登录、改端口和执行 `ov update` 通过。
+- [常规检查 44352681678](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44352681678) 的 check、deployment、websites 和 [候选构建 44352681847](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44352681847) 全部成功。
+- 独立工作站读取公开 Release 元数据及校验清单，下载并核对安装脚本摘要和仓库内容一致。普通附件链接存在连接超时；通过公开附件 API 下载脚本成功，完整面板包的公开下载及摘要、安装验证以该发布流水线为依据，不将工作站的部分下载视为成功。
+
+公开面板包为 24,312,223 字节，GitHub 附件摘要与发布校验清单一致：
+
+```text
+a61c677c3de6e3608bc0719d47cf8504c21b2d022cb5beaca755315608942df8  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
+
+更新：`ov backup`、`ov update --version v0.1.3-rc.11`。本次未更新用户服务器或业务软件；整机重启、公网入站和云安全组仍需部署环境验收。SQLite schema 4 降级必须恢复升级前完整元数据，不能仅更换二进制。验收记录追加不修改公开标签和发布附件。
