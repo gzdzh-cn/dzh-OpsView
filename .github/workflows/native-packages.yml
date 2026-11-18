@@ -4,11 +4,13 @@ on:
     branches: [codex/software-management]
     paths:
       - 'server/internal/executor/native.go'
+      - 'server/internal/executor/php_legacy.go'
       - 'server/internal/executor/install.go'
       - 'server/internal/executor/mysql_compat.go'
       - 'server/internal/executor/precompiled.go'
       - 'server/internal/executor/fast_package_test.go'
       - 'packages/catalog/versions.json'
+      - 'packages/catalog/native-targets.json'
       - '.github/native/**'
       - 'scripts/native-package*'
       - '.github/workflows/native-packages.yml'
@@ -19,15 +21,28 @@ concurrency:
   group: native-packages-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: targets
+        run: |
+          python3 - <<'PYCODE'
+          import json,os,pathlib
+          target=json.loads(pathlib.Path('packages/catalog/native-targets.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('value='+json.dumps({'image':target['images'],'entry':target['entries']})+'\n')
+          PYCODE
   build:
+    needs: matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     strategy:
       fail-fast: false
-      max-parallel: 6
-      matrix:
-        image: [ubuntu:22.04, ubuntu:24.04, debian:bookworm-slim, debian:trixie-slim]
-        entry: [nginx-1.30.6, php-8.4.27, redis-8.10.3, postgresql-18.0, mysql-8.4.13, nodejs-22.23.5]
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.matrix.outputs.targets) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -43,61 +58,20 @@ jobs:
           NATIVE_IMAGE: ${{ matrix.image }}
           NATIVE_ENTRY: ${{ matrix.entry }}
           PACKAGE_MODE: build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-build-${{ strategy.job-index }}
-          path: dist/native/*
-          if-no-files-found: error
-          retention-days: 7
-  verify:
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      max-parallel: 6
-      matrix:
-        image: [ubuntu:22.04, ubuntu:24.04, debian:bookworm-slim, debian:trixie-slim]
-        entry: [nginx-1.30.6, php-8.4.27, redis-8.10.3, postgresql-18.0, mysql-8.4.13, nodejs-22.23.5]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: server/go.mod
-          cache-dependency-path: server/go.sum
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: native-build-*
-          path: dist/native
-          merge-multiple: true
-      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -o ../dist/native-smoke.test ./internal/executor
-        working-directory: server
       - name: Install binary on clean target, verify service and relocation
         run: ./scripts/native-package-ci.sh
         env:
           NATIVE_IMAGE: ${{ matrix.image }}
           NATIVE_ENTRY: ${{ matrix.entry }}
           PACKAGE_MODE: verify
-      - name: Select acceptance report
-        env:
-          NATIVE_ENTRY: ${{ matrix.entry }}
-          NATIVE_IMAGE: ${{ matrix.image }}
-        run: |
-          python3 - <<'PY'
-          import os,pathlib,shutil
-          system={'ubuntu:22.04':'ubuntu-22.04','ubuntu:24.04':'ubuntu-24.04','debian:bookworm-slim':'debian-12','debian:trixie-slim':'debian-13'}[os.environ['NATIVE_IMAGE']]
-          dest=pathlib.Path('dist/verified');dest.mkdir()
-          name=f"{os.environ['NATIVE_ENTRY']}-{system}.tar.gz.json"
-          shutil.copyfile(pathlib.Path('dist/native')/name,dest/name)
-          PY
       - uses: actions/upload-artifact@v4
         with:
           name: native-verified-${{ strategy.job-index }}
-          path: dist/verified/*
+          path: dist/native/*
           if-no-files-found: error
           retention-days: 7
   publish:
-    needs: verify
+    needs: build
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -105,13 +79,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: native-build-*
-          path: dist/packages
-          merge-multiple: true
-      - uses: actions/download-artifact@v4
-        with:
           pattern: native-verified-*
-          path: dist/reports
+          path: dist/packages
           merge-multiple: true
       - name: Generate catalog from all verified reports
         env:
@@ -126,4 +95,4 @@ jobs:
           set -euo pipefail
           if gh release view "$SOFTWARE_TAG" >/dev/null 2>&1; then echo 'Software release already exists; refusing overwrite'; exit 1; fi
           gh api "repos/$GH_REPO/git/ref/tags/$SOFTWARE_TAG" >/dev/null || { echo "Create and push tag $SOFTWARE_TAG at $GITHUB_SHA, then re-run the publish job."; exit 1; }
-          gh release create "$SOFTWARE_TAG" dist/packages/*.tar.gz dist/verified-catalog.json dist/native-acceptance.json --verify-tag --title "OpsView verified software $SOFTWARE_TAG" --notes '24 Linux amd64 system/software combinations verified with real systemd and protocol probes. Binary verification uses a fresh target system.' --prerelease --latest=false
+          gh release create "$SOFTWARE_TAG" dist/packages/*.tar.gz dist/verified-catalog.json dist/native-acceptance.json --verify-tag --title "OpsView verified software $SOFTWARE_TAG" --notes 'Verified native Linux amd64 packages. Each system/software pair passes a real systemd start and protocol probe, followed by binary installation on a fresh target.' --prerelease --latest=false

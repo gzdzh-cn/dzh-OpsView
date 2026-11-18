@@ -82,6 +82,9 @@ func (e *Engine) installPrecompiled(ctx context.Context, r model.Resource, entry
 		}
 	}
 	if entry.Software == "php" {
+		if err = relocatePHPDependencyHelpers(runtimePath, artifact.BuildPrefix, runtimePath); err != nil {
+			return err
+		}
 		// The binaries use explicit ini/FPM paths. Relocate the two upstream build helper scripts for PECL.
 		for _, name := range []string{"php-config", "phpize"} {
 			path := filepath.Join(runtimePath, "bin", name)

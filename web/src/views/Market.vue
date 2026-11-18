@@ -6,7 +6,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 const route = useRoute()
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, Grid } from '@element-plus/icons-vue'
 import { usePanel } from '../stores/panel'
 import { post, action, errorText, type Config } from '../lib/api'
 import ResourceForm from '../components/ResourceForm.vue'
@@ -75,6 +75,18 @@ const groups = computed(() =>
     .filter((group) => !route.query.software || group.software === route.query.software),
 )
 const versions = ref<Record<string, string>>({})
+function selectedInstance(software: string) {
+  const entry = panel.catalog.find((v) => v.id === versions.value[software])
+  return panel
+    .kind('instance')
+    .find((r) => r.config.software === software && r.config.version === entry?.version)
+}
+function installationLabel(r: Resource) {
+  if (r.status === 'uninstalled') return '待清理'
+  if (r.status === 'error') return '安装异常'
+  if (['pending', 'installing', 'running'].includes(r.status)) return '已占用'
+  return '已安装'
+}
 const settingsOpen = ref(false),
   settingsResource = ref<Resource>(),
   chooseOpen = ref(false),
@@ -195,8 +207,13 @@ async function importPackage() {
   </el-tabs>
   <template v-if="tab === 'software'">
     <div class="surface software-list">
-      <div v-if="route.query.software" class="page-toolbar">
-        <router-link to="/software">显示全部软件</router-link>
+      <div v-if="route.query.software" class="page-toolbar software-filter-toolbar">
+        <span class="filter-label">当前仅显示 {{ groups[0]?.title || route.query.software }}</span>
+        <router-link to="/software" custom v-slot="{ navigate, href }">
+          <el-button type="primary" :icon="Grid" :data-href="href" @click="navigate">
+            显示全部软件
+          </el-button>
+        </router-link>
       </div>
       <DataList
         :key="'Market-1' + ':' + tab"
@@ -253,7 +270,12 @@ async function importPackage() {
             >
               设置
             </el-button>
-            <el-button link type="primary" @click="openInstall(g.software)">安装</el-button>
+            <el-tag v-if="selectedInstance(g.software)" size="small" type="info">
+              {{ installationLabel(selectedInstance(g.software)!) }}
+            </el-tag>
+            <el-button v-else type="primary" size="small" @click="openInstall(g.software)">
+              安装
+            </el-button>
             <el-button
               link
               type="danger"
@@ -336,6 +358,16 @@ async function importPackage() {
 </template>
 
 <style scoped>
+.software-filter-toolbar {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.filter-label {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
 .software-row-title {
   display: flex;
   align-items: center;

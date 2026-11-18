@@ -1001,7 +1001,7 @@ test('database install guidance selects its software despite saved market tab', 
     'true',
   )
   await expect(page.getByRole('cell', { name: /PostgreSQL/ })).toBeVisible()
-  await page.getByRole('link', { name: '显示全部软件' }).click()
+  await page.getByRole('button', { name: '显示全部软件' }).click()
   await expect(page.getByRole('cell', { name: /MySQL/ })).toBeVisible()
 })
 

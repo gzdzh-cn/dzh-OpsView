@@ -15,15 +15,12 @@ import (
 
 // Build as a dedicated user and install into a private staging tree, never through root make.
 func (e *Engine) installSource(ctx context.Context, r model.Resource, entry catalog.Entry, base string, log func(string)) error {
-	if entry.Software == "php" && (strings.HasPrefix(entry.Version, "7.") || strings.HasPrefix(entry.Version, "8.0.")) {
-		return errors.New("旧版 PHP 隔离依赖配方尚未通过系统验证，安装已停止")
-	}
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "update"); err != nil {
 		return err
 	}
 	deps := []string{"install", "-y", "--no-install-recommends", "build-essential", "ca-certificates", "xz-utils", "libpcre2-dev", "libssl-dev", "zlib1g-dev", "libreadline-dev", "libicu-dev", "pkg-config", "bison", "flex", "autoconf"}
 	if entry.Software == "php" {
-		deps = append(deps, "libxml2-dev", "libsqlite3-dev", "libcurl4-openssl-dev", "libonig-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "libxslt1-dev", "libpq-dev")
+		deps = append(deps, "libxml2-dev", "libsqlite3-dev", "libcurl4-openssl-dev", "libonig-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "libxslt1-dev", "libpq-dev", "perl", "libtool")
 	}
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", deps...); err != nil {
 		return err
@@ -48,8 +45,18 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 	if err := run(ctx, log, "", nil, nil, "chown", "-R", builder+":"+builder, source, stage); err != nil {
 		return err
 	}
+	buildEnv := []string{"CFLAGS=-O2", "CXXFLAGS=-O2"}
+	dependencyPrefix := ""
+	if entry.Software == "php" && legacyPHP(entry.Version) {
+		var err error
+		dependencyPrefix, err = e.buildLegacyPHPDependencies(ctx, base, builder, log)
+		if err != nil {
+			return err
+		}
+		buildEnv = []string{"CFLAGS=-O2 -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types", "CXXFLAGS=-O2 -std=c++11", "CPPFLAGS=-I" + dependencyPrefix + "/include", "LDFLAGS=-L" + dependencyPrefix + "/lib", "PKG_CONFIG_PATH=" + dependencyPrefix + "/lib/pkgconfig", "LIBS=-lstdc++ -ldl -lpthread"}
+	}
 	build := func(args ...string) error {
-		return run(ctx, log, source, nil, nil, "runuser", append([]string{"-u", builder, "--"}, args...)...)
+		return run(ctx, log, source, buildEnv, nil, "runuser", append([]string{"-u", builder, "--"}, args...)...)
 	}
 	runtimePath := filepath.Join(base, "runtime")
 	log("以低权限构建用户编译；完整日志持续输出")
@@ -59,10 +66,7 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 			return err
 		}
 	case "php":
-		if strings.HasPrefix(entry.Version, "7.") || strings.HasPrefix(entry.Version, "8.0") {
-			return errors.New("此旧 PHP 版本需要隔离依赖构建，当前主机配方尚未通过验证；请使用匹配系统的预编译包")
-		}
-		if err := build("./configure", "CFLAGS=-O2", "CXXFLAGS=-O2", "--prefix="+runtimePath, "--with-config-file-path="+base+"/conf", "--with-config-file-scan-dir="+base+"/conf/php.d", "--enable-fpm", "--disable-cgi", "--disable-phpdbg", "--disable-opcache-jit", "--with-fpm-user=www-data", "--with-fpm-group=www-data", "--enable-opcache", "--enable-mbstring", "--enable-bcmath", "--enable-exif", "--enable-intl", "--with-curl", "--with-openssl", "--with-zlib", "--with-zip", "--enable-gd", "--with-jpeg", "--with-freetype", "--with-mysqli=mysqlnd", "--with-pdo-mysql=mysqlnd", "--with-pgsql", "--with-pdo-pgsql"); err != nil {
+		if err := build(phpConfigureArgs(entry, base, dependencyPrefix)...); err != nil {
 			return err
 		}
 	case "redis":
@@ -95,6 +99,26 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 		}
 	}
 	staged := stage + runtimePath
+	if dependencyPrefix != "" {
+		if err := os.Rename(dependencyPrefix, staged+"/compat"); err != nil {
+			return err
+		}
+		for _, name := range []string{"php-config", "phpize"} {
+			p := filepath.Join(staged, "bin", name)
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			if err = security.WriteAtomic(p, []byte(strings.ReplaceAll(string(b), dependencyPrefix, runtimePath+"/compat")), 0755); err != nil {
+				return err
+			}
+		}
+		// pkg-config and legacy configure helpers are text; relocation is repeated
+		// for the verified binary package at its final instance path.
+		if err := relocatePHPDependencyHelpers(staged, dependencyPrefix, runtimePath+"/compat"); err != nil {
+			return err
+		}
+	}
 	if err := run(ctx, log, "", nil, nil, "chown", "-R", "root:root", staged); err != nil {
 		return err
 	}

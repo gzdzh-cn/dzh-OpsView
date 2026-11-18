@@ -146,8 +146,18 @@ async function importPackage() {
           <el-button link type="primary" :disabled="!installed(row)" @click="openPlugin(row)">
             设置
           </el-button>
-          <el-button link type="primary" @click="openPlugin(row)">
-            {{ installed(row) ? '升级' : '安装' }}
+          <el-button v-if="!installed(row)" type="primary" size="small" @click="openPlugin(row)">
+            安装
+          </el-button>
+          <el-button
+            v-else-if="
+              installed(row)?.config.version && installed(row)?.config.version !== row.version
+            "
+            link
+            type="primary"
+            @click="openPlugin(row)"
+          >
+            升级
           </el-button>
           <el-button
             v-if="installed(row) && row.type !== 'application'"

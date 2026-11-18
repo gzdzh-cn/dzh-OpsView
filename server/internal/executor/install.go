@@ -417,6 +417,9 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 				return err
 			}
 		}
+		if err = e.prepareMySQLLegacyClients(ctx, entry.Version, base, log); err != nil {
+			return err
+		}
 		if err = prepareMySQLAIO(ctx, runtimePath, log); err != nil {
 			return err
 		}
