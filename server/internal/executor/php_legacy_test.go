@@ -1,6 +1,9 @@
 package executor
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"context"
 	"opsview/internal/catalog"
 	"os"
 	"path/filepath"
@@ -53,5 +56,44 @@ func TestPHPPrivateHelpersRelocateWithoutRewritingBinaries(t *testing.T) {
 		if string(b) != want {
 			t.Fatal(rel, string(b))
 		}
+	}
+}
+
+func TestVerifiedSourceHardLinksRemainInsideExtractionRoot(t *testing.T) {
+	for _, target := range []string{"src/original", "src/../../outside", "/etc/passwd"} {
+		t.Run(strings.ReplaceAll(target, "/", "_"), func(t *testing.T) {
+			root := t.TempDir()
+			archive := filepath.Join(root, "source.tar.gz")
+			f, err := os.Create(archive)
+			if err != nil {
+				t.Fatal(err)
+			}
+			gz := gzip.NewWriter(f)
+			tw := tar.NewWriter(gz)
+			b := []byte("source content")
+			if err = tw.WriteHeader(&tar.Header{Name: "src/original", Mode: 0644, Size: int64(len(b)), Typeflag: tar.TypeReg}); err != nil {
+				t.Fatal(err)
+			}
+			tw.Write(b)
+			tw.WriteHeader(&tar.Header{Name: "src/linked", Typeflag: tar.TypeLink, Linkname: target})
+			tw.Close()
+			gz.Close()
+			f.Close()
+			out := filepath.Join(root, "out")
+			err = extractArchive(context.Background(), archive, "source.tar.gz", out, true)
+			if target != "src/original" {
+				if err == nil {
+					t.Fatal("escaped link accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(filepath.Join(out, "linked"))
+			if err != nil || string(got) != string(b) {
+				t.Fatal(err, string(got))
+			}
+		})
 	}
 }

@@ -1128,3 +1128,87 @@ test('website toolbar displays real results and confirms Nginx restart', async (
   await page.getByRole('button', { name: '确认', exact: true }).click()
   await expect.poll(() => restarts).toBe(1)
 })
+
+test('software market filter is a button and installed versions have no duplicate install action', async ({
+  page,
+}) => {
+  const fixture = {
+    id: 'php-market-installed',
+    kind: 'instance',
+    name: 'php-8.4.27',
+    status: 'ready',
+    revision: 1,
+    config: {
+      software: 'php',
+      version: '8.4.27',
+      catalogId: 'php-8.4.27',
+      mode: 'native',
+      port: 9000,
+    },
+  }
+  const plugin = {
+    id: 'market-plugin',
+    kind: 'plugin',
+    name: 'backup-tool',
+    status: 'ready',
+    revision: 1,
+    config: { pluginId: 'backup-tool', version: '1.0.0' },
+  }
+  await page.route('**/api/v1/resources', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: [fixture, plugin] })
+      : route.continue(),
+  )
+  await page.route('**/api/v1/catalog', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'php-8.4.27',
+          software: 'php',
+          version: '8.4.27',
+          recommended: true,
+          methods: ['binary'],
+          availability: { binary: '' },
+        },
+        {
+          id: 'php-8.2.35',
+          software: 'php',
+          version: '8.2.35',
+          methods: ['binary'],
+          availability: { binary: '' },
+        },
+      ],
+    }),
+  )
+  await page.route('**/api/v1/plugins', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'backup-tool',
+          name: '备份工具',
+          version: '1.0.0',
+          type: 'operations',
+          builtin: true,
+          form: [],
+        },
+      ],
+    }),
+  )
+  await page.goto('/software?software=php')
+  await expect(page.getByRole('button', { name: '显示全部软件', exact: true })).toHaveClass(
+    /el-button--primary/,
+  )
+  const row = page.locator('.software-list .el-table__body tr').filter({ hasText: 'PHP' })
+  await expect(row).toContainText('已安装')
+  await expect(row.getByRole('button', { name: '安装', exact: true })).toHaveCount(0)
+  await row.locator('.el-select').click()
+  await page.getByRole('option', { name: '8.2.35', exact: true }).click()
+  await expect(row.getByRole('button', { name: '安装', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '显示全部软件', exact: true }).click()
+  await expect(page).toHaveURL('/software')
+  await page.getByRole('tab', { name: '插件市场', exact: true }).click()
+  const pluginRow = page.getByRole('row').filter({ hasText: '备份工具' })
+  await expect(pluginRow.getByRole('button', { name: '设置', exact: true })).toBeEnabled()
+  await expect(pluginRow.getByRole('button', { name: '安装', exact: true })).toHaveCount(0)
+  await expect(pluginRow.getByRole('button', { name: '升级', exact: true })).toHaveCount(0)
+})

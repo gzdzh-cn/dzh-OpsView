@@ -84,7 +84,7 @@ function selectedInstance(software: string) {
 function installationLabel(r: Resource) {
   if (r.status === 'uninstalled') return '待清理'
   if (r.status === 'error') return '安装异常'
-  if (['pending', 'installing', 'running'].includes(r.status)) return '已占用'
+  if (['pending', 'installing'].includes(r.status)) return '已占用'
   return '已安装'
 }
 const settingsOpen = ref(false),

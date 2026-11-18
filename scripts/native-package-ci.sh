@@ -19,7 +19,7 @@ set -e
 if [ "$result" -ne 0 ]; then
   python3 - <<'REPORT'
 import pathlib
-text='\n'.join(pathlib.Path('dist/native-acceptance.log').read_text(errors='replace').splitlines()[-35:])
+text='\n'.join(pathlib.Path('dist/native-acceptance.log').read_text(errors='replace').splitlines()[-14:])[-3000:]
 text=text.replace('%','%25').replace('\r','%0D').replace('\n','%0A')
 print(f'::error title=Native acceptance failed::{text}')
 REPORT

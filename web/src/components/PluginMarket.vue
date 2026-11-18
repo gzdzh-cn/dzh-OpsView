@@ -45,7 +45,7 @@ async function installPlugin() {
       '安装权限',
       { confirmButtonText: '安装', cancelButtonText: '取消' },
     )
-    const existing = installed(p)
+    const existing = pluginRecord(p)
     const config = {
       pluginId: p.id,
       builtin: !!p.builtin,
@@ -101,8 +101,12 @@ async function checkPlugin(p: any) {
     ElMessage.error(errorText(e))
   }
 }
-function installed(p: any) {
+function pluginRecord(p: any) {
   return panel.kind('plugin').find((r) => r.config.pluginId === p.id || r.name === p.id)
+}
+function installed(p: any) {
+  const record = pluginRecord(p)
+  return record?.status === 'uninstalled' ? undefined : record
 }
 
 async function importPackage() {

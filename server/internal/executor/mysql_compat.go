@@ -55,7 +55,7 @@ func prepareMySQLAIO(ctx context.Context, runtimePath string, log func(string)) 
 // Build the required ncurses ABI instead of falsely aliasing libncurses.so.6
 // to ABI 5. Only the legacy upstream clients need it; keep it instance-local.
 func (e *Engine) prepareMySQLLegacyClients(ctx context.Context, version, base string, log func(string)) error {
-	if !strings.HasPrefix(version, "5.7.") {
+	if !strings.HasPrefix(version, "5.7.") && !strings.HasPrefix(version, "8.0.") {
 		return nil
 	}
 	const sourceURL = "https://invisible-island.net/archives/ncurses/ncurses-6.5.tar.gz"
@@ -82,7 +82,7 @@ func (e *Engine) prepareMySQLLegacyClients(ctx context.Context, version, base st
 		return run(ctx, log, work, nil, nil, "runuser", append([]string{"-u", "ovbuild", "--"}, args...)...)
 	}
 	prefix := filepath.Join(work, "output")
-	if err := build("./configure", "--prefix="+prefix, "--with-shared", "--without-normal", "--without-debug", "--without-cxx", "--without-cxx-binding", "--with-termlib", "--with-abi-version=5", "--enable-overwrite"); err != nil {
+	if err := build("./configure", "--prefix="+prefix, "--with-shared", "--without-normal", "--without-debug", "--without-cxx", "--without-cxx-binding", "--with-termlib", "--with-abi-version=5", "--enable-overwrite", "--disable-ldconfig"); err != nil {
 		return err
 	}
 	if err := build("make", "-j2"); err != nil {

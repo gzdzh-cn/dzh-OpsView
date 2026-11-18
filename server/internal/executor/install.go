@@ -611,6 +611,32 @@ func extractArchive(ctx context.Context, path, source, dest string, strip bool) 
 			if ce != nil {
 				return ce
 			}
+		case tar.TypeLink:
+			targetName := h.Linkname
+			if filepath.IsAbs(targetName) {
+				return errors.New("归档含绝对硬链接")
+			}
+			if strip {
+				parts := strings.SplitN(targetName, "/", 2)
+				if len(parts) != 2 {
+					return errors.New("归档硬链接目标无效")
+				}
+				targetName = parts[1]
+			}
+			target, er := safePath(dest, targetName)
+			if er != nil {
+				return er
+			}
+			st, er := os.Lstat(target)
+			if er != nil || !st.Mode().IsRegular() {
+				return errors.New("归档硬链接只允许指向已解压的普通文件")
+			}
+			if er = os.MkdirAll(filepath.Dir(p), 0755); er != nil {
+				return er
+			}
+			if er = os.Link(target, p); er != nil {
+				return er
+			}
 		case tar.TypeSymlink:
 			if filepath.IsAbs(h.Linkname) {
 				return errors.New("归档含绝对符号链接")
