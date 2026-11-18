@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -38,6 +39,8 @@ func TestFastPackageAcceptance(t *testing.T) {
 	if active, err := output(context.Background(), "systemctl", "is-system-running"); err != nil && !strings.Contains(active, "degraded") {
 		t.Fatal("real systemd is required", active, err)
 	}
+	previousMask := syscall.Umask(0027)
+	defer syscall.Umask(previousMask)
 	e := &Engine{Root: "/var/lib/opsview/fast-acceptance", allowUnverifiedNative: true}
 	if err := e.Initialize(); err != nil {
 		t.Fatal(err)
@@ -65,10 +68,8 @@ func TestFastPackageAcceptance(t *testing.T) {
 	}
 	r := model.Resource{ID: id, Kind: "instance", Name: entry.Software + "-" + entry.Version, Config: model.Config{"catalogId": entry.ID, "software": entry.Software, "version": entry.Version, "mode": "native", "installMethod": method, "port": port, "password": "disposable-fast-package-test-only"}}
 	base := filepath.Join(e.Root, "instances", id)
-	for _, dir := range []string{"data", "conf", "logs", "runtime"} {
-		if err = os.MkdirAll(filepath.Join(base, dir), 0755); err != nil {
-			t.Fatal(err)
-		}
+	if err = prepareInstanceLayout(base); err != nil {
+		t.Fatal(err)
 	}
 	defer func() {
 		{

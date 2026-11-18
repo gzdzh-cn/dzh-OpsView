@@ -4,6 +4,7 @@ on:
     branches: [codex/software-management]
     paths:
       - 'server/internal/executor/native.go'
+      - 'server/internal/executor/install_permissions.go'
       - 'server/internal/executor/php_legacy.go'
       - 'server/internal/executor/install.go'
       - 'server/internal/executor/mysql_compat.go'

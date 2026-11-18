@@ -102,14 +102,10 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 		r.Config["catalogId"] = entry.ID
 		r.Config["bind"] = "127.0.0.1"
 		base := filepath.Join(e.Root, "instances", r.ID)
-		if err = os.MkdirAll(base, 0755); err != nil {
+		if err = prepareInstanceLayout(base); err != nil {
 			return nil, err
 		}
-		for _, p := range []string{"data", "conf", "logs", "runtime"} {
-			if err = os.MkdirAll(filepath.Join(base, p), 0755); err != nil {
-				return nil, err
-			}
-		}
+
 		log("环境预检通过，开始安装 " + entry.Software + " " + entry.Version)
 		r.Status = "installing"
 		if err = e.save(r); err != nil {
@@ -375,6 +371,9 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 		if err := extractArchive(ctx, archive, entry.Source, base+"/runtime", true); err != nil {
 			return err
 		}
+		if err := prepareRuntimePermissions(base + "/runtime"); err != nil {
+			return err
+		}
 		return run(ctx, log, "", nil, nil, base+"/runtime/bin/node", "--version")
 	}
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", "update"); err != nil {
@@ -416,6 +415,9 @@ func (e *Engine) installNative(ctx context.Context, r model.Resource, entry cata
 			if err = os.Rename(filepath.Join(source, item.Name()), filepath.Join(runtimePath, item.Name())); err != nil {
 				return err
 			}
+		}
+		if err = prepareRuntimePermissions(runtimePath); err != nil {
+			return err
 		}
 		if err = e.prepareMySQLLegacyClients(ctx, entry.Version, base, log); err != nil {
 			return err

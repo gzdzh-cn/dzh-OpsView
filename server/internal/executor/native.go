@@ -136,6 +136,9 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 }
 func (e *Engine) configureNative(ctx context.Context, r model.Resource, base string, log func(string)) error {
 	runtimePath := base + "/runtime"
+	if err := prepareRuntimePermissions(runtimePath); err != nil {
+		return err
+	}
 	user := "ov_" + r.ID[:min(12, len(r.ID))]
 	sw := r.Config.String("software")
 	if sw != "nginx" {
