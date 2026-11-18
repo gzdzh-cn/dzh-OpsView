@@ -262,3 +262,12 @@ rc.3 将 HTTP 会话改为 `opsview_session_http`，HTTPS 保留原名及 Secure
 本地隔离测试使用自建并自动清理的 `opsview-dbtest-*` 容器，未连接用户业务服务。MySQL 5.7/8.4.8、PostgreSQL 18.0、Redis 7 实际执行创建/授权/改密/加密备份/新库恢复和 Redis 五类数据操作；原生客户端测试通过隔离工具适配执行，不能冒充每个原生版本安装验收。PostgreSQL 测试使用实际挂载的 pg_hba.conf 并以业务账号验证只读/读写，覆盖非 public schema 导出及恢复。备份工具失败验证原库仍在；大键、二进制和过期时间变更验证 Redis 冲突保护。
 
 Go 测试覆盖 schema 2 → 3 保留密文及关联、同实例重名拒绝、跨实例同名、凭据身份/TOTP/CSRF/no-store、回收专属备份旧接口保护和 RESP 限制。浏览器覆盖三标签表头、密码关窗清除、维护确认、Redis 编辑、窄屏和全站导航。CI 使用同一测试在临时 Ubuntu 主机执行，并对打包程序进行安装、更新、回退和菜单回归。未在用户服务器自动部署。
+
+2026-11-18 发布验证完成：[`44218209436`](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44218209436) 的 build、publish、verify-public-install 全部成功；发布提交为 `7ab4265`。24 项浏览器回归及真实 Linux 数据库集成、systemd 安装更新回退、公开 Release 下载安装通过。本地另用正式 Linux amd64 发布二进制在隔离 Ubuntu 容器执行 24 项页面测试，全部通过，缓存导航 P95 51.5ms。
+
+公开附件摘要：
+
+```text
+82ebdc037acef77758de8551af2e65dbc5fa212780dee8cc2682f7684385c3e8  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
