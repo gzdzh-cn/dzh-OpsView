@@ -75,6 +75,7 @@ const groups = computed(() =>
     .filter((group) => !route.query.software || group.software === route.query.software),
 )
 const versions = ref<Record<string, string>>({})
+const chosenVersions = new Set<string>()
 function selectedInstance(software: string) {
   const entry = panel.catalog.find((v) => v.id === versions.value[software])
   return panel
@@ -137,16 +138,26 @@ function openImport(type: string) {
   importOpen.value = true
 }
 watch(
-  groups,
-  (items) => {
+  [groups, () => panel.resources],
+  ([items]) => {
     for (const g of items) {
-      if (!g.versions.some((v) => v.id === versions.value[g.software]))
-        versions.value[g.software] =
-          (
-            g.versions.find((v) => v.recommended && !v.disabledReason) ||
-            g.versions.find((v) => !v.disabledReason) ||
-            g.versions[0]
-          )?.id || ''
+      if (
+        chosenVersions.has(g.software) &&
+        g.versions.some((v) => v.id === versions.value[g.software])
+      )
+        continue
+      const occupied = panel.kind('instance').filter((r) => r.config.software === g.software)
+      const existing =
+        g.versions.find((v) =>
+          occupied.some((r) => r.config.version === v.version && r.status !== 'uninstalled'),
+        ) || g.versions.find((v) => occupied.some((r) => r.config.version === v.version))
+      versions.value[g.software] =
+        (
+          existing ||
+          g.versions.find((v) => v.recommended && !v.disabledReason) ||
+          g.versions.find((v) => !v.disabledReason) ||
+          g.versions[0]
+        )?.id || ''
     }
   },
   { immediate: true },
@@ -250,7 +261,7 @@ async function importPackage() {
         </el-table-column>
         <el-table-column label="可用版本" width="175">
           <template #default="{ row: g }">
-            <el-select v-model="versions[g.software]">
+            <el-select v-model="versions[g.software]" @change="chosenVersions.add(g.software)">
               <el-option
                 v-for="v in g.versions"
                 :key="v.id"
