@@ -1996,3 +1996,13 @@ svg {
     box-shadow: none !important;
   }
 }
+.security-panel { padding: 12px; margin-bottom: 12px; }
+.security-panel .page-toolbar { padding: 0; margin-bottom: 12px; }
+.security-setting { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 44px; padding: 6px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
+.security-setting strong { width: 130px; font-weight: 500; }
+.security-setting > span { flex: 1; min-width: 160px; }
+.security-hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; margin: 10px 0; }
+.security-pending { margin: 12px 0; }
+.security-pending .el-button { margin-top: 8px; }
+.security-form { margin-top: 16px; }
+.security-form .el-form-item { margin-bottom: 14px; }

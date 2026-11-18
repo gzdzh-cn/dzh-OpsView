@@ -13,8 +13,21 @@ func CompatibleUFW() bool {
 	if e != nil || !strings.Contains(string(b), "Status: active") {
 		return false
 	}
+	return UFWEnvironmentCompatible()
+}
+
+// Environment check also works before enabling an already installed UFW.
+func UFWEnvironmentCompatible() bool {
+	status, statusErr := exec.Command("ufw", "status").Output()
+	if statusErr != nil {
+		return false
+	}
+	active := strings.Contains(string(status), "Status: active")
+	if b, e := exec.Command("systemctl", "is-active", "firewalld.service").Output(); e == nil && strings.TrimSpace(string(b)) == "active" {
+		return false
+	}
 	// An additional input hook is not an environment we can safely manage automatically.
-	if b, e = exec.Command("nft", "list", "ruleset").Output(); e == nil {
+	if b, e := exec.Command("nft", "list", "ruleset").Output(); e == nil {
 		hooks := regexp.MustCompile(`(?s)chain\s+([^\s{]+)\s*\{[^{}]*?\bhook\s+input\b`)
 		for _, hook := range hooks.FindAllStringSubmatch(string(b), -1) {
 			if hook[1] != "INPUT" && !strings.HasPrefix(strings.ToLower(hook[1]), "ufw") {
@@ -29,9 +42,12 @@ func CompatibleUFW() bool {
 		}
 	}
 	for _, tool := range []string{"iptables", "ip6tables"} {
-		b, e = exec.Command(tool, "-S", "INPUT").Output()
+		b, e := exec.Command(tool, "-S", "INPUT").Output()
 		if e == nil {
 			for _, line := range strings.Split(string(b), "\n") {
+				if !active && strings.HasPrefix(line, "-P INPUT ") && strings.TrimSpace(line) != "-P INPUT ACCEPT" {
+					return false
+				}
 				if strings.HasPrefix(line, "-A INPUT ") && !strings.Contains(line, "ufw-") && !strings.Contains(line, "ufw6-") {
 					return false
 				}

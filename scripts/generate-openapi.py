@@ -121,5 +121,25 @@ for op in ['databases','scan','read','write','download']:
     response = ref('RedisScan') if op=='scan' else ref('RedisKey') if op=='read' else config
     add('/redis/{id}/'+op,'post','结构化 Redis '+op+'；无任意命令；WATCH 修订冲突返回 409；不缓存值',response,ref('RedisInput'))
 paths['/api/v1/redis/{id}/download']['post']['responses']['200']['content']={'application/octet-stream':{'schema':{'type':'string','format':'binary','description':'Redis DUMP 序列化，最大 2 GiB'}}}
+schemas['SSHSettings']=obj({'ports':{'type':'array','minItems':1,'maxItems':8,'items':{'type':'integer','minimum':1,'maximum':65535}},'password':boolean,'publicKey':boolean,'rootLogin':{'type':'string','enum':['yes','no','prohibit-password']},'maxAuthTries':{'type':'integer','minimum':1,'maximum':20},'loginGraceTime':{'type':'integer','minimum':10,'maximum':600},'clientAliveInterval':{'type':'integer','minimum':0,'maximum':3600},'clientAliveCountMax':{'type':'integer','minimum':1,'maximum':10}})
+schemas['SSHStatus']=obj({'available':boolean,'editable':boolean,'reason':string,'unit':string,'settings':ref('SSHSettings'),'revision':string,'pending':obj({'deadline':integer,'ports':{'type':'array','items':integer}},[]),'sessions':string,'fail2ban':string,'keys':config,'matchWarning':string},['available'])
+schemas['FirewallRule']=obj({'number':integer,'destination':string,'action':string,'direction':string,'source':string,'note':string,'managed':boolean,'ipv6':boolean})
+schemas['FirewallStatus']=obj({'installed':boolean,'enabled':boolean,'compatible':boolean,'reason':string,'rules':{'type':'array','items':ref('FirewallRule')},'raw':string,'dockerRules':string,'dockerIPv6Rules':string,'protectedPorts':{'type':'array','items':integer},'portReason':string,'pending':obj({'deadline':integer,'enabled':boolean},[]),'externalRestrictions':string})
+add('/system/ssh','get','读取实际 OpenSSH 配置、会话、公钥指纹及防爆破诊断',ref('SSHStatus'))
+add('/system/ssh/logs','get','最近 24 小时最多 200 行 SSH journal 记录，不作为完整统计')
+add('/system/firewall','get','读取 UFW 实际规则、保护端口、Docker IPv4/IPv6 规则及兼容性',ref('FirewallStatus'))
+for path in ['/system/ssh','/system/ssh/logs','/system/firewall']:
+    paths['/api/v1'+path]['get']['responses']['200']['headers']={'Cache-Control':{'schema':{'type':'string','enum':['no-store']}}}
+security_bodies={
+ 'ssh-apply':obj({'revision':string,'settings':ref('SSHSettings'),'source':string,'confirmedImpact':{'type':'boolean','enum':[True]}}),
+ 'ssh-key-add':obj({'revision':string,'publicKey':string,'confirmedImpact':{'type':'boolean','enum':[True]}}),
+ 'ssh-key-delete':obj({'revision':string,'fingerprint':string,'confirmedImpact':{'type':'boolean','enum':[True]}}),
+ 'firewall-mode':obj({'enabled':boolean,'source':string,'confirmedImpact':{'type':'boolean','enum':[True]}},['enabled','confirmedImpact']),
+ 'firewall-reload':config,
+}
+for action,body in security_bodies.items():add('/system/security/'+action,'post','提交受控安全任务 '+action+'；SSH 和防火墙启停须在 120 秒内确认',ref('Task'),body,status='202')
+for prefix in ['ssh','firewall']:
+    add('/system/security/'+prefix+'-confirm','post','确认已经通过新设置重新登录；必须在截止时间之前',body=obj({'connected':{'type':'boolean','enum':[True]}}))
+    add('/system/security/'+prefix+'-rollback','post','恢复本次变更前的设置和本次增加的规则',body=config)
 spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session","description":"HTTPS 会话，Secure Cookie"},"httpSession":{"type":"apiKey","in":"cookie","name":"opsview_session_http","description":"HTTP 会话，与 HTTPS Cookie 分离以兼容关闭 SSL"}}}}
 (root/'server/internal/api/openapi.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n')

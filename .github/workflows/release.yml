@@ -48,6 +48,8 @@ jobs:
       - run: make api check
       - run: ./scripts/test-installer.sh
       - run: ./scripts/test-files-linux.sh
+      - name: Verify real SSH login and UFW rollback in isolated Linux
+        run: bash scripts/test-security-linux.sh
       - run: ./scripts/test-sites-linux.sh
       - run: npx playwright install --with-deps chromium
         working-directory: web

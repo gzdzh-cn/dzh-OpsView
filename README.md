@@ -1,12 +1,14 @@
 # OpsView
 
-本轮优化文件管理：路径栏与面包屑合并，目录大小原位计算，备注行内自动保存。网站根目录默认 `/www/wwwroot/域名`，支持网站内进程托管、统计、安全检查和 Nginx 管理。详见 [网站管理说明](docs/website-management.md)。
+文件管理支持路径面包屑、目录大小原位计算和备注行内保存；网站根目录默认 `/www/wwwroot/域名`，支持网站内进程托管、统计、安全检查和 Nginx 管理。详见 [网站管理说明](docs/website-management.md)。
+
+本版新增系统防火墙与 SSH 管理：UFW 实际规则、启停与回退，SSH 多端口、认证、公钥与登录记录。详见 [系统安全使用与恢复](docs/system-security.md)。
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.3-rc.9 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.3-rc.10 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
-本轮文件管理路径栏与行内操作优化以 `v0.1.3-rc.9` 发布测试，保留统一插件市场、多版本安装、数据库与网站内进程托管功能。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
+本轮系统防火墙与 SSH 管理以 `v0.1.3-rc.10` 发布测试，保留文件行内操作、统一插件市场、多版本安装、数据库与网站内进程托管功能。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
 
 本版统一全站业务列表，文件管理扩展至服务器根目录，移除独立应用进程入口并保留旧服务，进程托管在网站内提供，增加 Docker 引擎状态与 API 协商；软件市场只提供原生极速/编译安装。继续验证内嵌资源及实际发布二进制的侧栏导航。
 
@@ -48,9 +50,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.9/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.9/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.9
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.10/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.10/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.10
 # 已安装面板：
-ov update --version v0.1.3-rc.9
+ov update --version v0.1.3-rc.10
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
@@ -89,7 +91,7 @@ sudo bash opsview-linux-amd64/deploy/install.sh
 | 插件市场 | 统一逐行市场、原生极速/编译安装、自动名称及准确版本占用；四类软件实例设置、配置修订与回退；签名源、Redis/Adminer/S3 扩展及低权限 worker |
 | 文件 | 服务器 / 目录、收藏/备注、流式分块上传/续传（2 GiB）、Range 下载、修订编辑、批量复制/移动、ZIP/TAR.GZ、权限及 30 天回收站 |
 | 备份与计划 | 本地/S3 加密备份、摘要、保留策略、恢复至新目录或新库，Cron 备份与续期 |
-| 系统与安全 | UFW/DOCKER-USER 规则、监听与发布端口、120 秒确认回退、服务与日志、审计 |
+| 系统与安全 | UFW 实际规则与启停、DOCKER-USER、多端口 SSH 与认证、公钥、登录记录、120 秒确认回退、服务日志与审计 |
 | 面板设置 | 五类设置行、管理员/TOTP/会话、HTTP/HTTPS、地址/端口/访问限制、120 秒重新连接确认、证书及加密备份 |
 
 Nginx/MySQL/PHP/Redis 目录覆盖 32 个准确版本，保留既有 PostgreSQL、Node.js 和历史容器实例。本轮补齐其余 12 个 Nginx 版本在四系统的 48 个组合，累计 136 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统验收，其中 112 个组合同时提供编译安装。Nginx 另验证准确版本、HTTPS、HTTP/2 和正则重写；MySQL、Node.js 使用官方主软件二进制。PostgreSQL 17.6 等未验收条目仍按实际验证结果开放；完整版本与限制见 [软件管理实现说明](软件管理实现说明.md)。目录是项目快照，**不代表上游最新版本**。所有下载固定摘要，容器固定镜像摘要；业务软件不会自动升级，自定义目录不执行任意 root Shell 配方。

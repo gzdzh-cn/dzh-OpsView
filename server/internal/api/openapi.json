@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpsView API",
-    "version": "0.1.3-rc.9"
+    "version": "0.1.3-rc.10"
   },
   "paths": {
     "/api/v1/health": {
@@ -5050,6 +5050,829 @@
           }
         }
       }
+    },
+    "/api/v1/system/ssh": {
+      "get": {
+        "operationId": "get_system_ssh",
+        "summary": "读取实际 OpenSSH 配置、会话、公钥指纹及防爆破诊断",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSHStatus"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        }
+      }
+    },
+    "/api/v1/system/ssh/logs": {
+      "get": {
+        "operationId": "get_system_ssh_logs",
+        "summary": "最近 24 小时最多 200 行 SSH journal 记录，不作为完整统计",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        }
+      }
+    },
+    "/api/v1/system/firewall": {
+      "get": {
+        "operationId": "get_system_firewall",
+        "summary": "读取 UFW 实际规则、保护端口、Docker IPv4/IPv6 规则及兼容性",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirewallStatus"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/ssh-apply": {
+      "post": {
+        "operationId": "post_system_security_ssh_apply",
+        "summary": "提交受控安全任务 ssh-apply；SSH 和防火墙启停须在 120 秒内确认",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "settings": {
+                    "$ref": "#/components/schemas/SSHSettings"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "revision",
+                  "settings",
+                  "source",
+                  "confirmedImpact"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/ssh-key-add": {
+      "post": {
+        "operationId": "post_system_security_ssh_key_add",
+        "summary": "提交受控安全任务 ssh-key-add；SSH 和防火墙启停须在 120 秒内确认",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "publicKey": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "revision",
+                  "publicKey",
+                  "confirmedImpact"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/ssh-key-delete": {
+      "post": {
+        "operationId": "post_system_security_ssh_key_delete",
+        "summary": "提交受控安全任务 ssh-key-delete；SSH 和防火墙启停须在 120 秒内确认",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "fingerprint": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "revision",
+                  "fingerprint",
+                  "confirmedImpact"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/firewall-mode": {
+      "post": {
+        "operationId": "post_system_security_firewall_mode",
+        "summary": "提交受控安全任务 firewall-mode；SSH 和防火墙启停须在 120 秒内确认",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "confirmedImpact": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "confirmedImpact"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/firewall-reload": {
+      "post": {
+        "operationId": "post_system_security_firewall_reload",
+        "summary": "提交受控安全任务 firewall-reload；SSH 和防火墙启停须在 120 秒内确认",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/ssh-confirm": {
+      "post": {
+        "operationId": "post_system_security_ssh_confirm",
+        "summary": "确认已经通过新设置重新登录；必须在截止时间之前",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "connected": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "connected"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/ssh-rollback": {
+      "post": {
+        "operationId": "post_system_security_ssh_rollback",
+        "summary": "恢复本次变更前的设置和本次增加的规则",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/firewall-confirm": {
+      "post": {
+        "operationId": "post_system_security_firewall_confirm",
+        "summary": "确认已经通过新设置重新登录；必须在截止时间之前",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "connected": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "connected"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/security/firewall-rollback": {
+      "post": {
+        "operationId": "post_system_security_firewall_rollback",
+        "summary": "恢复本次变更前的设置和本次增加的规则",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6211,6 +7034,234 @@
         "required": [
           "cursor",
           "rows"
+        ]
+      },
+      "SSHSettings": {
+        "type": "object",
+        "properties": {
+          "ports": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "password": {
+            "type": "boolean"
+          },
+          "publicKey": {
+            "type": "boolean"
+          },
+          "rootLogin": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "prohibit-password"
+            ]
+          },
+          "maxAuthTries": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "loginGraceTime": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 600
+          },
+          "clientAliveInterval": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3600
+          },
+          "clientAliveCountMax": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "ports",
+          "password",
+          "publicKey",
+          "rootLogin",
+          "maxAuthTries",
+          "loginGraceTime",
+          "clientAliveInterval",
+          "clientAliveCountMax"
+        ]
+      },
+      "SSHStatus": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "editable": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SSHSettings"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "object",
+            "properties": {
+              "deadline": {
+                "type": "integer"
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            },
+            "required": [
+              "deadline",
+              "ports"
+            ]
+          },
+          "sessions": {
+            "type": "string"
+          },
+          "fail2ban": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "matchWarning": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available"
+        ]
+      },
+      "FirewallRule": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "managed": {
+            "type": "boolean"
+          },
+          "ipv6": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "number",
+          "destination",
+          "action",
+          "direction",
+          "source",
+          "note",
+          "managed",
+          "ipv6"
+        ]
+      },
+      "FirewallStatus": {
+        "type": "object",
+        "properties": {
+          "installed": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "compatible": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FirewallRule"
+            }
+          },
+          "raw": {
+            "type": "string"
+          },
+          "dockerRules": {
+            "type": "string"
+          },
+          "dockerIPv6Rules": {
+            "type": "string"
+          },
+          "protectedPorts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "portReason": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "object",
+            "properties": {
+              "deadline": {
+                "type": "integer"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "deadline",
+              "enabled"
+            ]
+          },
+          "externalRestrictions": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "installed",
+          "enabled",
+          "compatible",
+          "reason",
+          "rules",
+          "raw",
+          "dockerRules",
+          "dockerIPv6Rules",
+          "protectedPorts",
+          "portReason",
+          "pending",
+          "externalRestrictions"
         ]
       }
     },

@@ -53,7 +53,7 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
         path.startsWith('/repositories')
           ? ['/catalog', '/plugins'].includes(key)
           : false) ||
-        (path.startsWith('/system') ? key === '/system' || key === '/audit' : false) ||
+        (path.startsWith('/system') ? key.startsWith('/system') || key === '/audit' : false) ||
         (path.startsWith('/settings') ? key === '/settings/backups' : false),
     )
   }

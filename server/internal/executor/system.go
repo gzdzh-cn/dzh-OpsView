@@ -17,6 +17,12 @@ import (
 )
 
 func (e *Engine) system(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
+	if strings.HasPrefix(op.Name, "system.ssh-") {
+		return e.sshOperation(ctx, op, log)
+	}
+	if strings.HasPrefix(op.Name, "system.firewall-") {
+		return e.firewallSystem(ctx, op, log)
+	}
 	if op.Name == "system.panel-certificate-upload" {
 		return e.uploadPanelCertificate(op.Params)
 	}

@@ -1611,3 +1611,153 @@ test('unified market categories keep every installed version without a separate 
     fullPage: true,
   })
 })
+
+const sshSettingsFixture = {
+  ports: [555],
+  password: false,
+  publicKey: true,
+  rootLogin: 'prohibit-password',
+  maxAuthTries: 6,
+  loginGraceTime: 120,
+  clientAliveInterval: 0,
+  clientAliveCountMax: 3,
+}
+test('SSH management loads lazily and stages connection settings with explicit confirmation', async ({
+  page,
+}) => {
+  let reads = 0,
+    logReads = 0,
+    applied = false,
+    confirmed = false
+  await page.route('**/api/v1/system/firewall', (r) =>
+    r.fulfill({
+      json: {
+        installed: true,
+        enabled: true,
+        compatible: true,
+        rules: [],
+        protectedPorts: [555, 18790],
+      },
+    }),
+  )
+  await page.route('**/api/v1/system/ssh', (r) => {
+    reads++
+    return r.fulfill({
+      json: {
+        available: true,
+        editable: true,
+        unit: 'ssh.service',
+        settings: sshSettingsFixture,
+        revision: 'ssh-revision-1',
+        keys: { editable: true, rows: [], revision: 'keys-1' },
+        pending:
+          applied && !confirmed
+            ? { deadline: Math.floor(Date.now() / 1000) + 120, ports: [2222] }
+            : {},
+        matchWarning: '保留当前 SSH 连接，测试新配置',
+      },
+    })
+  })
+  await page.route('**/api/v1/system/ssh/logs', (r) => {
+    logReads++
+    return r.fulfill({
+      json: {
+        rows: [{ status: '成功', detail: 'Accepted publickey for root from 192.0.2.10' }],
+        notice: '最近 24 小时最多 200 行',
+      },
+    })
+  })
+  await page.route('**/api/v1/system/security/ssh-apply', async (r) => {
+    const body = r.request().postDataJSON()
+    expect(body.settings.ports).toEqual([2222])
+    expect(body.revision).toBe('ssh-revision-1')
+    expect(body.confirmedImpact).toBe(true)
+    expect(body.source).toBe('192.0.2.10/32')
+    applied = true
+    await r.fulfill({ status: 202, json: { id: 'ssh-task', state: 'queued' } })
+  })
+  await page.route('**/api/v1/tasks', (r) =>
+    r.fulfill({ json: [{ id: 'ssh-task', state: 'succeeded', operation: 'system.ssh-apply' }] }),
+  )
+  await page.route('**/api/v1/system/security/ssh-confirm', async (r) => {
+    expect(r.request().postDataJSON().connected).toBe(true)
+    confirmed = true
+    await r.fulfill({ json: { confirmed: true } })
+  })
+  await page.goto('/system')
+  await expect(page.getByRole('tab', { name: 'SSH 管理', exact: true })).toBeVisible()
+  expect(reads).toBe(0)
+  await page.getByRole('tab', { name: 'SSH 管理', exact: true }).click()
+  await expect(page.getByText('555', { exact: true })).toBeVisible()
+  expect(logReads).toBe(0)
+  await page.getByRole('button', { name: '修改连接设置' }).click()
+  const dialog = page.getByRole('dialog', { name: 'SSH 连接设置' })
+  await expect(dialog.getByRole('button', { name: '校验并应用' })).toBeDisabled()
+  await dialog.getByPlaceholder('例如 555, 2222').fill('2222')
+  await dialog.getByPlaceholder('SSH 客户端 IP/CIDR，UFW 已启用时必填').fill('192.0.2.10/32')
+  await dialog.getByText('已保留现有 SSH 会话，并确认云安全组与认证影响', { exact: true }).click()
+  await dialog.getByRole('button', { name: '校验并应用' }).click()
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByText('修改待确认', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: '已重新 SSH 登录，确认保留' }).click()
+  await page.getByRole('button', { name: '已用新配置登录', exact: true }).click()
+  await expect.poll(() => confirmed).toBe(true)
+  await page.getByText('登录记录', { exact: true }).click()
+  await expect(page.getByRole('radio', { name: '登录记录', exact: true })).toBeChecked()
+  await expect(
+    page.getByText('Accepted publickey for root from 192.0.2.10', { exact: true }),
+  ).toBeVisible()
+  expect(logReads).toBe(1)
+  await page.screenshot({ path: '../.opsview/screenshots/system-ssh-logins.png', fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
+})
+
+test('firewall renders actual IPv4 and IPv6 rules and keeps incompatible systems read-only', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/system/firewall', (r) =>
+    r.fulfill({
+      json: {
+        installed: true,
+        enabled: true,
+        compatible: false,
+        reason: '检测到其他防火墙，仅提供诊断',
+        protectedPorts: [555, 18790],
+        rules: [
+          {
+            number: 1,
+            destination: '555/tcp',
+            action: 'ALLOW',
+            direction: 'IN',
+            source: 'Anywhere',
+            note: 'ssh',
+            managed: false,
+          },
+          {
+            number: 2,
+            destination: '80/tcp (v6)',
+            action: 'DENY',
+            direction: 'IN',
+            source: '2001:db8::/32',
+            note: 'opsview-test',
+            managed: true,
+          },
+        ],
+        externalRestrictions: '云安全组单独配置',
+        raw: 'Status: active',
+      },
+    }),
+  )
+  await page.goto('/system')
+  await expect(page.getByRole('button', { name: '关闭防火墙' })).toBeDisabled()
+  await page.getByText('系统实际规则', { exact: true }).click()
+  await expect(page.getByRole('radio', { name: '系统实际规则', exact: true })).toBeChecked()
+  await expect(page.getByRole('cell', { name: '555/tcp', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '2001:db8::/32', exact: true })).toBeVisible()
+  await expect(page.getByText('检测到其他防火墙，仅提供诊断')).toBeVisible()
+  await page.screenshot({
+    path: '../.opsview/screenshots/system-firewall-actual.png',
+    fullPage: true,
+  })
+})

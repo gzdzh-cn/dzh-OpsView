@@ -5,14 +5,15 @@ import DataList from '../components/DataList.vue'
 import { ref } from 'vue'
 import { post, errorText } from '../lib/api'
 import { ElMessage } from 'element-plus'
-import Resources from './Resources.vue'
+import FirewallManagement from '../components/FirewallManagement.vue'
+import SSHManagement from '../components/SSHManagement.vue'
 const tab = usePageState('tab', 'firewall')
 const {
   data,
   error,
   busy,
   load: loadSystem,
-} = usePageQuery<any>(() => (['firewall', 'services'].includes(tab.value) ? '/system' : ''), null)
+} = usePageQuery<any>(() => (tab.value === 'services' ? '/system' : ''), null)
 const {
   data: audits,
   error: auditError,
@@ -33,36 +34,13 @@ async function readLogs() {
 <template>
   <el-tabs v-model="tab" class="panel-tabs">
     <el-tab-pane label="防火墙规则" name="firewall" />
+    <el-tab-pane label="SSH 管理" name="ssh" />
     <el-tab-pane label="端口与服务" name="services" />
     <el-tab-pane label="系统日志" name="logs" />
     <el-tab-pane label="操作审计" name="audit" />
   </el-tabs>
-  <template v-if="tab === 'firewall'">
-    <div class="notice warn">
-      宿主机与 Docker 入站规则分别管理。应用后须在 120
-      秒内确认，否则自动回退；已有不兼容的防火墙体系只提供诊断。
-    </div>
-    <Resources kind="firewall" />
-    <el-collapse class="system-diagnostics">
-      <el-collapse-item title="当前实际规则与诊断">
-        <div class="split-heading">
-          <h3>当前实际规则</h3>
-          <el-button :loading="busy" @click="load">重新检查</el-button>
-        </div>
-        <div v-if="error" class="notice warn">{{ error }}</div>
-        <div class="system-grid">
-          <section class="surface system-detail">
-            <h3>宿主机 · UFW</h3>
-            <pre class="log-box">{{ data?.firewall || '等待执行器返回状态' }}</pre>
-          </section>
-          <section class="surface system-detail">
-            <h3>Docker · DOCKER-USER</h3>
-            <pre class="log-box">{{ data?.dockerRules || '等待执行器返回状态' }}</pre>
-          </section>
-        </div>
-      </el-collapse-item>
-    </el-collapse>
-  </template>
+  <FirewallManagement v-if="tab === 'firewall'" />
+  <SSHManagement v-if="tab === 'ssh'" />
   <template v-if="tab === 'services'">
     <div v-if="error" class="notice warn">{{ error }}</div>
     <div class="notice">

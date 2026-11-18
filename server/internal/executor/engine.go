@@ -35,6 +35,8 @@ type Engine struct {
 	siteMu                sync.Mutex
 	runtimeMu             sync.Mutex
 	firewallMu            sync.Mutex
+	sshMu                 sync.Mutex
+	sshConfigPath         string // overridden only by executor tests
 	cancel                context.CancelFunc
 	allowUnverifiedNative bool // only set by disposable native acceptance tests
 }
@@ -104,6 +106,7 @@ func (e *Engine) Serve(ctx context.Context, socket string) error {
 	e.cancel = cancel
 	defer cancel()
 	go e.watchFirewall(runCtx)
+	go e.watchSSH(runCtx)
 	go e.watchSites(runCtx)
 	go e.watchPanelRuntime(runCtx)
 	go e.watchCertificates(runCtx)

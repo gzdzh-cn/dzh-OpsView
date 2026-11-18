@@ -83,6 +83,7 @@ func (c *Controller) Handler() http.Handler {
 		"GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
 		"POST /api/v1/files":         c.files,
 		"GET /api/v1/files/transfer": c.fileTransfer, "PUT /api/v1/files/transfer": c.fileTransfer, "GET /api/v1/files/tasks/{id}": c.fileTaskResult, "GET /api/v1/system": c.system, "POST /api/v1/system/actions/{action}": c.systemAction,
+		"GET /api/v1/system/ssh": c.systemSecurity, "GET /api/v1/system/ssh/logs": c.systemSecurity, "GET /api/v1/system/firewall": c.systemSecurity, "POST /api/v1/system/security/{action}": c.systemSecurity,
 		"GET /api/v1/docker/status":       func(w http.ResponseWriter, r *http.Request) { c.exec(w, r, model.Operation{Name: "docker.status"}) },
 		"GET /api/v1/docker/{collection}": c.dockerList, "POST /api/v1/docker/containers/{id}/{action}": c.dockerAction,
 		"POST /api/v1/docker/manage/{collection}/{action}": c.dockerManage,

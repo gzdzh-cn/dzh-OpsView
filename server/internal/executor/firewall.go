@@ -29,6 +29,13 @@ func (e *Engine) firewall(ctx context.Context, op model.Operation, log func(stri
 	defer e.firewallMu.Unlock()
 	r := op.Resource
 	action := strings.TrimPrefix(op.Name, "firewall.")
+	if action != "confirm" {
+		for _, pending := range []string{e.firewallModePath(), e.sshPendingPath()} {
+			if _, err := os.Stat(pending); !os.IsNotExist(err) {
+				return nil, errors.New("访问设置待确认，请先确认或回退再修改规则")
+			}
+		}
+	}
 	path := filepath.Join(e.Root, "firewall", r.ID+".json")
 	if action == "confirm" {
 		b, err := os.ReadFile(path)
@@ -86,18 +93,17 @@ func (e *Engine) firewall(ctx context.Context, op model.Operation, log func(stri
 		return nil, err
 	}
 	if r.Config.String("action") == "deny" {
-		cfg, configErr := runtimeconfig.Load(runtimeconfig.Path)
+		cfg, configErr := runtimeconfig.Load(e.panelConfigPath())
 		if configErr != nil {
 			return nil, configErr
 		}
 		protected := []string{"22", strconv.Itoa(cfg.Port), "18791"}
-		if config, err := output(ctx, "sshd", "-T"); err == nil {
-			for _, line := range strings.Split(config, "\n") {
-				fields := strings.Fields(line)
-				if len(fields) == 2 && fields[0] == "port" {
-					protected = append(protected, fields[1])
-				}
+		if config, err := output(ctx, "sshd", "-T", "-f", e.sshPath()); err == nil {
+			for _, port := range sshProtectedPorts(config) {
+				protected = append(protected, strconv.Itoa(port))
 			}
+		} else {
+			return nil, errors.New("无法检测实际 SSH 端口，拒绝添加阻止规则")
 		}
 		for _, p := range protected {
 			if portContains(r.Config.String("ports"), p) {
@@ -228,6 +234,12 @@ func (e *Engine) watchFirewall(ctx context.Context) {
 func (e *Engine) reconcileFirewall(ctx context.Context) {
 	e.firewallMu.Lock()
 	defer e.firewallMu.Unlock()
+	if p, err := e.loadFirewallMode(); err == nil && time.Now().Unix() >= p.Deadline {
+		if err = e.rollbackFirewallMode(ctx, p); err != nil {
+			p.RollbackError = err.Error()
+			_ = e.saveFirewallMode(p)
+		}
+	}
 	files, _ := filepath.Glob(filepath.Join(e.Root, "firewall", "*.json"))
 	for _, path := range files {
 		b, err := os.ReadFile(path)

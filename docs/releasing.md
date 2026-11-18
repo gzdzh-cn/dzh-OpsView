@@ -18,6 +18,8 @@ GitHub Actions 的 `Publish Linux release` 工作流会执行 Go race 测试与 
 
 发布说明保存在 `docs/releases/<标签>.md`，版本号必须与 Go、前端、锁文件及 OpenAPI 一致。
 
+rc.10 起，常规检查、候选及发布流水线均运行 `scripts/test-security-linux.sh`：独立 Debian 12 容器中启动真实 OpenSSH，以公钥验证端口切换和回退，并在隔离网络中验证 UFW 启停及恢复。不使用宿主机网络或 Docker Socket；其他发行版的新增安全功能仍需独立验证。
+
 构建成功后才创建草稿、上传完整产物、发布 Release。工作流失败时可修复后发布新标签；若失败发生在草稿上传中，可重跑同一工作流。已经公开的版本不被工作流覆盖。业务软件版本与面板版本独立，发布面板不会自动更新 Nginx 或数据库。
 
 版本名为 `vX.Y.Z` 或 `vX.Y.Z-rc.1` 等形式。带后缀标签自动标记为 prerelease，默认下载地址只使用正式 Release。正式在此表示 GitHub Release 类型；当前 `v0.1.1` 仍是开发测试版本，生产验收状态以 `acceptance.md` 为准。
