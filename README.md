@@ -2,7 +2,7 @@
 
 文件管理支持路径面包屑、目录大小原位计算和备注行内保存；网站根目录默认 `/www/wwwroot/域名`，支持网站内进程托管、统计、安全检查和 Nginx 管理。详见 [网站管理说明](docs/website-management.md)。
 
-本版新增系统防火墙与 SSH 管理：UFW 实际规则、启停与回退，SSH 多端口、认证、公钥与登录记录。详见 [系统安全使用与恢复](docs/system-security.md)。
+本版完善系统防火墙与 SSH 管理：UFW/firewalld 四类实际规则、启停、禁 Ping、地区过滤、Fail2ban 与回退，SSH 多端口、认证、公钥与登录记录。详见 [系统安全使用与恢复](docs/system-security.md)。
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
@@ -14,7 +14,7 @@
 
 功能、架构、安装维护方式和当前限制的完整介绍见 [项目介绍](项目介绍.md)。
 
-rc.5 将 SQLite schema 升至 3。同名数据库可分布于不同实例，已有资源 ID 与管理员保留。降级至 rc.4 必须恢复**升级前完整元数据快照和旧程序**，不能只替换二进制；操作步骤及能力边界见 [数据库管理说明](docs/database-management.md) 和 [运维手册](docs/operations.md#rc5-数据库迁移与回退)。
+rc.11 将 SQLite schema 升至 4，退回 rc.10 必须恢复升级前完整面板元数据及旧程序，见 [运维手册](docs/operations.md#rc11-系统防火墙更新与回退)。rc.5 历史迁移曾将 schema 升至 3。同名数据库可分布于不同实例，已有资源 ID 与管理员保留。降级至 rc.4 必须恢复**升级前完整元数据快照和旧程序**，不能只替换二进制；操作步骤及能力边界见 [数据库管理说明](docs/database-management.md) 和 [运维手册](docs/operations.md#rc5-数据库迁移与回退)。
 
 ## 本地启动
 
@@ -91,7 +91,7 @@ sudo bash opsview-linux-amd64/deploy/install.sh
 | 插件市场 | 统一逐行市场、原生极速/编译安装、自动名称及准确版本占用；四类软件实例设置、配置修订与回退；签名源、Redis/Adminer/S3 扩展及低权限 worker |
 | 文件 | 服务器 / 目录、收藏/备注、流式分块上传/续传（2 GiB）、Range 下载、修订编辑、批量复制/移动、ZIP/TAR.GZ、权限及 30 天回收站 |
 | 备份与计划 | 本地/S3 加密备份、摘要、保留策略、恢复至新目录或新库，Cron 备份与续期 |
-| 系统与安全 | UFW 实际规则与启停、DOCKER-USER、多端口 SSH 与认证、公钥、登录记录、120 秒确认回退、服务日志与审计 |
+| 系统与安全 | UFW/firewalld 四类规则、禁 Ping、Fail2ban、导入导出与同步、DOCKER-USER、多端口 SSH 与认证、公钥、登录记录、120 秒确认回退、服务日志与审计 |
 | 面板设置 | 五类设置行、管理员/TOTP/会话、HTTP/HTTPS、地址/端口/访问限制、120 秒重新连接确认、证书及加密备份 |
 
 Nginx/MySQL/PHP/Redis 目录覆盖 32 个准确版本，保留既有 PostgreSQL、Node.js 和历史容器实例。本轮补齐其余 12 个 Nginx 版本在四系统的 48 个组合，累计 136 个 Linux amd64 极速安装组合通过真实 systemd/协议及独立干净系统验收，其中 112 个组合同时提供编译安装。Nginx 另验证准确版本、HTTPS、HTTP/2 和正则重写；MySQL、Node.js 使用官方主软件二进制。PostgreSQL 17.6 等未验收条目仍按实际验证结果开放；完整版本与限制见 [软件管理实现说明](软件管理实现说明.md)。目录是项目快照，**不代表上游最新版本**。所有下载固定摘要，容器固定镜像摘要；业务软件不会自动升级，自定义目录不执行任意 root Shell 配方。
