@@ -39,6 +39,14 @@ func TestFastPackageAcceptance(t *testing.T) {
 	if active, err := output(context.Background(), "systemctl", "is-system-running"); err != nil && !strings.Contains(active, "degraded") {
 		t.Fatal("real systemd is required", active, err)
 	}
+	// Match deploy/install.sh: the parent exists with explicit traversal rights.
+	// MkdirAll under the executor umask must not create an inaccessible parent.
+	if err := os.MkdirAll("/var/lib/opsview", 0711); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod("/var/lib/opsview", 0711); err != nil {
+		t.Fatal(err)
+	}
 	previousMask := syscall.Umask(0027)
 	defer syscall.Umask(previousMask)
 	e := &Engine{Root: "/var/lib/opsview/fast-acceptance", allowUnverifiedNative: true}
