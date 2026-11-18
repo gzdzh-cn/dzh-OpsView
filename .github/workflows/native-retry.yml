@@ -16,8 +16,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          run_id="${GITHUB_REF_NAME#software-retry-}"
-          [[ "$run_id" =~ ^[0-9]+$ ]]
+          target="${GITHUB_REF_NAME#software-retry-}"
+          [[ "$target" =~ ^([0-9]+)-([23])$ ]]
+          run_id="${BASH_REMATCH[1]}"
+          export NEXT_ATTEMPT="${BASH_REMATCH[2]}"
           gh api "repos/$GH_REPO/actions/runs/$run_id" > /tmp/native-run.json
           gh api "repos/$GH_REPO/git/ref/tags/software-$run_id" > /tmp/native-tag.json
           python3 - <<'PYCODE'
@@ -29,5 +31,6 @@ jobs:
           assert tag['object']['sha']==run['head_sha']
           assert run['status']=='completed' and run['conclusion']=='failure'
           assert run['run_attempt'] < 3, 'Retry budget exhausted; diagnose failures instead'
+          assert run['run_attempt']+1==int(os.environ['NEXT_ATTEMPT']), 'Retry tag must name the next attempt'
           PYCODE
           gh api --method POST "repos/$GH_REPO/actions/runs/$run_id/rerun-failed-jobs"
