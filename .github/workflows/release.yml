@@ -50,6 +50,8 @@ jobs:
       - run: ./scripts/test-files-linux.sh
       - name: Verify real SSH login and UFW rollback in isolated Linux
         run: bash scripts/test-security-linux.sh
+      - name: Verify offline tests across supported Linux systems
+        run: ./scripts/linux-tests.sh ubuntu:22.04 ubuntu:24.04 debian:bookworm-slim debian:trixie-slim
       - run: ./scripts/test-sites-linux.sh
       - run: npx playwright install --with-deps chromium
         working-directory: web

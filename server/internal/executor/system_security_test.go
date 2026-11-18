@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
@@ -32,38 +33,15 @@ func securityFixture(t *testing.T) (*Engine, sshSettings) {
 		t.Fatal(err)
 	}
 	bin := t.TempDir()
-	program := `#!/usr/bin/env python3
-import os,sys,json,pathlib
-name=pathlib.Path(sys.argv[0]).name;a=sys.argv[1:];root=pathlib.Path(os.environ['OPSVIEW_SECURITY_TEST'])
-with (root/'commands').open('a') as f:f.write(json.dumps([name]+a)+'\n')
-if name=='sshd':
- p=pathlib.Path(a[a.index('-f')+1]);s=p.read_text()
- if 'BAD' in s:sys.exit(1)
- if '-T' in a:
-  keys={'port','passwordauthentication','pubkeyauthentication','permitrootlogin','maxauthtries','logingracetime','clientaliveinterval','clientalivecountmax'}
-  for line in s.splitlines():
-   p=line.split()
-   if p and p[0].lower() in keys:print(p[0].lower(),p[1])
-  print('authorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2\nauthorizedkeyscommand none')
-  if (root/'include-conflict').exists():print('port 9999')
-elif name=='systemctl':
- if a[0]=='is-active':
-  for unit in a[1:]:print('active' if unit=='ssh.service' else 'inactive')
-  if a[1]!='ssh.service':sys.exit(3)
- elif a[0]=='show' and '--property=ExecStart' in a:print('/usr/sbin/sshd -D')
- elif a[0]=='reload' and (root/'reload-fail').exists():sys.exit(1)
-elif name=='ufw':
- state=root/'ufw-active';rules=root/'ufw-rules';saved=json.loads(rules.read_text()) if rules.exists() else []
- if a[0]=='status':print('Status: '+('active' if state.exists() else 'inactive'))
- elif a==['show','added']:
-  for rule in saved:print('ufw '+' '.join(rule))
- elif a==['--force','enable']:state.touch()
- elif a==['--force','disable']:state.unlink(missing_ok=True)
- elif a[:2]==['--force','delete']:
-  if a[2:] in saved:saved.remove(a[2:])
- elif a[0]=='allow':saved.append(a)
- rules.write_text(json.dumps(saved))
-elif name in ['iptables','ip6tables']:print('-P INPUT ACCEPT')
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPSVIEW_SECURITY_TEST_EXE", executable)
+	t.Setenv("OPSVIEW_SECURITY_COMMAND_HELPER", "1")
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
+	program := `#!/bin/sh
+exec "$OPSVIEW_SECURITY_TEST_EXE" -test.run=^TestSecurityCommandHelper$ -- "$0" "$@"
 `
 	for _, name := range []string{"sshd", "systemctl", "ufw", "nft", "iptables", "ip6tables", "who", "fail2ban-client"} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(program), 0755); err != nil {
@@ -382,4 +360,122 @@ func TestFirewallModeRejectsUnsafeSourceAndUnknownBackend(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(e.Root, "ufw-active")); !os.IsNotExist(err) {
 		t.Fatal("rejected operation changed firewall")
 	}
+}
+
+// Reuse the compiled Go test binary as command fixtures so minimal offline
+// distro images need no Python interpreter or extra package installation.
+func TestSecurityCommandHelper(t *testing.T) {
+	if os.Getenv("OPSVIEW_SECURITY_COMMAND_HELPER") != "1" {
+		return
+	}
+	for i, arg := range os.Args {
+		if arg == "--" && i+1 < len(os.Args) {
+			os.Exit(securityCommandFixture(os.Args[i+1:]))
+		}
+	}
+	os.Exit(2)
+}
+func securityCommandFixture(argv []string) int {
+	name, args := filepath.Base(argv[0]), argv[1:]
+	root := os.Getenv("OPSVIEW_SECURITY_TEST")
+	exists := func(name string) bool { _, err := os.Stat(filepath.Join(root, name)); return err == nil }
+	f, err := os.OpenFile(filepath.Join(root, "commands"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return 1
+	}
+	_ = json.NewEncoder(f).Encode(append([]string{name}, args...))
+	_ = f.Close()
+	if len(args) == 0 {
+		return 0
+	}
+	switch name {
+	case "sshd":
+		var path string
+		for i, a := range args {
+			if a == "-f" && i+1 < len(args) {
+				path = args[i+1]
+			}
+		}
+		b, err := os.ReadFile(path)
+		if err != nil || strings.Contains(string(b), "BAD") {
+			return 1
+		}
+		if args[0] == "-T" {
+			keys := map[string]bool{"port": true, "passwordauthentication": true, "pubkeyauthentication": true, "permitrootlogin": true, "maxauthtries": true, "logingracetime": true, "clientaliveinterval": true, "clientalivecountmax": true}
+			for _, line := range strings.Split(string(b), "\n") {
+				p := strings.Fields(line)
+				if len(p) >= 2 && keys[strings.ToLower(p[0])] {
+					fmt.Println(strings.ToLower(p[0]), p[1])
+				}
+			}
+			fmt.Println("authorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2\nauthorizedkeyscommand none")
+			if exists("include-conflict") {
+				fmt.Println("port 9999")
+			}
+		}
+	case "systemctl":
+		switch args[0] {
+		case "is-active":
+			for _, unit := range args[1:] {
+				if unit == "ssh.service" {
+					fmt.Println("active")
+				} else {
+					fmt.Println("inactive")
+				}
+			}
+			if len(args) < 2 || args[1] != "ssh.service" {
+				return 3
+			}
+		case "show":
+			for _, a := range args {
+				if a == "--property=ExecStart" {
+					fmt.Println("/usr/sbin/sshd -D")
+				}
+			}
+		case "reload":
+			if exists("reload-fail") {
+				return 1
+			}
+		}
+	case "ufw":
+		state, rulesPath := filepath.Join(root, "ufw-active"), filepath.Join(root, "ufw-rules")
+		var rules [][]string
+		if b, err := os.ReadFile(rulesPath); err == nil {
+			_ = json.Unmarshal(b, &rules)
+		}
+		switch {
+		case args[0] == "status":
+			if exists("ufw-active") {
+				fmt.Println("Status: active")
+			} else {
+				fmt.Println("Status: inactive")
+			}
+		case strings.Join(args, " ") == "show added":
+			for _, rule := range rules {
+				fmt.Println("ufw " + strings.Join(rule, " "))
+			}
+		case strings.Join(args, " ") == "--force enable":
+			if err := os.WriteFile(state, nil, 0600); err != nil {
+				return 1
+			}
+		case strings.Join(args, " ") == "--force disable":
+			_ = os.Remove(state)
+		case len(args) >= 2 && args[0] == "--force" && args[1] == "delete":
+			for i, rule := range rules {
+				if strings.Join(rule, "\x00") == strings.Join(args[2:], "\x00") {
+					rules = append(rules[:i], rules[i+1:]...)
+					break
+				}
+			}
+		case args[0] == "allow":
+			rules = append(rules, args)
+		}
+		b, _ := json.Marshal(rules)
+		if err := os.WriteFile(rulesPath, b, 0600); err != nil {
+			return 1
+		}
+	case "iptables", "ip6tables":
+		fmt.Println("-P INPUT ACCEPT")
+	}
+	return 0
 }
