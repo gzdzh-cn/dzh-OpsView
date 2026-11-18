@@ -42,8 +42,8 @@ async function installPlugin() {
     const p = selected.value
     await ElMessageBox.confirm(
       `插件来源：${p.builtin ? '项目内置' : '已签名仓库'}\n请求权限：${(p.permissions || []).join('、') || '无额外权限'}。应用插件的端口默认仅绑定本机。`,
-      '安装权限',
-      { confirmButtonText: '安装', cancelButtonText: '取消' },
+      installed(p) ? '应用插件设置' : '安装权限',
+      { confirmButtonText: installed(p) ? '保存' : '安装', cancelButtonText: '取消' },
     )
     const existing = pluginRecord(p)
     const config = {
@@ -182,7 +182,11 @@ async function importPackage() {
     <p>权限：{{ details?.permissions?.join('、') || '无额外权限' }}</p>
     <p>依赖：{{ details?.dependencies?.join('、') || '无' }}</p>
   </el-dialog>
-  <el-dialog v-model="pluginOpen" :title="'安装 / 设置 ' + (selected?.name || '')" width="540px">
+  <el-dialog
+    v-model="pluginOpen"
+    :title="(selected && installed(selected) ? '设置 ' : '安装 ') + (selected?.name || '')"
+    width="540px"
+  >
     <p>{{ selected?.description }}</p>
     <el-form label-position="top">
       <el-form-item v-for="f in selected?.form || []" :key="f.key" :label="f.label">
@@ -202,7 +206,9 @@ async function importPackage() {
     </el-form>
     <template #footer>
       <el-button @click="pluginOpen = false">取消</el-button>
-      <el-button type="primary" :loading="busy" @click="installPlugin">保存并安装</el-button>
+      <el-button type="primary" :loading="busy" @click="installPlugin">
+        {{ selected && installed(selected) ? '保存设置' : '安装' }}
+      </el-button>
     </template>
   </el-dialog>
   <el-dialog v-model="importOpen" title="导入签名插件" width="700px">

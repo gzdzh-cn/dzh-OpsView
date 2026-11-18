@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Promote only fully verified, published-package candidates; never invent checksums."""
-import json,os,pathlib
+import hashlib,json,os,pathlib
 root=pathlib.Path(__file__).resolve().parents[1]
 entries=json.loads((root/'packages/catalog/versions.json').read_text())
 reports=[json.loads(p.read_text()) for p in (root/'dist/packages').glob('*.tar.gz.json')]
@@ -16,6 +16,12 @@ for report in reports:
     assert report['binaryVerified'] and report['protocolVerified'] and report['runtimeVerified']
     assert report['systemdVerified']
     entry=next(e for e in entries if e['id']==report['catalogId'])
+    assert report['version']==entry['version'] and report['recipeRevision']==entry['recipeRevision']
+    if not report['official']:
+        artifact=root/'dist/packages'/(report['catalogId']+'-'+report['system'].replace(':','-')+'.tar.gz')
+        assert artifact.is_file() and hashlib.sha256(artifact.read_bytes()).hexdigest()==report['sha256']
+    else:
+        assert report['sha256']==entry['sha256'] and report['source']==entry['source']
     systems=entry.setdefault('verifiedSystems',{}).setdefault('binary',[])
     if report['system'] not in systems: systems.append(report['system'])
     if not report['official']:

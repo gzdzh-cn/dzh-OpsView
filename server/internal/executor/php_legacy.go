@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"opsview/internal/catalog"
+	"opsview/internal/security"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,6 +79,27 @@ func (e *Engine) buildLegacyPHPDependencies(ctx context.Context, base, builder s
 		if err := build("make", target); err != nil {
 			return "", err
 		}
+		for _, name := range []string{"LICENSE", "COPYING", "LICENSE.txt", "license.html"} {
+			b, err := os.ReadFile(filepath.Join(source, name))
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return "", err
+			}
+			dir := filepath.Join(prefix, "licenses", dep.name)
+			if err = os.MkdirAll(dir, 0755); err != nil {
+				return "", err
+			}
+			if err = security.WriteAtomic(filepath.Join(dir, name), b, 0644); err != nil {
+				return "", err
+			}
+		}
+	}
+	// PHP 7.0/7.2 expect the retired freetype-config helper. Translate its
+	// supported read-only switches to the installed system pkg-config metadata.
+	if err := security.WriteAtomic(filepath.Join(prefix, "bin", "freetype-config"), []byte(legacyFreetypeConfig), 0755); err != nil {
+		return "", err
 	}
 	return prefix, nil
 }
@@ -89,7 +111,7 @@ func phpConfigureArgs(entry catalog.Entry, base, dependencyPrefix string) []stri
 	}
 	args = append(args, "--with-openssl="+dependencyPrefix, "--with-curl="+dependencyPrefix)
 	if strings.HasPrefix(entry.Version, "7.0.") || strings.HasPrefix(entry.Version, "7.2.") {
-		args = append(args, "--with-libxml-dir="+dependencyPrefix, "--with-icu-dir="+dependencyPrefix, "--enable-zip", "--with-gd", "--with-jpeg-dir=/usr", "--with-freetype-dir=/usr")
+		args = append(args, "--with-libxml-dir="+dependencyPrefix, "--with-icu-dir="+dependencyPrefix, "--enable-zip", "--with-gd", "--with-jpeg-dir=/usr", "--with-freetype-dir="+dependencyPrefix)
 	} else {
 		args = append(args, "--with-zip", "--enable-gd", "--with-jpeg", "--with-freetype")
 	}
@@ -111,13 +133,12 @@ func relocatePHPDependencyHelpers(runtimePath, from, to string) error {
 				continue
 			}
 			p := filepath.Join(dir, entry.Name())
+			if !strings.HasSuffix(p, ".pc") && !strings.HasSuffix(p, "-config") && !strings.HasSuffix(p, ".la") {
+				continue
+			}
 			b, err := os.ReadFile(p)
 			if err != nil {
 				return err
-			}
-			// Only explicit configuration scripts and pkg-config text may be rewritten.
-			if !strings.HasSuffix(p, ".pc") && !strings.HasSuffix(p, "-config") && !strings.HasSuffix(p, ".la") {
-				continue
 			}
 			st, err := entry.Info()
 			if err != nil {
@@ -130,3 +151,12 @@ func relocatePHPDependencyHelpers(runtimePath, from, to string) error {
 	}
 	return nil
 }
+
+const legacyFreetypeConfig = `#!/bin/sh
+case "$1" in
+ --cflags|--libs) exec pkg-config "$1" freetype2 ;;
+ --version|--ftversion) exec pkg-config --modversion freetype2 ;;
+ --prefix|--exec-prefix) printf '%s\n' /usr ;;
+ *) exit 1 ;;
+esac
+`
