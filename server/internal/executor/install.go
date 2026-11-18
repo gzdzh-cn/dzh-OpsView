@@ -611,6 +611,11 @@ func extractArchive(ctx context.Context, path, source, dest string, strip bool) 
 			if ce != nil {
 				return ce
 			}
+			if !h.ModTime.IsZero() {
+				if err = os.Chtimes(p, h.ModTime, h.ModTime); err != nil {
+					return err
+				}
+			}
 		case tar.TypeLink:
 			targetName := h.Linkname
 			if filepath.IsAbs(targetName) {

@@ -20,7 +20,7 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 	}
 	deps := []string{"install", "-y", "--no-install-recommends", "build-essential", "ca-certificates", "xz-utils", "libpcre2-dev", "libssl-dev", "zlib1g-dev", "libreadline-dev", "libicu-dev", "pkg-config", "bison", "flex", "autoconf"}
 	if entry.Software == "php" {
-		deps = append(deps, "libxml2-dev", "libsqlite3-dev", "libcurl4-openssl-dev", "libonig-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "libxslt1-dev", "libpq-dev", "perl", "libtool")
+		deps = append(deps, "libxml2-dev", "libsqlite3-dev", "libcurl4-openssl-dev", "libonig-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "libxslt1-dev", "libpq-dev", "perl", "libtool", "automake")
 	}
 	if err := run(ctx, log, "", []string{"DEBIAN_FRONTEND=noninteractive"}, nil, "apt-get", deps...); err != nil {
 		return err
@@ -53,7 +53,7 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 		if err != nil {
 			return err
 		}
-		buildEnv = []string{"CFLAGS=-O2 -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types", "CXXFLAGS=-O2 -std=c++11", "CPPFLAGS=-I" + dependencyPrefix + "/include", "LDFLAGS=-L" + dependencyPrefix + "/lib", "PKG_CONFIG_PATH=" + dependencyPrefix + "/lib/pkgconfig", "LIBS=-lstdc++ -ldl -lpthread"}
+		buildEnv = []string{"CFLAGS=-O2 -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types", "CXXFLAGS=-O2 -std=c++11", "CPPFLAGS=-I" + dependencyPrefix + "/include", "LDFLAGS=-L" + dependencyPrefix + "/lib -Wl,--exclude-libs,ALL", "PKG_CONFIG_PATH=" + dependencyPrefix + "/lib/pkgconfig", "LIBS=-lstdc++ -ldl -lpthread"}
 	}
 	build := func(args ...string) error {
 		return run(ctx, log, source, buildEnv, nil, "runuser", append([]string{"-u", builder, "--"}, args...)...)

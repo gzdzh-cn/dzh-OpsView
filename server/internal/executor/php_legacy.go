@@ -59,7 +59,7 @@ func (e *Engine) buildLegacyPHPDependencies(ctx context.Context, base, builder s
 		case "openssl":
 			args = []string{"./config", "--prefix=" + prefix, "--openssldir=/etc/ssl", "--libdir=lib", "no-shared", "-fPIC"}
 		case "libxml2":
-			args = []string{"./configure", "--prefix=" + prefix, "--disable-shared", "--enable-static", "--with-pic", "--without-python", "--without-lzma", "--without-zlib"}
+			args = []string{"./configure", "--prefix=" + prefix, "--disable-shared", "--enable-static", "--with-pic", "--without-python", "--without-lzma", "--without-zlib", "--disable-maintainer-mode"}
 		case "icu":
 			args = []string{"./configure", "--prefix=" + prefix, "--libdir=" + prefix + "/lib", "--disable-shared", "--enable-static", "--with-data-packaging=static", "--disable-tests", "--disable-samples"}
 		case "curl":

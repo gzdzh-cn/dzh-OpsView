@@ -101,6 +101,20 @@ func (e *Engine) prepareMySQLLegacyClients(ctx context.Context, version, base st
 	if err := run(ctx, log, "", nil, nil, "chown", "-R", "root:root", target); err != nil {
 		return err
 	}
+	if err := filepath.WalkDir(target, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if _, err = output(ctx, "patchelf", "--print-rpath", p); err != nil {
+			return nil
+		}
+		return run(ctx, log, "", nil, nil, "patchelf", "--set-rpath", "$ORIGIN", p)
+	}); err != nil {
+		return err
+	}
 	return filepath.WalkDir(filepath.Join(base, "runtime", "bin"), func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
