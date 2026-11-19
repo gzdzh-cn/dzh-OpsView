@@ -48,6 +48,9 @@ def run(args, *, ok=True, data=None, user=None, env=None):
         # Do not include stdout/stderr: either may contain generated credentials.
         phase = re.findall(r'\[[1-8]/8 [^\]\r\n]+\]', result.stdout + result.stderr)
         phase = phase[-1] if phase else 'no deployment phase'
+        browser_phase = re.findall(r'OPSVIEW_BROWSER_PHASE=([a-z-]+)', result.stdout + result.stderr)
+        if browser_phase:
+            phase += ', browser ' + browser_phase[-1]
         raise AssertionError(f'command exit mismatch: {Path(args[0]).name}, status {result.returncode}, phase {phase}')
     return result.stdout + result.stderr
 
