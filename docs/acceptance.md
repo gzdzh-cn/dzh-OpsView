@@ -629,4 +629,17 @@ SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update -
 - 默认及恢复默认改为浅色，保留已保存的深色/跟随系统选择。设置弹窗加载时禁止编辑和预览，避免迟到的响应覆盖输入草稿；延迟接口、409 草稿保留及取消主题预览已回归。
 - TypeScript 检查和生产构建通过；13 项 Vitest 通过，包含默认/极端自定义颜色、两种模式的文字及操作对比度、错误提示色阶和非法颜色回退。
 - 49 项 Playwright 全部通过（2.0 分钟），覆盖全部侧栏、现有业务流程、主题预览和取消、系统模式变化、深色编辑器、错误状态及固定弹窗；本地生产资源缓存切换 P95 67.5ms。
-- `go test ./internal/preferences ./public` 通过，验证默认设置及打包资源。没有数据库迁移、没有发布新版本、没有连接或更新生产服务器；不把本地指标视为公网网络耗时。
+- `go test ./internal/preferences ./public` 通过，验证默认设置及打包资源。本版不增加数据库迁移；以上为发布前本地结果，后续发布与线上验收见下文。不把本地指标视为公网网络耗时。
+
+### rc.18 公开发布与线上更新完成
+
+标签 `v0.1.3-rc.18` 对应提交 `919dbc8`。[发布流水线 44542712860](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44542712860) 的 build、publish、verify-public-install 全部成功。公开测试包于 2026-11-19T14:50:37Z 发布，包含 Linux amd64 包、SHA256SUMS 和安装脚本。
+
+- 本地最终 `make api check` 通过：Go 全量 race/vet、前端类型检查、生产构建和 13 项单元测试。CI 再次通过同类检查、四种 Linux 离线测试、真实数据库、SSH 回退、UFW/firewalld 独立客户端矩阵、systemd 脚本、日志及 PHP Session 验证。
+- 源码服务和实际发布二进制的 49 项 Playwright 均通过；实际安装、配套快照回退和公开下载后的 HTTP/HTTPS 登录及 `ov update` 验证通过。
+- 按用户授权，生产面板于 2026-11-19 22:52:57（Asia/Shanghai）通过 `ov update --version v0.1.3-rc.18` 从 rc.17 更新，下载、摘要校验及连续三次健康检查通过。保持 schema 5。
+- 升级前加密备份：`/www/backup/opsview-panel/20261119T143002.968917007.ovp`，权限 0600；已使用 `ov restore --file` 成功恢复到独立核对目录 `/var/lib/opsview/restore-verified-621146222/panel`，未切换线上数据。
+- 备份前发现 `/www/backup` 为 root:root 0600，面板用户无法穿越；保存原属性至 `/var/lib/opsview/updates/rc18-backup-directory-before.json`，仅改为 root:opsview 0610，允许面板组穿越，不授予目录读取及写入权限。专用子目录保持 opsview:opsview 0700。
+- 更新器完整回退快照：`/var/lib/opsview/updates/20261119T145253Z-3301277`（root:root 0700）；日志：`/var/log/opsview/install-20261119T145244Z-3300988.log`。回退须配套恢复同一快照的程序、运行配置、元数据及单元，操作见运维手册。
+- 线上面板和执行器均 active，重启计数 0，更新后无错误级别 journal。完整读取并核对 43 个 JS/CSS 依赖的 MIME，全部侧栏入口及任务地址返回当前应用；认证状态接口正常，未登录业务接口返回 401。
+- 当前与升级快照的资源 ID/类型/名称、管理员记录及主密钥逐项相同，原两条实例保留。公网 Chromium 登录页可见，浅色背景和统一蓝色主色生效，无 pageerror 或缺失资源；截图保存在本地 `.opsview/screenshots/rc18-production-login.png`。没有修改生产管理员凭据或尝试实际账号登录，凭据登录回归以隔离环境为证。
