@@ -28,7 +28,8 @@ def ref(name): return {"$ref": "#/components/schemas/" + name}
 add('/health', 'get', '存活检查', public=True)
 add('/auth', 'get', '初始化及会话状态', public=True)
 add('/auth/setup', 'post', '创建唯一管理员', body=obj({"token":string,"username":string,"password":string}), public=True, status='201')
-add('/auth/login', 'post', '密码及 TOTP 登录', body=obj({"username":string,"password":string,"code":string}), public=True)
+add('/auth/login', 'post', '密码登录；需要 TOTP 时返回 428，再携带验证码提交', body=obj({"username":string,"password":string,"code":string}, ['username','password']), public=True)
+paths['/api/v1/auth/login']['post']['responses']['428'] = {'description':'密码验证通过，仍需验证码；不创建会话、不累计失败次数', 'content':{'application/json':{'schema':obj({'error':string,'code':{'type':'string','enum':['totp_required']}})}}, 'headers':{'Cache-Control':{'schema':{'type':'string','enum':['no-store']}}}}
 for path, fields in [('/auth/logout', {}), ('/auth/two-factor', {"action": string,"password":string,"code":string}), ('/auth/password', {"current":string,"password":string,"code":string})]: add(path,'post',path,body=obj(fields))
 add('/resources','get','资源列表，敏感字段脱敏',{"type":"array","items":ref('Resource')})
 add('/resources','post','创建资源配置',ref('Resource'),ref('ResourceInput'),status='201')
@@ -38,7 +39,7 @@ add('/resources/{id}/actions/{action}','post','提交持久化任务；logs 为�
 add('/tasks','get','最近 200 条任务',{"type":"array","items":ref('Task')})
 add('/tasks/{id}/events','get','任务日志与支持 Last-Event-ID 的 SSE')
 for path in ['/overview','/catalog','/plugins','/audit','/settings','/system','/openapi.json','/docker/{collection}']: add(path,'get',path)
-add('/settings','put','面板名称与 IP 访问范围',body=config)
+add('/settings','put','旧设置接口；面板名称和侧栏标题不可修改，访问范围修改使用运行配置事务',body=config)
 add('/settings/backups','get','面板配置备份列表')
 add('/settings/backup','post','提交加密面板配置备份',ref('Task'),config,status='202')
 add('/settings/backup/{file}','get','下载面板配置备份')

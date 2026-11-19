@@ -31,7 +31,7 @@ install -d -o root -g root -m 0755 /opt/opsview/bin /etc/opsview /etc/opsview/tr
 install -d -o root -g root -m 0711 /var/lib/opsview /var/lib/opsview/managed
 install -d -o opsview -g opsview -m 0700 /var/lib/opsview/panel
 install -m 0755 "$release_root"/bin/* /opt/opsview/bin/
-config_args=(init)
+config_args=(init --new-install)
 [ -z "$public_host" ] || config_args+=(--public-host "$public_host")
 /opt/opsview/bin/opsview runtime-config "${config_args[@]}"
 install -m 0644 "$release_root/deploy/opsview-panel.service" "$release_root/deploy/opsview-executor.service" /etc/systemd/system/

@@ -58,13 +58,23 @@ def api(path, payload=None, opener=None, scheme='https'):
     if opener:
         response = opener.open(req)
     else:
-        response = urllib.request.urlopen(req, context=CTX)
+        reader = urllib.request.build_opener(urllib.request.HTTPSHandler(context=CTX), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        if path != 'health':
+            enter(reader, scheme)
+        response = reader.open(req)
     with response:
         return json.load(response)
+
+def enter(opener, scheme='https'):
+    entry = json.loads(CONFIG.read_text()).get('entry', '')
+    if entry:
+        with opener.open(f'{scheme}://127.0.0.1:{PORT}/{entry}') as response:
+            assert response.status == 200
 
 def login(username, password, scheme='https'):
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=CTX), urllib.request.HTTPCookieProcessor(jar))
+    enter(opener, scheme)
     assert api('auth/login', dict(username=username, password=password, code=''), opener, scheme).get('csrf')
     return opener
 
@@ -156,6 +166,14 @@ with tempfile.TemporaryDirectory() as stage:
     assert run(['systemctl','show','-p','User','--value','opsview-panel']).strip() == 'opsview'
     assert Path('/run/opsview/executor.sock').is_socket()
     cert = digest(PANEL/'panel.pem')
+    original_entry = json.loads(CONFIG.read_text()).get('entry', '')
+    assert re.fullmatch(r'[a-f0-9]{32}', original_entry)
+    entrance_result = run(['ov','entry','on'])
+    rotated_entry = json.loads(CONFIG.read_text())['entry']
+    assert rotated_entry != original_entry and '/' + rotated_entry in entrance_result
+    assert run(['ov','entry','off']).strip() == '安全入口已关闭'
+    assert not json.loads(CONFIG.read_text()).get('entry')
+    run(['ov','entry','on'])
     old = login(username, password)
     assert authenticated(old)
     assert 'ov <命令>' in run(['ov'])  # PIPE is noninteractive; never waits for a menu selection.

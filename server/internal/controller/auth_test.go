@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"opsview/internal/security"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestProtocolSessionCookies(t *testing.T) {
@@ -79,5 +82,66 @@ func TestProtocolSessionCookies(t *testing.T) {
 	}
 	if call("http", "GET", "/api/v1/resources", nil, plain).Code != 401 || call("https", "GET", "/api/v1/resources", nil, secure).Code != 200 {
 		t.Fatal("logout invalidated the wrong protocol session")
+	}
+}
+
+func TestPasswordThenTOTPChallenge(t *testing.T) {
+	c, h := testController(t)
+	setupAndLogin(t, h)
+	a, _ := c.currentAdmin()
+	a.TOTP = security.NewTOTP()
+	if err := c.App.Store.Set("admin", a); err != nil {
+		t.Fatal(err)
+	}
+	var before int
+	if err := c.App.Store.DB.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	credentials := map[string]string{"username": "admin", "password": "test-long-password-123"}
+	for i := 0; i < 6; i++ {
+		w := request(h, "POST", "/api/v1/auth/login", credentials, nil, "", "")
+		if w.Code != 428 || !strings.Contains(w.Body.String(), "totp_required") || len(w.Result().Cookies()) != 0 || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("missing-code challenge changed authentication state", w.Code)
+		}
+	}
+	var after int
+	c.App.Store.DB.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&after)
+	if after != before || len(c.auth.attempts) != 0 {
+		t.Fatal("challenge created sessions or counted failures")
+	}
+	credentials["password"] = "incorrect-password"
+	if w := request(h, "POST", "/api/v1/auth/login", credentials, nil, "", ""); w.Code != 401 || strings.Contains(w.Body.String(), "totp_required") {
+		t.Fatal("challenge exposed before verifying password", w.Code)
+	}
+	credentials["password"] = "test-long-password-123"
+	credentials["code"] = "invalid"
+	if w := request(h, "POST", "/api/v1/auth/login", credentials, nil, "", ""); w.Code != 401 {
+		t.Fatal("invalid TOTP accepted", w.Code)
+	}
+	credentials["code"] = security.TOTP(a.TOTP, time.Now())
+	if w := request(h, "POST", "/api/v1/auth/login", credentials, nil, "", ""); w.Code != 200 || len(w.Result().Cookies()) != 1 {
+		t.Fatal("valid TOTP rejected", w.Code)
+	}
+}
+
+func TestFixedBrandingCannotBeModified(t *testing.T) {
+	c, h := testController(t)
+	cookie, csrf := setupAndLogin(t, h)
+	for _, key := range []string{"name", "sidebarTitle"} {
+		for _, endpoint := range []string{"/api/v1/settings", "/api/v1/settings/groups/panel"} {
+			method := "PUT"
+			var body any = map[string]any{key: "changed"}
+			if strings.Contains(endpoint, "groups") {
+				method = "PATCH"
+				body = map[string]any{"patch": body, "revision": 0}
+			}
+			w := request(h, method, endpoint, body, cookie, csrf, "")
+			if w.Code != 400 {
+				t.Fatal("branding mutation not rejected", endpoint, key, w.Code)
+			}
+		}
+	}
+	if c.panelPreferences().String("name") != "OpsView" || c.panelPreferences().String("sidebarTitle") != "OpsView" {
+		t.Fatal("branding changed")
 	}
 }

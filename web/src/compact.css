@@ -289,7 +289,12 @@
   left: 0;
   right: 0;
   top: 0;
-  background: linear-gradient(90deg, var(--el-color-primary), var(--el-color-primary-light-5), var(--el-color-primary));
+  background: linear-gradient(
+    90deg,
+    var(--el-color-primary),
+    var(--el-color-primary-light-5),
+    var(--el-color-primary)
+  );
 }
 .app-shell .mobile-menu {
   display: none;
@@ -393,9 +398,190 @@
   flex-basis: 100%;
 }
 
-.preference-row{display:flex;align-items:center;gap:16px;min-height:58px;padding:10px 12px;border-bottom:1px solid var(--el-border-color-lighter)}
-.preference-row>strong{width:144px;flex-shrink:0;font-size:var(--ops-font-size,14px);font-weight:500}
-.preference-value{min-width:0;flex:1;overflow-wrap:anywhere}.preference-value>small{display:block;color:var(--el-text-color-secondary);font-size:12px;margin-top:3px;line-height:1.4}
-.preference-action{flex-shrink:0;display:flex;gap:8px;align-items:center}.settings-surface{padding:0 8px}.compact-details{padding:12px}.compact-details>summary{cursor:pointer;margin-bottom:12px}.dialog-stack{display:grid;gap:12px}.dialog-stack .el-form-item{margin-bottom:14px}.full-width{width:100%}
-.app-shell{font-size:var(--ops-font-size,14px)}
-@media(max-width:700px){.preference-row{gap:10px;flex-wrap:wrap;padding:10px 4px}.preference-row>strong{width:112px}.preference-action .el-button{min-height:44px}.preference-value{min-width:130px}.preference-row .preference-action{margin-left:auto}}
+.preference-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.preference-row > strong {
+  width: 144px;
+  flex-shrink: 0;
+  font-size: var(--ops-font-size, 14px);
+  font-weight: 500;
+}
+.preference-value {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.preference-value > small {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.preference-action {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.settings-surface {
+  padding: 0 8px;
+}
+.compact-details {
+  padding: 12px;
+}
+.compact-details > summary {
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.dialog-stack {
+  display: grid;
+  gap: 12px;
+}
+.dialog-stack .el-form-item {
+  margin-bottom: 14px;
+}
+.full-width {
+  width: 100%;
+}
+.app-shell {
+  font-size: var(--ops-font-size, 14px);
+}
+@media (max-width: 700px) {
+  .preference-row {
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 4px;
+  }
+  .preference-row > strong {
+    width: 112px;
+  }
+  .preference-action .el-button {
+    min-height: 44px;
+  }
+  .preference-value {
+    min-width: 130px;
+  }
+  .preference-row .preference-action {
+    margin-left: auto;
+  }
+}
+
+/* Settings edit in place; values and actions retain the shared row rhythm. */
+.preference-value-button {
+  display: inline-block;
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: var(--el-text-color-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.preference-value-button:hover {
+  color: var(--el-color-primary);
+}
+.preference-value-button:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.preference-value-button:disabled {
+  cursor: default;
+}
+.preference-value > .el-input,
+.preference-value > .el-select {
+  max-width: 480px;
+}
+.settings-inline-details {
+  padding: 12px;
+  margin: 0 12px 12px;
+  background: var(--ops-subtle);
+  border: 1px solid var(--ops-border-soft);
+  border-radius: 6px;
+  min-width: 0;
+}
+.settings-inline-details > .el-form {
+  max-width: 760px;
+}
+.settings-inline-details .el-form-item {
+  margin-bottom: 12px;
+}
+.settings-inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.settings-inline-status > .el-alert {
+  margin: 0 12px 12px;
+  width: auto;
+}
+.settings-entry-details:empty,
+.settings-inline-status:empty {
+  display: none;
+}
+.theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ops-text-muted);
+}
+.theme-selected {
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+.app-shell .notification-manager {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 12px;
+  padding: 12px;
+}
+.notification-tabs {
+  width: 100%;
+  min-width: 0;
+}
+.notification-tabs > .el-tabs__header {
+  margin: 0;
+}
+.notification-tabs > .el-tabs__content {
+  display: none;
+}
+.notification-manager > .page-toolbar {
+  margin: 0;
+}
+.notification-quiet-window .el-form-item__content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 700px) {
+  .settings-inline-details {
+    margin: 0 4px 12px;
+    padding: 12px;
+  }
+  .settings-inline-details .el-form-item__label {
+    width: 100px !important;
+  }
+  .preference-value-button {
+    min-height: 44px;
+  }
+  .theme-switcher {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .app-shell .notification-manager {
+    padding: 12px;
+  }
+}

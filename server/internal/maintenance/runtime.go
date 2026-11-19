@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"opsview/internal/runtimeconfig"
+	"opsview/internal/security"
 	"os"
 )
 
@@ -23,12 +24,12 @@ func Runtime(args []string) error {
 		if os.Geteuid() != 0 {
 			return errors.New("需要 root")
 		}
-		if len(args) > 1 {
-			if len(args) != 3 || args[1] != "--public-host" || !runtimeconfig.ValidHost(args[2]) {
-				return errors.New("--public-host 须为域名或 IPv4")
-			}
-			c.PublicHost = args[2]
-		} else if c.PublicHost == "" {
+		_, statErr := os.Stat(runtimeconfig.Path)
+		c, e = initOptions(c, args[1:], os.IsNotExist(statErr))
+		if e != nil {
+			return e
+		}
+		if c.PublicHost == "" {
 			host, err := runtimeconfig.DetectPublicHost(nil)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "公网 IP 获取失败，将使用本机地址；可用 ov info --public-host 修正。")
@@ -58,4 +59,28 @@ func Runtime(args []string) error {
 		return errors.New("未知 runtime-config 操作")
 	}
 	return nil
+}
+
+// Only the install script requests a random entrance. Updates and repeated
+// initialization preserve the existing access policy, including a disabled entrance.
+func initOptions(c runtimeconfig.Config, args []string, fresh bool) (runtimeconfig.Config, error) {
+	newInstall := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--new-install":
+			newInstall = true
+		case "--public-host":
+			i++
+			if i >= len(args) || !runtimeconfig.ValidHost(args[i]) {
+				return c, errors.New("--public-host 须为域名或 IPv4")
+			}
+			c.PublicHost = args[i]
+		default:
+			return c, errors.New("用法：runtime-config init [--new-install] [--public-host 主机]")
+		}
+	}
+	if newInstall && fresh && c.Entry == "" {
+		c.Entry = security.ID()
+	}
+	return c, c.Validate()
 }

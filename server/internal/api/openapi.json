@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpsView API",
-    "version": "0.1.3-rc.18"
+    "version": "0.1.3-rc.19"
   },
   "paths": {
     "/api/v1/health": {
@@ -142,7 +142,7 @@
     "/api/v1/auth/login": {
       "post": {
         "operationId": "post_auth_login",
-        "summary": "密码及 TOTP 登录",
+        "summary": "密码登录；需要 TOTP 时返回 428，再携带验证码提交",
         "security": [],
         "responses": {
           "200": {
@@ -171,6 +171,41 @@
           },
           "409": {
             "description": "资源冲突"
+          },
+          "428": {
+            "description": "密码验证通过，仍需验证码；不创建会话、不累计失败次数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "totp_required"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "code"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -192,8 +227,7 @@
                 },
                 "required": [
                   "username",
-                  "password",
-                  "code"
+                  "password"
                 ]
               }
             }
@@ -1124,7 +1158,7 @@
       },
       "put": {
         "operationId": "put_settings",
-        "summary": "面板名称与 IP 访问范围",
+        "summary": "旧设置接口；面板名称和侧栏标题不可修改，访问范围修改使用运行配置事务",
         "security": [
           {
             "session": []

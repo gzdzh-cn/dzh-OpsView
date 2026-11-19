@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { ElMessageBox } from 'element-plus'
 import { computed, ref, onMounted } from 'vue'
 import { usePanel } from '../stores/panel'
-import { api, post, errorText, setCSRF } from '../lib/api'
+import { api, post, errorText, setCSRF, APIError } from '../lib/api'
 import { loginPasskey } from '../lib/passkeys'
 import { appearance } from '../lib/appearance'
 defineProps<{ connectionError: string }>()
@@ -11,6 +12,7 @@ const panel = usePanel(),
   password = ref(''),
   token = ref(''),
   code = ref(''),
+  needsTOTP = ref(false),
   busy = ref(false),
   error = ref('')
 const setup = computed(() => panel.auth.setupRequired)
@@ -28,12 +30,22 @@ async function usePasskey() {
   busy.value = true
   error.value = ''
   try {
-    const data = await loginPasskey(code.value)
+    let passkeyCode = ''
+    if (panel.auth.twoFactorEnabled) {
+      const result = await ElMessageBox.prompt('请输入验证器中的六位验证码', '验证登录', {
+        inputPattern: /^\d{6}$/,
+        inputErrorMessage: '请输入六位数字',
+        confirmButtonText: '继续',
+        cancelButtonText: '取消',
+      })
+      passkeyCode = result.value
+    }
+    const data = await loginPasskey(passkeyCode)
     setCSRF(data.csrf)
     await panel.session()
     emit('ready')
   } catch (e) {
-    error.value = errorText(e)
+    if (e !== 'cancel' && e !== 'close') error.value = errorText(e)
   } finally {
     busy.value = false
   }
@@ -76,10 +88,24 @@ async function submit() {
     }
     emit('ready')
   } catch (e) {
-    error.value = errorText(e)
+    if (e instanceof APIError && e.code === 'totp_required') {
+      needsTOTP.value = true
+      code.value = ''
+    } else error.value = errorText(e)
   } finally {
     busy.value = false
   }
+}
+function toggleTemporary() {
+  resetLogin()
+  temporary.value = !temporary.value
+  temporaryToken.value = ''
+}
+function resetLogin() {
+  needsTOTP.value = false
+  code.value = ''
+  password.value = ''
+  error.value = ''
 }
 </script>
 <template>
@@ -153,11 +179,11 @@ async function submit() {
             required
           />
         </label>
-        <label>
+        <label v-if="!needsTOTP">
           用户名
           <el-input v-model="username" autocomplete="username" required />
         </label>
-        <label>
+        <label v-if="!needsTOTP">
           密码
           <el-input
             v-model="password"
@@ -168,24 +194,30 @@ async function submit() {
             required
           />
         </label>
-        <label v-if="!setup">
-          双因素验证码
-          <span class="muted">已开启时填写</span>
+        <label v-if="needsTOTP">
+          验证码
+          <span class="muted">请打开验证器完成验证</span>
           <el-input
             v-model="code"
+            aria-label="验证码"
             inputmode="numeric"
             maxlength="6"
             placeholder="6 位验证码"
             autocomplete="one-time-code"
+            required
+            autofocus
           />
         </label>
         <el-button type="primary" native-type="submit" :loading="busy" size="large">
-          {{ setup ? '创建账号并进入' : '进入控制台' }}
-          <span>→</span>
+          {{ setup ? '创建账号并进入' : needsTOTP ? '验证并登录' : '进入控制台' }}
+          <span aria-hidden="true">→</span>
+        </el-button>
+        <el-button v-if="needsTOTP" link :disabled="busy" @click="resetLogin">
+          返回账号登录
         </el-button>
       </form>
       <el-button
-        v-if="!setup && passkeyAvailable && !temporary"
+        v-if="!setup && passkeyAvailable && !temporary && !needsTOTP"
         :loading="busy"
         @click="usePasskey"
       >
@@ -198,13 +230,7 @@ async function submit() {
         </label>
         <el-button type="primary" native-type="submit" :loading="busy">兑换只读访问</el-button>
       </form>
-      <el-button
-        v-if="!setup"
-        link
-        @click="
-          temporary = !temporary; temporaryToken = ''
-        "
-      >
+      <el-button v-if="!setup" link @click="toggleTemporary">
         {{ temporary ? '返回管理员登录' : '临时授权访问' }}
       </el-button>
       <div class="login-help">

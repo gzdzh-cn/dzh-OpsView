@@ -617,7 +617,7 @@ func (c *Controller) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for k := range v {
-		if k != "name" && k != "allowedCIDRs" && k != "refreshSeconds" && k != "sessionMinutes" && k != "backupRetention" {
+		if k != "allowedCIDRs" && k != "refreshSeconds" && k != "sessionMinutes" && k != "backupRetention" {
 			fail(w, 400, "不支持的面板设置")
 			return
 		}

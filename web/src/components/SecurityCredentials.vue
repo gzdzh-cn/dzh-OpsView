@@ -4,9 +4,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, post, errorText, type Config } from '../lib/api'
 import { identity } from '../lib/identity'
 import { registerPasskey } from '../lib/passkeys'
+import InlinePanel from './InlinePanel.vue'
 import AppDialog from './AppDialog.vue'
 import DataList from './DataList.vue'
 import LoadingContent from './LoadingContent.vue'
+defineProps<{ inline?: boolean }>()
 const supportsPasskeys = !!window.PublicKeyCredential
 function copyToken() {
   void navigator.clipboard.writeText(token.value)
@@ -47,16 +49,20 @@ async function load() {
     if (seq === sequence) busy.value = false
   }
 }
-watch(mode, (v) => {
-  sequence++
-  createOpen.value = false
-  scopes.value = ['overview:read', 'resources:read']
-  token.value = ''
-  cert.value = undefined
-  rows.value = []
-  if (v && !['certificate'].includes(v)) void load()
-  else busy.value = false
-})
+watch(
+  mode,
+  (v) => {
+    sequence++
+    createOpen.value = false
+    scopes.value = ['overview:read', 'resources:read']
+    token.value = ''
+    cert.value = undefined
+    rows.value = []
+    if (v && !['certificate'].includes(v)) void load()
+    else busy.value = false
+  },
+  { immediate: true },
+)
 onBeforeUnmount(() => {
   sequence++
   token.value = ''
@@ -95,6 +101,10 @@ async function register() {
   } finally {
     busy.value = false
   }
+}
+function openCreate() {
+  createOpen.value = true
+  token.value = ''
 }
 async function create() {
   busy.value = true
@@ -136,7 +146,8 @@ function download(value: string, filename: string) {
 }
 </script>
 <template>
-  <AppDialog
+  <component
+    :is="inline ? InlinePanel : AppDialog"
     :model-value="!!mode"
     :title="
       (
@@ -184,13 +195,7 @@ function download(value: string, filename: string) {
           >
             绑定 Passkey
           </el-button>
-          <el-button
-            v-else
-            type="primary"
-            @click="
-              createOpen = true; token = ''
-            "
-          >
+          <el-button v-else type="primary" @click="openCreate">
             创建{{ mode === 'api' ? '凭据' : '临时授权' }}
           </el-button>
         </div>
@@ -250,8 +255,9 @@ function download(value: string, filename: string) {
       </template>
     </div>
     <template #footer><el-button @click="mode = ''">关闭</el-button></template>
-  </AppDialog>
-  <AppDialog
+  </component>
+  <component
+    :is="inline ? InlinePanel : AppDialog"
     v-model="createOpen"
     :title="mode === 'api' ? '创建 API 凭据' : '创建临时授权'"
     width="650px"
@@ -286,5 +292,5 @@ function download(value: string, filename: string) {
       <el-button @click="createOpen = false">取消</el-button>
       <el-button type="primary" :loading="busy" @click="create">验证并创建</el-button>
     </template>
-  </AppDialog>
+  </component>
 </template>

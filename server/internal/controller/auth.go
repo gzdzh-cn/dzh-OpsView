@@ -125,6 +125,11 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 	a, e := c.currentAdmin()
 	valid := e == nil && a.Username == body.Username && bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(body.Password)) == nil
 	if valid && a.TOTP != "" {
+		if body.Code == "" {
+			w.Header().Set("Cache-Control", "no-store")
+			send(w, http.StatusPreconditionRequired, model.Config{"code": "totp_required", "error": "请完成验证器验证"})
+			return
+		}
 		valid = security.VerifyTOTP(a.TOTP, body.Code)
 	}
 	if !valid {

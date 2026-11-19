@@ -10,9 +10,21 @@ import LoadingContent from './LoadingContent.vue'
 const tab = ref('rules'),
   panel = usePanel()
 const open = ref(false)
-const query = usePageQuery<Resource[]>(() => tab.value === 'rules' ? '/notifications/rules' : '', [])
-const channels = usePageQuery<Resource[]>(() => tab.value === 'channels' || open.value && tab.value === 'rules' ? '/notifications/channels' : '', [])
-const records = usePageQuery<Config[]>(() => tab.value === 'records' ? '/notifications/records' : '', [])
+const query = usePageQuery<Resource[]>(
+  () => (tab.value === 'rules' ? '/notifications/rules' : ''),
+  [],
+)
+const channels = usePageQuery<Resource[]>(
+  () =>
+    tab.value === 'channels' || (open.value && tab.value === 'rules')
+      ? '/notifications/channels'
+      : '',
+  [],
+)
+const records = usePageQuery<Config[]>(
+  () => (tab.value === 'records' ? '/notifications/records' : ''),
+  [],
+)
 const active = computed(() =>
   tab.value === 'rules' ? query : tab.value === 'channels' ? channels : records,
 )
@@ -28,6 +40,7 @@ const types: Record<string, string> = {
   'backup-failed': '备份失败',
   'login-failed': '异常登录',
 }
+const states: Record<string, string> = { queued: '待发送', succeeded: '已发送', failed: '失败' }
 const providers: Record<string, string> = {
   smtp: 'SMTP 邮件',
   dingtalk: '钉钉',
@@ -65,7 +78,12 @@ function edit(row?: Resource) {
   error.value = ''
   open.value = true
 }
-watch(open, value => { if (!value) { config.value = {}; error.value = '' } })
+watch(open, (value) => {
+  if (!value) {
+    config.value = {}
+    error.value = ''
+  }
+})
 async function save() {
   busy.value = true
   try {
@@ -111,8 +129,8 @@ async function test(row: Resource) {
 }
 </script>
 <template>
-  <div class="surface">
-    <el-tabs v-model="tab" class="panel-tabs">
+  <div class="surface notification-manager">
+    <el-tabs v-model="tab" class="notification-tabs">
       <el-tab-pane label="规则" name="rules" />
       <el-tab-pane label="通知渠道" name="channels" />
       <el-tab-pane label="发送记录" name="records" />
@@ -163,7 +181,9 @@ async function test(row: Resource) {
       </DataList>
       <DataList v-else :rows="records.data.value" state-key="notification-records" searchable>
         <el-table-column prop="title" label="摘要" min-width="180" />
-        <el-table-column label="结果" width="100"><template #default="{row}">{{ ({queued:'待发送',succeeded:'已发送',failed:'失败'} as Record<string,string>)[row.state] || row.state }}</template></el-table-column>
+        <el-table-column label="结果" width="100">
+          <template #default="{ row }">{{ states[row.state] || row.state }}</template>
+        </el-table-column>
         <el-table-column label="渠道" min-width="130">
           <template #default="{ row }">
             {{ channels.data.value.find((c) => c.id === row.channelId)?.name || row.channelId }}
@@ -232,7 +252,7 @@ async function test(row: Resource) {
             <el-option v-for="r in channels.data.value" :key="r.id" :value="r.id" :label="r.name" />
           </el-select>
         </el-form-item>
-        <el-form-item label="静默窗口">
+        <el-form-item label="静默窗口" class="notification-quiet-window">
           <el-time-select
             v-model="config.quietStart"
             start="00:00"

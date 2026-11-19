@@ -1,6 +1,7 @@
 """Verify the published one-command entry and ov updater on a clean GitHub VM.
 Credentials stay in memory, including subprocess capture; output only test results.
 """
+import http.cookiejar
 import hashlib
 import json
 import os
@@ -42,7 +43,12 @@ def login():
     request=urllib.request.Request(f'{scheme}://127.0.0.1:{port}/api/v1/auth/login',
         data=json.dumps(dict(username=username,password=password,code='')).encode(),
         headers={'Content-Type':'application/json'})
-    with urllib.request.urlopen(request,context=ssl._create_unverified_context()) as response:
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl._create_unverified_context()), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    entry = json.loads(Path('/etc/opsview/panel.json').read_text()).get('entry', '')
+    if entry:
+        with opener.open(f'{scheme}://127.0.0.1:{port}/{entry}') as response:
+            assert response.status == 200
+    with opener.open(request) as response:
         assert json.load(response)['csrf']
 
 def confirm_access(output):
@@ -73,6 +79,8 @@ with tempfile.TemporaryDirectory() as folder:
     output=run(['bash',script,'--version',tag,'--public-host','panel.example.com'])
     username=re.search(r'用户名：(ov_[a-f0-9]{12})',output).group(1)
     password=re.search(r'密码：([A-Za-z0-9_-]{32})',output).group(1)
+    entry = json.loads(Path('/etc/opsview/panel.json').read_text())['entry']
+    assert re.fullmatch(r'[a-f0-9]{32}', entry) and '/' + entry in output
     assert 'OpsView 安装完成' in output
     for step in range(1,9):
         assert f'[{step}/8 ' in output
@@ -90,6 +98,7 @@ with tempfile.TemporaryDirectory() as folder:
     del output
     login()
     run(['ov','update','--version',tag])
+    assert json.loads(Path('/etc/opsview/panel.json').read_text())['entry'] == entry
     assert json.loads(Path('/etc/opsview/panel.json').read_text())['port']==port
     assert json.loads(Path('/etc/opsview/panel.json').read_text())['protocol']=='http'
     login()

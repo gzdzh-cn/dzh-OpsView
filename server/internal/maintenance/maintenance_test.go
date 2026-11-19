@@ -10,8 +10,8 @@ import (
 )
 
 func TestMenuMapping(t *testing.T) {
-	want := []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off"}
-	if len(Commands) != 15 {
+	want := []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off", "entry on", "entry off"}
+	if len(Commands) != 17 {
 		t.Fatal("menu count")
 	}
 	for i, v := range want {

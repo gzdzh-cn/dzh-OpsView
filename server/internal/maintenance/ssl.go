@@ -9,7 +9,9 @@ import (
 	"opsview/internal/executor"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
+	"opsview/internal/security"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -124,17 +126,45 @@ func (r *Runner) execSSLStatus() error {
 	}
 	return err
 }
-func (r *Runner) resetEntry() error {
-	unlock, lockErr := runtimeconfig.Lock(r.configPath())
-	if lockErr != nil {
-		return lockErr
+func (r *Runner) entry(args []string) error {
+	if len(args) != 1 || (args[0] != "on" && args[0] != "off" && args[0] != "reset") {
+		return errors.New("用法：ov entry on|off|reset")
+	}
+	unlock, err := runtimeconfig.Lock(r.configPath())
+	if err != nil {
+		return err
 	}
 	defer unlock()
+	pending := "/var/lib/opsview/managed/panel-pending.json"
+	if r.configPath() != runtimeconfig.Path {
+		pending = filepath.Join(filepath.Dir(r.configPath()), "panel-pending.json")
+	}
+	if _, err = os.Stat(pending); !os.IsNotExist(err) {
+		return errors.New("访问设置正在等待确认，请先确认或回退，再修改安全入口")
+	}
 	cfg, err := runtimeconfig.Load(r.configPath())
 	if err != nil {
 		return err
 	}
-	_ = os.Remove("/var/lib/opsview/managed/panel-pending.json")
 	cfg.Entry = ""
-	return runtimeconfig.Save(r.configPath(), cfg)
+	if args[0] == "on" {
+		cfg.Entry = security.ID()
+	}
+	if err = runtimeconfig.Save(r.configPath(), cfg); err != nil {
+		return err
+	}
+	// The access middleware reads this file on every request; no service restart is needed.
+	if cfg.Entry == "" {
+		fmt.Fprintln(r.Out, "安全入口已关闭")
+	} else {
+		host := cfg.AllowedHost
+		if host == "" {
+			host = cfg.PublicHost
+		}
+		if host == "" {
+			host = runtimeconfig.LocalHost()
+		}
+		fmt.Fprintf(r.Out, "安全入口已开启（旧入口已失效）\n登录地址：%s\n", cfg.URL(host))
+	}
+	return nil
 }

@@ -24,6 +24,7 @@ import PageContent from './components/PageContent.vue'
 import { usePanel } from './stores/panel'
 import { api, post, errorText } from './lib/api'
 import Login from './views/Login.vue'
+import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import TemporaryAccess from './components/TemporaryAccess.vue'
 import PasswordRenewal from './components/PasswordRenewal.vue'
 import { appearance, applyAppearance } from './lib/appearance'
@@ -233,6 +234,7 @@ onUnmounted(() => {
               />
             </svg>
           </a>
+          <ThemeSwitcher />
           <div class="topbar-divider"></div>
           <el-dropdown @command="logout">
             <div class="profile">

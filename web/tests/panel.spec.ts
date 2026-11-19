@@ -365,7 +365,7 @@ test('software settings show version context and configuration conflict', async 
   await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(dialog).toBeHidden()
 })
-test('panel settings have six tabs and stage HTTPS changes', async ({ page }) => {
+test('panel settings have five tabs and stage HTTPS changes inline', async ({ page }) => {
   await page.route('**/api/v1/settings/runtime', async (route) => {
     if (route.request().method() === 'PUT') {
       const payload = route.request().postDataJSON()
@@ -391,7 +391,6 @@ test('panel settings have six tabs and stage HTTPS changes', async ({ page }) =>
     '常用设置',
     '面板设置',
     '安全设置',
-    '界面设置',
     '告警通知',
     '备份恢复',
   ])
@@ -2522,21 +2521,19 @@ test('settings CAS conflicts preserve editor and notification tabs load independ
     await groupResponse
     await route.continue()
   })
-  const setting = page.locator('.preference-row').filter({has:page.getByText('面板名称',{exact:true})})
-  await setting.getByRole('button',{name:'修改',exact:true}).click()
-  const dialog=page.getByRole('dialog',{name:'面板名称',exact:true})
-  await expect(dialog.getByRole('textbox',{name:'面板名称',exact:true})).toBeDisabled()
+  const setting = page.locator('.preference-item').filter({has:page.getByText('默认建站目录',{exact:true})})
+  await setting.getByRole('button',{name:'修改默认建站目录',exact:true}).click()
+  await expect(setting.getByRole('textbox',{name:'默认建站目录',exact:true})).toBeDisabled()
   releaseGroup()
-  await dialog.getByRole('textbox',{name:'面板名称',exact:true}).fill('conflicting-name')
+  await setting.getByRole('textbox',{name:'默认建站目录',exact:true}).fill('/www/conflicting-directory')
   await page.route('**/api/v1/settings/groups/panel',r=>r.request().method()==='PATCH'?r.fulfill({status:409,json:{error:'设置已被修改，请重新载入'}}):r.continue())
-  await dialog.getByRole('button',{name:'保存',exact:true}).click()
-  await expect(dialog).toContainText('设置已被修改')
-  await expect(dialog.getByRole('textbox',{name:'面板名称',exact:true})).toHaveValue('conflicting-name')
+  await setting.getByRole('button',{name:'保存',exact:true}).click()
+  await expect(setting).toContainText('设置已被修改')
+  await expect(setting.getByRole('textbox',{name:'默认建站目录',exact:true})).toHaveValue('/www/conflicting-directory')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.setViewportSize({width:390,height:844})
-  const before=await overlayGeometry(dialog)
-  await dialog.locator('.el-dialog__body').evaluate(el=>el.scrollTop=el.scrollHeight)
-  expectFixedOverlay(before,await overlayGeometry(dialog))
-  await dialog.getByRole('button',{name:'取消',exact:true}).click()
+  await expect(setting.getByRole('button',{name:'保存',exact:true})).toBeInViewport()
+  await setting.getByRole('button',{name:'取消',exact:true}).click()
   await page.getByRole('tab',{name:'告警通知',exact:true}).click()
   await expect.poll(()=>rules).toBe(1)
   expect(channels).toBe(0);expect(records).toBe(0)
@@ -2634,12 +2631,9 @@ for (const mode of ['light', 'dark']) {
       }
     }
     await page.goto('/settings')
-    await page.getByRole('tab', { name: '界面设置', exact: true }).click()
-    const setting = page
-      .locator('.preference-row')
-      .filter({ has: page.getByText('界面模式', { exact: true }) })
-    await setting.getByRole('button', { name: '修改', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: '界面模式', exact: true })
+    await page.getByRole('tab', { name: '告警通知', exact: true }).click()
+    await page.getByRole('button', { name: '添加告警规则', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '添加告警规则', exact: true })
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible()
     const style = await themeStyle(dialog.locator('.el-dialog'))
     expect(style.background).toBe(mode === 'dark' ? '#202d3d' : '#ffffff')
@@ -2649,8 +2643,8 @@ for (const mode of ['light', 'dark']) {
     await dialog.getByRole('button', { name: '保存', exact: true }).hover()
     const hovered = await themeStyle(dialog.getByRole('button', { name: '保存', exact: true }))
     expect(contrast(hovered.color, hovered.background)).toBeGreaterThanOrEqual(4.5)
-    await dialog.locator('.el-select__wrapper').click()
-    const option = page.getByRole('option', { name: '深色', exact: true })
+    await dialog.getByRole('combobox', { name: '类型', exact: true }).press('ArrowDown')
+    const option = page.getByRole('option', { name: 'CPU 使用率', exact: true })
     await expect(option).toBeVisible()
     const popup = page.locator('.el-select__popper:visible')
     expect((await themeStyle(popup)).background).toBe(style.background)
@@ -2671,30 +2665,39 @@ for (const mode of ['light', 'dark']) {
   })
 }
 
-test('theme preview updates an open dialog and cancel restores the saved palette', async ({
-  page,
-}) => {
-  await mockTheme(page, 'light')
-  await page.goto('/settings')
-  await page.getByRole('tab', { name: '界面设置', exact: true }).click()
-  await page
-    .locator('.preference-row')
-    .filter({ has: page.getByText('界面模式', { exact: true }) })
-    .getByRole('button', { name: '修改', exact: true })
-    .click()
-  const dialog = page.getByRole('dialog', { name: '界面模式', exact: true })
-  await expect(dialog.getByRole('combobox')).toBeEnabled()
-  await dialog.locator('.el-select__wrapper').click()
-  await page.getByRole('option', { name: '深色', exact: true }).click()
-  const geometry = await overlayGeometry(dialog)
-  await dialog.getByRole('button', { name: '预览', exact: true }).click()
-  await expect(page.locator('html')).toHaveClass('dark')
-  expect((await themeStyle(dialog.locator('.el-dialog'))).background).toBe('#202d3d')
-  expectFixedOverlay(geometry, await overlayGeometry(dialog))
-  await dialog.getByRole('button', { name: '取消', exact: true }).click()
-  await expect(dialog).toBeHidden()
+test('overview theme dropdown persists modes and preserves the saved mode on failure', async ({page}) => {
+  let theme = 'light', revision = 4
+  const writes: any[] = []
+  await page.route('**/api/v1/settings/groups/appearance', async r => {
+    if (r.request().method() === 'PATCH') {
+      const body = r.request().postDataJSON()
+      expect(body.revision).toBe(revision)
+      expect(Object.keys(body.patch)).toEqual(['theme'])
+      writes.push(body.patch.theme)
+      if (body.patch.theme === 'dark') return r.fulfill({status:409,json:{error:'主题已被其他会话修改'}})
+      theme = body.patch.theme; revision++
+    }
+    return r.fulfill({json:{revision,config:{theme,primaryColor:'#2563eb'}}})
+  })
+  await page.goto('/')
+  await expect(page.locator('.metric-card').first()).toBeVisible()
+  await page.getByRole('button',{name:'切换主题',exact:true}).click()
+  await expect(page.getByRole('menuitem')).toHaveText(['跟随系统','亮色 ✓','黑色'])
+  await page.getByRole('menuitem',{name:'黑色',exact:true}).click()
+  await expect(page.getByText('主题已被其他会话修改',{exact:true})).toBeVisible()
   await expect(page.locator('html')).not.toHaveClass('dark')
-  expect((await themeStyle(page.locator('.surface').first())).background).toBe('#ffffff')
+  await page.emulateMedia({colorScheme:'dark'})
+  await page.getByRole('button',{name:'切换主题',exact:true}).click()
+  await page.getByRole('menuitem',{name:'跟随系统',exact:true}).click()
+  await expect(page.locator('html')).toHaveClass('dark')
+  await page.emulateMedia({colorScheme:'light'})
+  await expect(page.locator('html')).not.toHaveClass('dark')
+  expect(writes).toEqual(['dark','auto'])
+  await page.goto('/settings')
+  await expect(page.getByRole('tab',{name:'界面设置',exact:true})).toHaveCount(0)
+  await expect(page.getByText('面板名称',{exact:true})).toHaveCount(0)
+  await page.getByRole('tab',{name:'面板设置',exact:true}).click()
+  await expect(page.getByText('侧栏标题',{exact:true})).toHaveCount(0)
 })
 
 test('default appearance stays light on a dark system until follow-system is selected', async ({
@@ -2765,4 +2768,122 @@ test('dark software editor and error state have no light surface remnants', asyn
   const color = await themeStyle(dialog.getByRole('button', { name: '保存并重载', exact: true }))
   expect(contrast(color.color, color.background)).toBeGreaterThanOrEqual(4.5)
   await page.screenshot({ path: '../.opsview/screenshots/theme-dark-editor.png', fullPage: true })
+})
+
+
+test('settings edit values inline, preserve siblings, and clear secret forms when switching tabs', async ({page}) => {
+  let refreshSeconds = 15, revision = 9
+  await page.route('**/api/v1/settings/groups/panel',async r=>{
+    if(r.request().method()==='PATCH') {
+      const body=r.request().postDataJSON()
+      expect(body.patch).toEqual({refreshSeconds:30})
+      expect(body.revision).toBe(revision)
+      refreshSeconds=body.patch.refreshSeconds;revision++
+    }
+    return r.fulfill({json:{config:{refreshSeconds,timezone:'Local'},revision}})
+  })
+  await page.goto('/settings')
+  const row=page.locator('.preference-item').filter({has:page.getByText('刷新频率',{exact:true})})
+  await row.getByRole('button',{name:'修改刷新频率',exact:true}).click()
+  await expect(row.getByRole('combobox')).toBeEnabled()
+  await row.getByRole('combobox').press('ArrowDown')
+  await page.getByRole('option',{name:'30 秒',exact:true}).click()
+  await row.getByRole('button',{name:'保存',exact:true}).click()
+  await expect(row.getByRole('button',{name:'修改刷新频率',exact:true})).toHaveText('30 秒')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('tab',{name:'安全设置',exact:true}).click()
+  const passwordRow=page.locator('.preference-item').filter({has:page.getByText('管理员密码',{exact:true})})
+  await passwordRow.getByRole('button',{name:'修改管理员密码',exact:true}).click()
+  await passwordRow.getByRole('textbox',{name:'当前密码',exact:true}).fill('draft-secret')
+  await page.getByRole('tab',{name:'面板设置',exact:true}).click()
+  await page.getByRole('tab',{name:'安全设置',exact:true}).click()
+  await passwordRow.getByRole('button',{name:'修改管理员密码',exact:true}).click()
+  await expect(passwordRow.getByRole('textbox',{name:'当前密码',exact:true})).toHaveValue('')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('tab',{name:'告警通知',exact:true}).click()
+  const tabs=page.locator('.notification-tabs')
+  for(const width of [1440,390]) {
+    await page.setViewportSize({width,height:844})
+    await expect(tabs).toBeVisible()
+    const bounds=await tabs.boundingBox()
+    const panel=await page.locator('.notification-manager').boundingBox()
+    expect(bounds!.x).toBeGreaterThanOrEqual(panel!.x)
+    expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(panel!.x+panel!.width+1)
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+  }
+  await page.screenshot({path:'../.opsview/screenshots/rc19-notifications-mobile.png',fullPage:true,animations:'disabled'})
+})
+
+test('login requests a verifier code only after a correct password and supports returning',async({page})=>{
+  await page.route('**/api/v1/auth',r=>r.fulfill({json:{authenticated:false,setupRequired:false}}))
+  let submissions=0
+  await page.route('**/api/v1/auth/login',r=>{
+    submissions++
+    const body=r.request().postDataJSON()
+    return r.fulfill({status:body.code?401:428,json:body.code?{error:'账号、密码或验证码错误'}:{code:'totp_required',error:'请完成验证器验证'}})
+  })
+  await page.goto('/')
+  await expect(page.getByRole('textbox',{name:'验证码',exact:true})).toHaveCount(0)
+  await page.getByRole('textbox',{name:'用户名',exact:true}).fill(username)
+  await page.getByRole('textbox',{name:'密码',exact:true}).fill(password)
+  await page.getByRole('button',{name:'进入控制台',exact:true}).click()
+  await expect(page.getByRole('textbox',{name:'验证码',exact:true})).toBeVisible()
+  await expect(page.getByRole('textbox',{name:'密码',exact:true})).toHaveCount(0)
+  await page.getByRole('textbox',{name:'验证码',exact:true}).fill('123456')
+  await page.getByRole('button',{name:'验证并登录',exact:true}).click()
+  await expect(page.getByText('账号、密码或验证码错误',{exact:true})).toBeVisible()
+  expect(submissions).toBe(2)
+  await page.getByRole('button',{name:'返回账号登录',exact:true}).click()
+  await expect(page.getByRole('textbox',{name:'验证码',exact:true})).toHaveCount(0)
+  await expect(page.getByRole('textbox',{name:'密码',exact:true})).toHaveValue('')
+})
+
+test('security entrance edits inline and stages a reconnect confirmation without changing other access values',async({page})=>{
+  const config={protocol:'https',listenHost:'0.0.0.0',port:18790,publicHost:'panel.example.com',entry:'original_entrance',allowedHost:'',allowedCIDRs:''}
+  await page.route('**/api/v1/settings/runtime',async r=>{
+    if(r.request().method()==='PUT'){
+      const body=r.request().postDataJSON()
+      expect(body.config).toEqual({...config,entry:'new_entrance_2026'})
+      expect(body.password).toBe(password)
+      return r.fulfill({json:{url:'https://panel.example.com:18790/new_entrance_2026',confirmToken:'b'.repeat(64)}})
+    }
+    return r.fulfill({json:{config}})
+  })
+  await page.goto('/settings')
+  await page.getByRole('tab',{name:'面板设置',exact:true}).click()
+  const row=page.locator('.preference-item').filter({has:page.getByText('安全入口',{exact:true})})
+  await row.getByRole('button',{name:'修改安全入口',exact:true}).click()
+  await row.getByRole('textbox',{name:'安全入口',exact:true}).fill('new_entrance_2026')
+  await row.getByRole('button',{name:'保存',exact:true}).click()
+  await page.getByRole('button',{name:'确认修改',exact:true}).click()
+  await page.getByRole('textbox',{name:'请输入当前管理员密码',exact:true}).fill(password)
+  await page.getByRole('button',{name:'验证',exact:true}).click()
+  await expect(page.getByRole('link',{name:'打开新地址并确认（120 秒内）',exact:true})).toHaveAttribute('href',/^https:.*new_entrance_2026#runtime-confirm=/)
+  await expect(row.getByRole('textbox')).toHaveCount(0)
+})
+
+test('closing an inline read does not leave subsequent settings busy and security managers expand in place',async({page})=>{
+  await page.route('**/api/v1/settings/runtime',r=>r.fulfill({json:{config:{protocol:'https',port:18790,listenHost:'0.0.0.0',publicHost:'panel.example.com'}}}))
+  let release!:()=>void
+  const barrier=new Promise<void>(r=>{release=r})
+  await page.route('**/api/v1/settings/groups/panel',async r=>{await barrier;await r.fulfill({json:{config:{siteDirectory:'/www/wwwroot',refreshSeconds:15},revision:3}})})
+  await page.goto('/settings')
+  const row=page.locator('.preference-item').filter({has:page.getByText('默认建站目录',{exact:true})})
+  await row.getByRole('button',{name:'修改默认建站目录',exact:true}).click()
+  await expect(row.getByRole('textbox')).toBeDisabled()
+  await page.getByRole('tab',{name:'安全设置',exact:true}).click()
+  release()
+  await page.route('**/api/v1/auth/sessions',r=>r.fulfill({json:[]}))
+  const sessions=page.locator('.preference-item').filter({has:page.getByText('登录会话',{exact:true})})
+  await sessions.getByRole('button',{name:'修改登录会话',exact:true}).click()
+  await expect(sessions.getByRole('button',{name:'全部退出',exact:true})).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await sessions.getByRole('button',{name:'关闭',exact:true}).click()
+  await page.getByRole('tab',{name:'常用设置',exact:true}).click()
+  await row.getByRole('button',{name:'修改默认建站目录',exact:true}).click()
+  await expect(row.getByRole('textbox')).toBeEnabled()
+  await row.getByRole('textbox').fill('/draft')
+  await row.getByRole('textbox').press('Escape')
+  await expect(row.getByRole('textbox')).toHaveCount(0)
+  await expect(row.getByRole('button',{name:'修改默认建站目录',exact:true})).toHaveText('/www/wwwroot')
 })

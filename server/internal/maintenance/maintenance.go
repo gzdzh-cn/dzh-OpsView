@@ -26,8 +26,8 @@ import (
 	"time"
 )
 
-var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off"}
-var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板", "关闭 SSL 证书（切换 HTTP）"}
+var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off", "entry on", "entry off"}
+var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板", "关闭 SSL 证书（切换 HTTP）", "开启安全入口（重新生成）", "关闭安全入口"}
 
 const panelUnit = "opsview-panel.service"
 const executorUnit = "opsview-executor.service"
@@ -83,10 +83,9 @@ func Run(args []string) error {
 }
 func (r *Runner) help() {
 	fmt.Fprintf(r.Out, "OpsView v%s 终端管理\n用法：ov <命令>\n", version.Current)
-	for i, c := range Commands {
-		fmt.Fprintf(r.Out, "%2d  %-16s %s\n", i+1, c, labels[i])
-	}
-	fmt.Fprintln(r.Out, "    init             显式初始化随机管理员（仅未初始化时）\n密码输入：ov password [--generate | --stdin]\n端口修改：ov port <端口> [--source IP/CIDR] [--yes]\n地址修正：ov info --public-host <域名或IPv4>\n版本更新：ov update [--version v0.1.3-rc.17]\n防火墙事务：ov firewall status|rollback [--yes]\n网页入口：ov panel on|off\n高级安全：ov security status|recover [--yes]\n备份恢复：ov restore --file <.ovp> [--switch --yes]")
+	r.menuColumns()
+	fmt.Fprintln(r.Out, "命令："+strings.Join(Commands, " | "))
+	fmt.Fprintln(r.Out, "    init             显式初始化随机管理员（仅未初始化时）\n密码输入：ov password [--generate | --stdin]\n端口修改：ov port <端口> [--source IP/CIDR] [--yes]\n地址修正：ov info --public-host <域名或IPv4>\n版本更新：ov update [--version <版本号>]\n安全入口：ov entry on|off（on 每次重新生成；reset 兼容关闭）\n防火墙事务：ov firewall status|rollback [--yes]\n网页入口：ov panel on|off\n高级安全：ov security status|recover [--yes]\n备份恢复：ov restore --file <.ovp> [--switch --yes]")
 }
 func (r *Runner) line(prompt string) (string, error) {
 	fmt.Fprint(r.Out, prompt)
@@ -115,10 +114,7 @@ func (r *Runner) confirm(prompt string, yes bool) error {
 func (r *Runner) menu() error {
 	for {
 		fmt.Fprintf(r.Out, "\nOpsView v%s 终端管理\n", version.Current)
-		for i, l := range labels {
-			fmt.Fprintf(r.Out, "%2d. %s\n", i+1, l)
-		}
-		fmt.Fprintln(r.Out, " 0. 退出")
+		r.menuColumns()
 		v, e := r.line("请输入编号：")
 		if errors.Is(e, io.EOF) {
 			return nil
@@ -188,10 +184,7 @@ func (r *Runner) command(args []string) error {
 	case "ssl":
 		return r.ssl(args)
 	case "entry":
-		if len(args) != 1 || args[0] != "reset" {
-			return errors.New("用法：ov entry reset")
-		}
-		return r.resetEntry()
+		return r.entry(args)
 	case "status":
 		return r.exec("systemctl", "--no-pager", "status", panelUnit, executorUnit)
 	case "start":
@@ -397,7 +390,10 @@ func (r *Runner) info(args []string) error {
 		}
 	}
 	fmt.Fprintf(r.Out, "OpsView v%s\n监听地址：%s\n", version.Current, c.Address())
-	host := c.PublicHost
+	host := c.AllowedHost
+	if host == "" {
+		host = c.PublicHost
+	}
 	if host == "" {
 		host = runtimeconfig.LocalHost()
 		fmt.Fprintln(r.Out, "未配置公网地址，以下为本机地址。")
@@ -408,7 +404,7 @@ func (r *Runner) info(args []string) error {
 		return e
 	}
 	fmt.Fprint(r.Out, string(b))
-	fmt.Fprintln(r.Out, "密码不保存，请通过 ov password 重置。\n公网入站连通性尚需验证，云安全组由用户配置。")
+	fmt.Fprintln(r.Out, "密码：********（仅保存哈希，使用 ov password 重置）\n公网入站连通性尚需验证，云安全组由用户配置。")
 	return r.exec("systemctl", "--no-pager", "is-active", panelUnit, executorUnit)
 }
 
@@ -456,4 +452,26 @@ func CheckOverrides() error {
 		return errors.New("现有 systemd ExecStart 与受控端口配置不兼容，请核对自定义服务启动配置")
 	}
 	return nil
+}
+
+// Fixed display columns account for the Chinese menu labels. Number zero remains first.
+func (r *Runner) menuColumns() {
+	entries := append([]string{"退出"}, labels...)
+	half := (len(entries) + 1) / 2
+	for i := 0; i < half; i++ {
+		left := fmt.Sprintf("%2d. %s", i, entries[i])
+		width := 0
+		for _, ch := range left {
+			if ch > 127 {
+				width += 2
+			} else {
+				width++
+			}
+		}
+		fmt.Fprint(r.Out, left)
+		if j := i + half; j < len(entries) {
+			fmt.Fprintf(r.Out, "%s%2d. %s", strings.Repeat(" ", max(2, 40-width)), j, entries[j])
+		}
+		fmt.Fprintln(r.Out)
+	}
 }

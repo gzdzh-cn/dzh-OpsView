@@ -64,7 +64,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 密码及 TOTP 登录 */
+        /** 密码登录；需要 TOTP 时返回 428，再携带验证码提交 */
         post: operations["post_auth_login"];
         delete?: never;
         options?: never;
@@ -287,7 +287,7 @@ export interface paths {
         };
         /** /settings */
         get: operations["get_settings"];
-        /** 面板名称与 IP 访问范围 */
+        /** 旧设置接口；面板名称和侧栏标题不可修改，访问范围修改使用运行配置事务 */
         put: operations["put_settings"];
         post?: never;
         delete?: never;
@@ -3155,7 +3155,7 @@ export interface operations {
                 "application/json": {
                     username: string;
                     password: string;
-                    code: string;
+                    code?: string;
                 };
             };
         };
@@ -3193,6 +3193,20 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description 密码验证通过，仍需验证码；不创建会话、不累计失败次数 */
+            428: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        /** @enum {string} */
+                        code: "totp_required";
+                    };
+                };
             };
         };
     };
