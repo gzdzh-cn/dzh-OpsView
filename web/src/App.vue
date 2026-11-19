@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { version as panelVersion } from '../package.json'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Monitor,
   Connection,
@@ -30,6 +30,7 @@ import PasswordRenewal from './components/PasswordRenewal.vue'
 import { appearance, applyAppearance } from './lib/appearance'
 const panel = usePanel(),
   route = useRoute(),
+  router = useRouter(),
   collapsed = ref(false),
   fatal = ref('')
 const menus = [
@@ -75,11 +76,23 @@ watch(
   () => route.path,
   () => refresh(),
 )
+async function consumeConfirmation(name: string) {
+  // Initial async navigation can finish after the confirmation response. Keep
+  // router state and browser history in sync so it cannot restore a used token.
+  await router.isReady()
+  const hash = new URLSearchParams(route.hash.slice(1))
+  hash.delete(name)
+  await router.replace({
+    path: route.path,
+    query: route.query,
+    hash: hash.size ? '#' + hash.toString() : '',
+  })
+}
 async function ready() {
   const confirmToken = new URLSearchParams(location.hash.slice(1)).get('runtime-confirm')
   if (confirmToken) {
     await post('/runtime/confirm', { token: confirmToken })
-    history.replaceState(null, '', location.pathname)
+    await consumeConfirmation('runtime-confirm')
   }
 
   void api('/public/preferences')
@@ -89,7 +102,7 @@ async function ready() {
   const preferenceToken = new URLSearchParams(location.hash.slice(1)).get('preference-confirm')
   if (preferenceToken && panel.auth.authenticated) {
     await post('/settings/confirm', { token: preferenceToken })
-    history.replaceState(null, '', location.pathname)
+    await consumeConfirmation('preference-confirm')
   }
   fatal.value = ''
   if (panel.auth.authenticated && !panel.auth.temporary && !panel.auth.passwordExpired) {

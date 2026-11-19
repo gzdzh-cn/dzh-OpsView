@@ -83,3 +83,48 @@ test('blocked session cookies show a login error instead of silently returning',
     await upstream.dispose()
   }
 })
+
+test('CLI reconnect confirmation survives async entrance routing and is consumed once', async ({ page }) => {
+  let confirmations = 0
+  await page.route('**/assets/Overview-*.js', async route => {
+    await new Promise(resolve => setTimeout(resolve, 600))
+    await route.continue()
+  })
+  await page.route('**/api/v1/runtime/confirm', route => {
+    confirmations++
+    return route.fulfill({ status: confirmations === 1 ? 200 : 409, json: confirmations === 1 ? {confirmed: true} : {error: '确认凭证已使用'} })
+  })
+  await page.goto('/entrance-fixture?source=cli#runtime-confirm=' + 'a'.repeat(64))
+  await page.getByRole('textbox', {name:'用户名', exact:true}).fill(username)
+  await page.getByRole('textbox', {name:'密码', exact:true}).fill(password)
+  await page.getByRole('button', {name:'进入控制台', exact:true}).click()
+  await expect(page.getByRole('main', {name:'概览', exact:true})).toBeVisible()
+  await expect(page).toHaveURL(/\/\?source=cli$/)
+  expect(confirmations).toBe(1)
+  await page.reload()
+  await expect(page.getByRole('main', {name:'概览', exact:true})).toBeVisible()
+  expect(confirmations).toBe(1)
+})
+
+test('security confirmation clears router hash before reload and preserves query', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('textbox', {name:'用户名', exact:true}).fill(username)
+  await page.getByRole('textbox', {name:'密码', exact:true}).fill(password)
+  await page.getByRole('button', {name:'进入控制台', exact:true}).click()
+  await expect(page.getByRole('main', {name:'概览', exact:true})).toBeVisible()
+  let confirmations = 0
+  await page.route('**/assets/Settings-*.js', async route => {
+    await new Promise(resolve => setTimeout(resolve, 600))
+    await route.continue()
+  })
+  await page.route('**/api/v1/settings/confirm', route => {
+    confirmations++
+    return route.fulfill({ status: confirmations === 1 ? 200 : 409, json: confirmations === 1 ? {confirmed: true} : {error: '确认凭证已使用'} })
+  })
+  await page.goto('/settings?source=security#preference-confirm=' + 'b'.repeat(64))
+  await expect(page.getByRole('main', {name:'面板设置', exact:true})).toBeVisible()
+  await expect(page).toHaveURL(/\/settings\?source=security$/)
+  await page.reload()
+  await expect(page.getByRole('main', {name:'面板设置', exact:true})).toBeVisible()
+  expect(confirmations).toBe(1)
+})

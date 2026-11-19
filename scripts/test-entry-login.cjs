@@ -42,6 +42,7 @@ async function main() {
         await login.click()
       }
       await page.getByRole('main', { name: '概览', exact: true }).waitFor()
+      await page.waitForURL(url => !url.hash.includes('runtime-confirm'))
       phase = scheme + '-session'
       const auth = await page.evaluate(async () => (await fetch('/api/v1/auth')).json())
       if (!auth.authenticated) throw Error('session not saved')
