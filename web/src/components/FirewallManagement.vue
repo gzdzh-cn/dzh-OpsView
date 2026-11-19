@@ -340,6 +340,7 @@ async function installDependencies() {
 function rowName(row: Config) {
   return row.ports || row.source || row.countries?.join('、') || '规则'
 }
+defineExpose({ openProtection })
 </script>
 <template>
   <section

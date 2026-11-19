@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingContent from '../components/LoadingContent.vue'
 import DialogActions from '../components/DialogActions.vue'
 import AppDialog from '../components/AppDialog.vue'
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
@@ -416,129 +417,138 @@ async function batchBackup() {
       </div>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-empty v-if="!instance" description="尚未安装对应数据库实例">
-      <router-link :to="`/software?software=${tab}`">
-        <el-button type="primary">前往软件市场安装</el-button>
-      </router-link>
-    </el-empty>
-    <template v-else>
-      <el-alert
-        v-if="!['ready', 'running'].includes(instance.status)"
-        title="实例未就绪，可在实例设置中检查服务"
-        type="warning"
-        :closable="false"
-      />
-      <el-alert
-        v-if="capability.error.value && tab !== 'redis'"
-        :title="capability.error.value"
-        type="warning"
-        :closable="false"
-      >
-        <el-button link @click="capability.load(true)">重新连接</el-button>
-      </el-alert>
-      <RedisData v-if="tab === 'redis'" :key="instanceId" :instance="instance" />
+    <LoadingContent :busy="panel.pending.resources">
+      <el-empty v-if="!instance" description="尚未安装对应数据库实例">
+        <router-link :to="`/software?software=${tab}`">
+          <el-button type="primary">前往软件市场安装</el-button>
+        </router-link>
+      </el-empty>
       <template v-else>
-        <div class="page-toolbar">
-          <el-input
-            v-model="search"
-            aria-label="搜索数据库"
-            placeholder="数据库名 / 用户名 / 备注"
-            clearable
-            style="max-width: 300px"
-          />
-          <el-button v-if="selected.length" :loading="busy" @click="batchBackup">
-            备份所选 {{ selected.length }} 项
-          </el-button>
-        </div>
-        <el-alert v-if="list.error.value" :title="list.error.value" type="error" :closable="false">
-          <el-button link @click="list.load(true)">重试</el-button>
-        </el-alert>
-        <DataList
-          :rows="rows"
-          :state-key="`databases:${tab}:${instanceId}`"
-          v-loading="list.busy.value"
-          @selection-change="(v: Resource[]) => (selected = v)"
+        <el-alert
+          v-if="!['ready', 'running'].includes(instance.status)"
+          title="实例未就绪，可在实例设置中检查服务"
+          type="warning"
+          :closable="false"
+        />
+        <el-alert
+          v-if="capability.error.value && tab !== 'redis'"
+          :title="capability.error.value"
+          type="warning"
+          :closable="false"
         >
-          <el-table-column type="selection" width="42" />
-          <el-table-column prop="name" label="数据库名" min-width="160">
-            <template #default="{ row }">
-              {{ row.name }}
-              <small v-if="row.status !== 'ready'" class="cell-subtext">{{ row.status }}</small>
-            </template>
-          </el-table-column>
-          <el-table-column :label="tab === 'postgresql' ? '所有者' : '用户名'" min-width="120">
-            <template #default="{ row }">
-              {{
-                tab === 'postgresql' ? row.config.owner || row.config.username : row.config.username
-              }}
-              <small
-                v-if="tab === 'postgresql' && row.config.owner !== row.config.username"
-                class="cell-subtext"
-              >
-                连接账号：{{ row.config.username }}
-              </small>
-            </template>
-          </el-table-column>
-          <el-table-column label="密码" width="110">
-            <template #default="{ row }">
-              <button
-                :disabled="!row.config.hasPassword"
-                class="text-link"
-                @click="open('credential', row)"
-              >
-                {{ row.config.hasPassword ? '•••••• 查看' : '未保存' }}
-              </button>
-            </template>
-          </el-table-column>
-          <el-table-column label="备份" min-width="165">
-            <template #default="{ row }">
-              <button class="text-link" @click="open('backup', row)">
-                {{ backupSummary(row) }}
-              </button>
-            </template>
-          </el-table-column>
-          <el-table-column label="所属实例" min-width="145">
-            <template #default="{ row }">{{ row.config.instanceName }}</template>
-          </el-table-column>
-          <el-table-column :label="tab === 'mysql' ? '字符集/排序规则' : '编码'" min-width="150">
-            <template #default="{ row }">
-              {{ row.config.encoding || '待同步' }}
-              <small v-if="tab === 'mysql'" class="cell-subtext">
-                {{ row.config.collation || '实例默认' }}
-              </small>
-            </template>
-          </el-table-column>
-          <el-table-column label="备注" min-width="120">
-            <template #default="{ row }">
-              <button class="text-link" @click="saveNote(row)">
-                {{ row.config.note || '添加备注' }}
-              </button>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="220" fixed="right">
-            <template #default="{ row }">
-              <div class="row-actions">
-                <button @click="open('tables', row)">管理</button>
-                <button @click="open('grant', row)">权限</button>
-                <button @click="open('password', row)">改密</button>
-                <el-dropdown @command="(cmd: string) => open(cmd, row)">
-                  <button aria-label="更多数据库操作">更多</button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item command="connect">连接信息</el-dropdown-item>
-                      <el-dropdown-item command="access">连接来源</el-dropdown-item>
-                      <el-dropdown-item command="import">导入 SQL</el-dropdown-item>
-                      <el-dropdown-item command="migrate">迁移</el-dropdown-item>
-                      <el-dropdown-item command="recycle">删除并回收</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
-            </template>
-          </el-table-column>
-        </DataList>
+          <el-button link @click="capability.load(true)">重新连接</el-button>
+        </el-alert>
+        <RedisData v-if="tab === 'redis'" :key="instanceId" :instance="instance" />
+        <template v-else>
+          <div class="page-toolbar">
+            <el-input
+              v-model="search"
+              aria-label="搜索数据库"
+              placeholder="数据库名 / 用户名 / 备注"
+              clearable
+              style="max-width: 300px"
+            />
+            <el-button v-if="selected.length" :loading="busy" @click="batchBackup">
+              备份所选 {{ selected.length }} 项
+            </el-button>
+          </div>
+          <el-alert
+            v-if="list.error.value"
+            :title="list.error.value"
+            type="error"
+            :closable="false"
+          >
+            <el-button link @click="list.load(true)">重试</el-button>
+          </el-alert>
+          <DataList
+            :rows="rows"
+            :state-key="`databases:${tab}:${instanceId}`"
+            v-loading="list.busy.value"
+            @selection-change="(v: Resource[]) => (selected = v)"
+          >
+            <el-table-column type="selection" width="42" />
+            <el-table-column prop="name" label="数据库名" min-width="160">
+              <template #default="{ row }">
+                {{ row.name }}
+                <small v-if="row.status !== 'ready'" class="cell-subtext">{{ row.status }}</small>
+              </template>
+            </el-table-column>
+            <el-table-column :label="tab === 'postgresql' ? '所有者' : '用户名'" min-width="120">
+              <template #default="{ row }">
+                {{
+                  tab === 'postgresql'
+                    ? row.config.owner || row.config.username
+                    : row.config.username
+                }}
+                <small
+                  v-if="tab === 'postgresql' && row.config.owner !== row.config.username"
+                  class="cell-subtext"
+                >
+                  连接账号：{{ row.config.username }}
+                </small>
+              </template>
+            </el-table-column>
+            <el-table-column label="密码" width="110">
+              <template #default="{ row }">
+                <button
+                  :disabled="!row.config.hasPassword"
+                  class="text-link"
+                  @click="open('credential', row)"
+                >
+                  {{ row.config.hasPassword ? '•••••• 查看' : '未保存' }}
+                </button>
+              </template>
+            </el-table-column>
+            <el-table-column label="备份" min-width="165">
+              <template #default="{ row }">
+                <button class="text-link" @click="open('backup', row)">
+                  {{ backupSummary(row) }}
+                </button>
+              </template>
+            </el-table-column>
+            <el-table-column label="所属实例" min-width="145">
+              <template #default="{ row }">{{ row.config.instanceName }}</template>
+            </el-table-column>
+            <el-table-column :label="tab === 'mysql' ? '字符集/排序规则' : '编码'" min-width="150">
+              <template #default="{ row }">
+                {{ row.config.encoding || '待同步' }}
+                <small v-if="tab === 'mysql'" class="cell-subtext">
+                  {{ row.config.collation || '实例默认' }}
+                </small>
+              </template>
+            </el-table-column>
+            <el-table-column label="备注" min-width="120">
+              <template #default="{ row }">
+                <button class="text-link" @click="saveNote(row)">
+                  {{ row.config.note || '添加备注' }}
+                </button>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="220" fixed="right">
+              <template #default="{ row }">
+                <div class="row-actions">
+                  <button @click="open('tables', row)">管理</button>
+                  <button @click="open('grant', row)">权限</button>
+                  <button @click="open('password', row)">改密</button>
+                  <el-dropdown @command="(cmd: string) => open(cmd, row)">
+                    <button aria-label="更多数据库操作">更多</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="connect">连接信息</el-dropdown-item>
+                        <el-dropdown-item command="access">连接来源</el-dropdown-item>
+                        <el-dropdown-item command="import">导入 SQL</el-dropdown-item>
+                        <el-dropdown-item command="migrate">迁移</el-dropdown-item>
+                        <el-dropdown-item command="recycle">删除并回收</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </template>
+            </el-table-column>
+          </DataList>
+        </template>
       </template>
-    </template>
+    </LoadingContent>
   </section>
   <ResourceForm
     v-model="create"

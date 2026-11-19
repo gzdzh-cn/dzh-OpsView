@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -155,6 +156,7 @@ func TestLinuxSecuritySSHAndFirewall(t *testing.T) {
 	if err = login(newPort); err != nil {
 		t.Fatal("login after rollback", err)
 	}
+	testLinuxSSHAccountLifecycle(t, e, ctx)
 	if os.Getenv("OPSVIEW_FIREWALL_SMOKE") != "true" {
 		return
 	}
@@ -186,5 +188,96 @@ func TestLinuxSecuritySSHAndFirewall(t *testing.T) {
 	}
 	if err = login(newPort); err != nil {
 		t.Fatal("SSH login after firewall rollback", err)
+	}
+	testLinuxSSHServiceRecovery(t, e, ctx, bin, func() error { return login(newPort) })
+}
+
+func testLinuxSSHAccountLifecycle(t *testing.T, e *Engine, ctx context.Context) {
+	t.Helper()
+	name := "ov-smoke-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	defer func() { _ = exec.Command("userdel", "--", name).Run(); _ = os.RemoveAll(filepath.Join("/home", name)) }()
+	change := func(action, password string) {
+		rows, _, err := sshLocalUsers()
+		if err != nil {
+			t.Fatal("read local users", err)
+		}
+		revision := ""
+		for _, row := range rows {
+			if row.String("username") == name {
+				revision = row.String("revision")
+			}
+		}
+		_, err = e.changeSSHUser(ctx, model.Config{"username": name, "operation": action, "password": password, "revision": revision, "confirmedImpact": true})
+		if err != nil {
+			t.Fatalf("account %s failed: %v", action, err)
+		}
+	}
+	change("create", "")
+	change("password", "OpsView-disposable-user-test-Only-2026!")
+	change("lock", "")
+	change("unlock", "")
+	change("delete", "")
+	if _, err := os.Stat(filepath.Join("/home", name)); err != nil {
+		t.Fatal("account removal did not preserve home")
+	}
+	if _, err := output(ctx, "getent", "passwd", name); err == nil {
+		t.Fatal("deleted account still exists")
+	}
+}
+
+func testLinuxSSHServiceRecovery(t *testing.T, e *Engine, ctx context.Context, bin string, verify func() error) {
+	t.Helper()
+	pid := filepath.Join(e.Root, "sshd.pid")
+	shim := fmt.Sprintf(`#!/bin/sh
+case "$1" in
+ is-active) for unit in "$@"; do [ "$unit" = is-active ] && continue; if [ "$unit" = ssh.service ] && [ -s '%s' ] && kill -0 "$(cat '%s')" 2>/dev/null; then echo active; else echo inactive; fi; done;;
+ is-enabled) echo enabled;;
+ show) case "$*" in *ExecStart*) echo /usr/sbin/sshd -D;; *LoadState*) echo loaded;; esac;;
+ disable) case "$*" in *--now*) kill "$(cat '%s')"; sleep .2;; esac;;
+ enable) exit 0;;
+ start) /usr/sbin/sshd -f '%s';;
+ reload) kill -HUP "$(cat '%s')";;
+ *) exit 1;;
+esac
+`, pid, pid, pid, e.sshPath(), pid)
+	if err := os.WriteFile(filepath.Join(bin, "systemctl"), []byte(shim), 0700); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		b, _ := os.ReadFile(pid)
+		p, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+		if p > 1 {
+			_ = exec.Command("kill", strconv.Itoa(p)).Run()
+		}
+	}()
+	if _, err := e.sshOperation(ctx, model.Operation{Name: "system.ssh-service", Params: model.Config{"operation": "stop", "confirmedImpact": true}}, func(string) {}); err != nil {
+		t.Fatal("real service stop", err)
+	}
+	p, err := e.loadSSHService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Deadline = time.Now().Add(-time.Second).Unix()
+	b, _ := json.Marshal(p)
+	if err = os.WriteFile(e.sshServicePath(), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	watcher, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go e.watchSSH(watcher)
+	deadline := time.Now().Add(7 * time.Second)
+	recovered := false
+	for time.Now().Before(deadline) {
+		if _, err = os.Stat(e.sshServicePath()); os.IsNotExist(err) {
+			recovered = true
+			break
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	if !recovered {
+		t.Fatal("real service did not recover on deadline")
+	}
+	if err = verify(); err != nil {
+		t.Fatal("real SSH login after service recovery", err)
 	}
 }

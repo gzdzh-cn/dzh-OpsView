@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingContent from '../components/LoadingContent.vue'
 import AppDialog from '../components/AppDialog.vue'
 import AppDrawer from '../components/AppDrawer.vue'
 import { usePageState } from '../composables/pageState'
@@ -16,7 +17,7 @@ import {
   FolderOpened,
 } from '@element-plus/icons-vue'
 import { usePanel } from '../stores/panel'
-import { action, api, errorText, date, post, type Resource } from '../lib/api'
+import { action, api, errorText, date, size, post, type Resource } from '../lib/api'
 import ResourceForm from '../components/ResourceForm.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 const props = defineProps<{ kind: string; embedded?: boolean }>(),
@@ -48,7 +49,8 @@ const migrationOpen = ref(false),
 const redisRestoreOpen = ref(false),
   redisRestoreSource = ref<Resource>(),
   redisRestoreTarget = ref(''),
-  redisRestoreConfirmed = ref(false)
+  redisRestoreConfirmed = ref(false),
+  redisRestoreArtifact = ref('')
 const redisRestoreTargets = computed(() =>
   panel
     .kind('instance')
@@ -66,6 +68,7 @@ async function restoreRedis() {
     await action(redisRestoreSource.value.id, 'restore', {
       targetInstanceId: redisRestoreTarget.value,
       maintenanceConfirmed: true,
+      artifact: redisRestoreArtifact.value,
     })
     redisRestoreOpen.value = false
     await panel.refresh()
@@ -183,6 +186,7 @@ async function execute(row: Resource, op: string, params: Record<string, any> = 
         redisRestoreSource.value = row
         redisRestoreTarget.value = ''
         redisRestoreConfirmed.value = false
+        redisRestoreArtifact.value = params.artifact || ''
         redisRestoreOpen.value = true
         return
       }
@@ -250,6 +254,37 @@ async function sync(row: Resource) {
     ElMessage.error(errorText(e))
   }
 }
+const backupHistoryOpen = ref(false),
+  backupRow = ref<Resource>(),
+  scheduleOpen = ref(false),
+  scheduleTarget = ref('')
+function backupTask(row: Resource) {
+  return panel.tasks.find(
+    (t) => t.resourceId === row.id && ['backup.backup', 'backup.restore'].includes(t.operation),
+  )
+}
+function scheduleBackup(row: Resource) {
+  scheduleTarget.value = row.id
+  scheduleOpen.value = true
+}
+async function backupLogs(row: Resource) {
+  logTitle.value = row.name + ' · 最近执行日志'
+  showLog.value = true
+  logs.value = '正在读取…'
+  try {
+    const task = backupTask(row)
+    if (!task) {
+      logs.value = '暂无执行记录（任务中心保留最近 200 条）'
+      return
+    }
+    const events = await api<any[]>('/tasks/' + task.id + '/events')
+    logs.value =
+      `${task.operation} · ${task.state}\n${task.error || ''}\n` +
+      events.map((e) => `${date(e.createdAt)}  ${e.message}`).join('\n')
+  } catch (e) {
+    logs.value = errorText(e)
+  }
+}
 </script>
 <template>
   <section class="surface">
@@ -270,187 +305,266 @@ async function sync(row: Resource) {
         </el-button>
       </div>
     </div>
-    <DataList
-      :key="'Resources-1' + ':' + props.kind"
-      :state-key="'Resources-1' + ':' + props.kind"
-      v-if="rows.length"
-      :rows="rows"
-      row-key="id"
-    >
-      <el-table-column label="名称" min-width="180">
-        <template #default="{ row }">
-          <div class="resource-identity">
-            <span class="resource-avatar"><component :is="icons[kind] || Box" /></span>
-            <div>
-              <span>{{ row.name }}</span>
-              <small class="cell-subtext">
-                {{
-                  kind === 'site'
-                    ? row.config.domains
-                    : kind === 'instance'
-                      ? `${row.config.software} ${row.config.version}`
-                      : row.id.slice(0, 12)
-                }}
-              </small>
+    <LoadingContent :busy="panel.pending.resources">
+      <DataList
+        :key="'Resources-1' + ':' + props.kind"
+        :state-key="'Resources-1' + ':' + props.kind"
+        v-if="rows.length"
+        :rows="rows"
+        row-key="id"
+      >
+        <el-table-column label="名称" min-width="180">
+          <template #default="{ row }">
+            <div class="resource-identity">
+              <span class="resource-avatar"><component :is="icons[kind] || Box" /></span>
+              <div>
+                <span>{{ row.name }}</span>
+                <small class="cell-subtext">
+                  {{
+                    kind === 'site'
+                      ? row.config.domains
+                      : kind === 'instance'
+                        ? `${row.config.software} ${row.config.version}`
+                        : row.id.slice(0, 12)
+                  }}
+                </small>
+              </div>
             </div>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="配置" min-width="150">
-        <template #default="{ row }">
-          <span v-if="kind === 'site'">
-            {{ row.config.type === 'static' ? '静态站点' : row.config.upstream }}
-          </span>
-          <span v-else-if="kind === 'database'">
-            {{ row.config.username }}
-            <small class="cell-subtext">{{ row.config.source }}</small>
-          </span>
-          <span v-else-if="kind === 'instance'">
-            {{ row.config.mode === 'docker' ? 'Docker' : '原生' }} · :{{ row.config.port }}
-          </span>
-          <span v-else-if="kind === 'firewall'">
-            {{ row.config.action === 'allow' ? '放行' : '阻止' }} {{ row.config.ports }}/{{
-              row.config.protocol
-            }}
-            <small class="cell-subtext">{{ row.config.scope }} · {{ row.config.source }}</small>
-          </span>
-          <span v-else-if="kind === 'schedule'" class="task-operation">
-            {{ row.config.cron }}
-            <small class="cell-subtext">
-              {{ row.config.enabled ? '已启用' : '已暂停' }} · {{ row.config.operation }}
-            </small>
-          </span>
-          <span v-else-if="kind === 'backup'">
-            {{ row.config.destination === 's3' ? 'S3' : '本地加密' }} · 保留
-            {{ row.config.retention || 7 }} 份
-            <small class="cell-subtext">
-              {{ row.config.lastBackupAt ? date(row.config.lastBackupAt) : '尚未备份' }}
-            </small>
-          </span>
-          <span v-else-if="kind === 'repository'">{{ row.config.url }}</span>
-          <span v-else>Compose</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="105">
-        <template #default="{ row }">
-          <StatusBadge :value="row.status" />
-          <small v-if="kind === 'firewall' && row.config.confirmed === false" class="cell-subtext">
-            {{ firewallExpired(row) ? '已超时 · 规则回退' : '待确认 · 超时回退' }}
-          </small>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" min-width="220">
-        <template #default="{ row }">
-          <div class="row-actions">
-            <button @click="details = row">详情</button>
-            <template v-if="kind === 'site'">
-              <button @click="edit(row)">配置</button>
-              <button @click="configuration(row)">配置历史</button>
-              <button @click="execute(row, 'renew')">申请 / 续期证书</button>
-              <button @click="openCertificate(row)">上传证书</button>
-              <button @click="execute(row, 'logs')">日志</button>
-            </template>
-            <template
-              v-if="(kind === 'compose' || kind === 'instance') && row.status !== 'uninstalled'"
-            >
-              <button v-if="kind !== 'instance'" @click="edit(row)">配置</button>
-              <button
-                v-if="row.status === 'pending' || (kind !== 'instance' && row.status === 'error')"
-                @click="execute(row, kind === 'instance' ? 'install' : 'apply')"
-              >
-                部署
-              </button>
-              <button
-                v-else-if="row.status !== 'error' || row.config.installedAt"
-                @click="execute(row, 'start')"
-              >
-                启动
-              </button>
-              <small v-else class="cell-subtext">安装失败，请先卸载并清理记录</small>
-              <button @click="execute(row, 'stop')">停止</button>
-              <button v-if="kind !== 'instance'" @click="execute(row, 'logs')">日志</button>
-            </template>
-            <template v-if="kind === 'database'">
-              <button @click="edit(row)">访问与密码</button>
-              <button v-if="row.status !== 'ready'" @click="execute(row, 'create')">建库</button>
-              <button @click="execute(row, 'import')">导入 SQL</button>
-              <a
-                v-if="row.status === 'ready'"
-                :href="'/api/v1/resources/' + row.id + '/download'"
-                class="text-link"
-              >
-                导出
-              </a>
-              <button v-if="row.status === 'ready'" @click="openMigration(row)">迁移</button>
-            </template>
-            <template v-if="kind === 'firewall'">
-              <button
-                v-if="row.config.confirmed === false && !firewallExpired(row)"
-                @click="execute(row, 'confirm')"
-              >
-                确认规则
-              </button>
-              <button
-                v-else-if="
-                  row.status === 'pending' || row.status === 'error' || firewallExpired(row)
-                "
-                @click="execute(row, 'apply')"
-              >
-                应用
-              </button>
-            </template>
-            <template v-if="kind === 'backup'">
-              <button @click="execute(row, 'backup')">立即备份</button>
-              <button v-if="row.config.artifact" @click="execute(row, 'restore')">恢复</button>
-              <a
-                v-if="row.config.artifact"
-                :href="'/api/v1/resources/' + row.id + '/download'"
-                class="text-link"
-              >
-                下载
-              </a>
-              <button @click="edit(row)">配置</button>
-            </template>
-            <button v-if="kind === 'schedule' || kind === 'repository'" @click="edit(row)">
-              编辑
-            </button>
-            <button v-if="kind === 'repository'" @click="sync(row)">同步</button>
-            <button
-              class="danger"
+          </template>
+        </el-table-column>
+        <el-table-column v-if="kind === 'backup'" label="备份对象" min-width="160">
+          <template #default="{ row }">
+            {{ panel.resources.find((r) => r.id === row.config.targetId)?.name || '目标已移除' }}
+          </template>
+        </el-table-column>
+        <el-table-column :label="kind === 'backup' ? '存储 / 保留' : '配置'" min-width="150">
+          <template #default="{ row }">
+            <span v-if="kind === 'site'">
+              {{ row.config.type === 'static' ? '静态站点' : row.config.upstream }}
+            </span>
+            <span v-else-if="kind === 'database'">
+              {{ row.config.username }}
+              <small class="cell-subtext">{{ row.config.source }}</small>
+            </span>
+            <span v-else-if="kind === 'instance'">
+              {{ row.config.mode === 'docker' ? 'Docker' : '原生' }} · :{{ row.config.port }}
+            </span>
+            <span v-else-if="kind === 'firewall'">
+              {{ row.config.action === 'allow' ? '放行' : '阻止' }} {{ row.config.ports }}/{{
+                row.config.protocol
+              }}
+              <small class="cell-subtext">{{ row.config.scope }} · {{ row.config.source }}</small>
+            </span>
+            <span v-else-if="kind === 'schedule'" class="task-operation">
+              {{ row.config.cron }}
+              <small class="cell-subtext">
+                {{ row.config.enabled ? '已启用' : '已暂停' }} · {{ row.config.operation }}
+              </small>
+            </span>
+            <span v-else-if="kind === 'backup'">
+              {{ row.config.destination === 's3' ? 'S3' : '本地加密' }} · 保留
+              {{ row.config.retention || 7 }} 份
+              <small class="cell-subtext">
+                {{ row.config.lastBackupAt ? date(row.config.lastBackupAt) : '尚未备份' }}
+              </small>
+            </span>
+            <span v-else-if="kind === 'repository'">{{ row.config.url }}</span>
+            <span v-else>Compose</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="kind === 'backup'" label="备份记录" width="115">
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
               @click="
                 () => {
-                  execute(
-                    row,
-                    kind === 'instance' && row.status !== 'uninstalled' ? 'uninstall' : 'delete',
-                  )
+                  backupRow = row
+                  backupHistoryOpen = true
                 }
               "
             >
-              {{
-                kind === 'instance' ? (row.status === 'uninstalled' ? '清理记录' : '卸载') : '移除'
-              }}
-            </button>
+              {{ row.config.history?.length || 0 }} 份
+            </el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="105">
+          <template #default="{ row }">
+            <StatusBadge
+              :value="kind === 'backup' ? backupTask(row)?.state || row.status : row.status"
+            />
+            <small
+              v-if="kind === 'firewall' && row.config.confirmed === false"
+              class="cell-subtext"
+            >
+              {{ firewallExpired(row) ? '已超时 · 规则回退' : '待确认 · 超时回退' }}
+            </small>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="220">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <button @click="details = row">详情</button>
+              <template v-if="kind === 'site'">
+                <button @click="edit(row)">配置</button>
+                <button @click="configuration(row)">配置历史</button>
+                <button @click="execute(row, 'renew')">申请 / 续期证书</button>
+                <button @click="openCertificate(row)">上传证书</button>
+                <button @click="execute(row, 'logs')">日志</button>
+              </template>
+              <template
+                v-if="(kind === 'compose' || kind === 'instance') && row.status !== 'uninstalled'"
+              >
+                <button v-if="kind !== 'instance'" @click="edit(row)">配置</button>
+                <button
+                  v-if="row.status === 'pending' || (kind !== 'instance' && row.status === 'error')"
+                  @click="execute(row, kind === 'instance' ? 'install' : 'apply')"
+                >
+                  部署
+                </button>
+                <button
+                  v-else-if="row.status !== 'error' || row.config.installedAt"
+                  @click="execute(row, 'start')"
+                >
+                  启动
+                </button>
+                <small v-else class="cell-subtext">安装失败，请先卸载并清理记录</small>
+                <button @click="execute(row, 'stop')">停止</button>
+                <button v-if="kind !== 'instance'" @click="execute(row, 'logs')">日志</button>
+              </template>
+              <template v-if="kind === 'database'">
+                <button @click="edit(row)">访问与密码</button>
+                <button v-if="row.status !== 'ready'" @click="execute(row, 'create')">建库</button>
+                <button @click="execute(row, 'import')">导入 SQL</button>
+                <a
+                  v-if="row.status === 'ready'"
+                  :href="'/api/v1/resources/' + row.id + '/download'"
+                  class="text-link"
+                >
+                  导出
+                </a>
+                <button v-if="row.status === 'ready'" @click="openMigration(row)">迁移</button>
+              </template>
+              <template v-if="kind === 'firewall'">
+                <button
+                  v-if="row.config.confirmed === false && !firewallExpired(row)"
+                  @click="execute(row, 'confirm')"
+                >
+                  确认规则
+                </button>
+                <button
+                  v-else-if="
+                    row.status === 'pending' || row.status === 'error' || firewallExpired(row)
+                  "
+                  @click="execute(row, 'apply')"
+                >
+                  应用
+                </button>
+              </template>
+              <template v-if="kind === 'backup'">
+                <button @click="execute(row, 'backup')">立即备份</button>
+                <button v-if="row.config.artifact" @click="execute(row, 'restore')">恢复</button>
+                <a
+                  v-if="row.config.artifact"
+                  :href="'/api/v1/resources/' + row.id + '/download'"
+                  class="text-link"
+                >
+                  下载
+                </a>
+                <button @click="scheduleBackup(row)">计划</button>
+                <button @click="backupLogs(row)">日志</button>
+                <button @click="edit(row)">配置</button>
+              </template>
+              <button v-if="kind === 'schedule' || kind === 'repository'" @click="edit(row)">
+                编辑
+              </button>
+              <button v-if="kind === 'repository'" @click="sync(row)">同步</button>
+              <button
+                class="danger"
+                @click="
+                  () => {
+                    execute(
+                      row,
+                      kind === 'instance' && row.status !== 'uninstalled' ? 'uninstall' : 'delete',
+                    )
+                  }
+                "
+              >
+                {{
+                  kind === 'instance'
+                    ? row.status === 'uninstalled'
+                      ? '清理记录'
+                      : '卸载'
+                    : '移除'
+                }}
+              </button>
+            </div>
+          </template>
+        </el-table-column>
+      </DataList>
+      <div v-else class="empty-page">
+        <span class="empty-symbol"><component :is="icons[kind] || Box" /></span>
+        <h3>{{ filter ? '没有匹配的资源' : '还没有' + (titles[kind] || '资源') }}</h3>
+        <p>
+          {{
+            kind === 'site'
+              ? '先在插件市场中安装 Nginx，再绑定域名、上传静态文件或配置反向代理。'
+              : kind === 'database'
+                ? '先安装 MySQL 或 PostgreSQL 实例，再创建独立数据库和专用用户。'
+                : kind === 'firewall'
+                  ? '明确每个开放端口的用途，为宿主机和 Docker 分别配置访问规则。'
+                  : '创建配置后，通过任务中心追踪实际执行进度。'
+          }}
+        </p>
+        <el-button type="primary" :icon="Plus" @click="create">添加{{ titles[kind] }}</el-button>
+      </div>
+    </LoadingContent>
+  </section>
+  <ResourceForm
+    v-model="scheduleOpen"
+    kind="schedule"
+    :initial="{ targetId: scheduleTarget, operation: 'backup' }"
+  />
+  <AppDialog v-model="backupHistoryOpen" title="备份记录" width="850px">
+    <el-alert
+      title="加密备份需保留独立 backup.key；恢复写入新目录或新库，请先确认维护窗口。"
+      type="info"
+      :closable="false"
+    />
+    <DataList :rows="backupRow?.config.history || []" state-key="backup-history">
+      <el-table-column prop="file" label="备份文件" min-width="200" show-overflow-tooltip />
+      <el-table-column label="大小" width="100">
+        <template #default="{ row }">{{ size(row.size) }}</template>
+      </el-table-column>
+      <el-table-column label="时间" min-width="170">
+        <template #default="{ row }">{{ date(row.createdAt) }}</template>
+      </el-table-column>
+      <el-table-column prop="sha256" label="SHA-256" min-width="140" show-overflow-tooltip />
+      <el-table-column label="操作" width="120">
+        <template #default="{ row }">
+          <div class="row-actions">
+            <a
+              :href="
+                '/api/v1/resources/' +
+                backupRow?.id +
+                '/download?artifact=' +
+                encodeURIComponent(row.file)
+              "
+            >
+              下载
+            </a>
+            <button @click="execute(backupRow!, 'restore', { artifact: row.file })">恢复</button>
           </div>
         </template>
       </el-table-column>
     </DataList>
-    <div v-else class="empty-page">
-      <span class="empty-symbol"><component :is="icons[kind] || Box" /></span>
-      <h3>{{ filter ? '没有匹配的资源' : '还没有' + (titles[kind] || '资源') }}</h3>
-      <p>
-        {{
-          kind === 'site'
-            ? '先在插件市场中安装 Nginx，再绑定域名、上传静态文件或配置反向代理。'
-            : kind === 'database'
-              ? '先安装 MySQL 或 PostgreSQL 实例，再创建独立数据库和专用用户。'
-              : kind === 'firewall'
-                ? '明确每个开放端口的用途，为宿主机和 Docker 分别配置访问规则。'
-                : '创建配置后，通过任务中心追踪实际执行进度。'
-        }}
-      </p>
-      <el-button type="primary" :icon="Plus" @click="create">添加{{ titles[kind] }}</el-button>
-    </div>
-  </section>
+    <template #footer>
+      <el-button @click="backupHistoryOpen = false">关闭</el-button>
+      <el-button v-if="backupRow" type="primary" @click="execute(backupRow, 'backup')">
+        立即备份
+      </el-button>
+    </template>
+  </AppDialog>
   <ResourceForm v-model="dialog" :kind="kind" :editing="editing" />
   <AppDialog v-model="redisRestoreOpen" title="恢复 Redis 到新实例" width="min(600px,90vw)">
     <p>

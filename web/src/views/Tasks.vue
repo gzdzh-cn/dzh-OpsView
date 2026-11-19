@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingContent from '../components/LoadingContent.vue'
 import AppDialog from '../components/AppDialog.vue'
 import AppDrawer from '../components/AppDrawer.vue'
 import { isAbort } from '../lib/query'
@@ -126,69 +127,71 @@ async function cancelInstall(id: string) {
         />
       </el-select>
     </div>
-    <DataList
-      state-key="Tasks-1"
-      v-if="tasks.length"
-      :rows="tasks"
-      @row-click="open"
-      style="cursor: pointer"
-    >
-      <el-table-column label="操作" min-width="200">
-        <template #default="{ row }">
-          <span class="task-operation">{{ row.operation }}</span>
-          <small class="cell-subtext">{{ row.id }}</small>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="110">
-        <template #default="{ row }"><StatusBadge :value="row.state" /></template>
-      </el-table-column>
-      <el-table-column label="提交时间" min-width="160">
-        <template #default="{ row }">
-          <span class="cell-date">{{ date(row.createdAt) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="结果" min-width="180">
-        <template #default="{ row }">
-          <span v-if="row.error" style="color: #b9826d">{{ row.error }}</span>
-          <span v-else class="muted">
-            {{ row.state === 'succeeded' ? '操作已完成' : '等待执行结果' }}
-          </span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="120">
-        <template #default="{ row }">
-          <el-button
-            v-if="
-              (row.operation === 'instance.install' || row.operation.startsWith('files.')) &&
-              ['queued', 'running'].includes(row.state)
-            "
-            link
-            type="danger"
-            @click.stop="cancelInstall(row.id)"
-          >
-            取消任务
-          </el-button>
-          <el-button
-            v-if="row.operation.startsWith('files.') && row.state === 'succeeded'"
-            link
-            type="primary"
-            @click.stop="viewResult(row.id)"
-          >
-            查看结果
-          </el-button>
-        </template>
-      </el-table-column>
-      <el-table-column width="60">
-        <template #default>
-          <el-icon><ArrowRight /></el-icon>
-        </template>
-      </el-table-column>
-    </DataList>
-    <div v-else class="empty-page">
-      <span class="empty-symbol"><Clock /></span>
-      <h3>暂无任务记录</h3>
-      <p>安装软件、部署网站和执行备份后，这里将显示真实进度与日志。</p>
-    </div>
+    <LoadingContent :busy="panel.pending.tasks">
+      <DataList
+        state-key="Tasks-1"
+        v-if="tasks.length"
+        :rows="tasks"
+        @row-click="open"
+        style="cursor: pointer"
+      >
+        <el-table-column label="操作" min-width="200">
+          <template #default="{ row }">
+            <span class="task-operation">{{ row.operation }}</span>
+            <small class="cell-subtext">{{ row.id }}</small>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }"><StatusBadge :value="row.state" /></template>
+        </el-table-column>
+        <el-table-column label="提交时间" min-width="160">
+          <template #default="{ row }">
+            <span class="cell-date">{{ date(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="结果" min-width="180">
+          <template #default="{ row }">
+            <span v-if="row.error" style="color: #b9826d">{{ row.error }}</span>
+            <span v-else class="muted">
+              {{ row.state === 'succeeded' ? '操作已完成' : '等待执行结果' }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button
+              v-if="
+                (row.operation === 'instance.install' || row.operation.startsWith('files.')) &&
+                ['queued', 'running'].includes(row.state)
+              "
+              link
+              type="danger"
+              @click.stop="cancelInstall(row.id)"
+            >
+              取消任务
+            </el-button>
+            <el-button
+              v-if="row.operation.startsWith('files.') && row.state === 'succeeded'"
+              link
+              type="primary"
+              @click.stop="viewResult(row.id)"
+            >
+              查看结果
+            </el-button>
+          </template>
+        </el-table-column>
+        <el-table-column width="60">
+          <template #default>
+            <el-icon><ArrowRight /></el-icon>
+          </template>
+        </el-table-column>
+      </DataList>
+      <div v-else class="empty-page">
+        <span class="empty-symbol"><Clock /></span>
+        <h3>暂无任务记录</h3>
+        <p>安装软件、部署网站和执行备份后，这里将显示真实进度与日志。</p>
+      </div>
+    </LoadingContent>
   </section>
   <AppDialog v-model="resultOpen" title="文件任务结果" width="min(760px, 95vw)">
     <pre class="log-box">{{ JSON.stringify(fileResult?.result, null, 2) }}</pre>

@@ -30,6 +30,7 @@ type Resource struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 type Task struct {
+	ScheduleID string `json:"scheduleId,omitempty"`
 	ID         string `json:"id"`
 	ResourceID string `json:"resourceId"`
 	Operation  string `json:"operation"`

@@ -83,3 +83,26 @@ func TestTaskLockAndResumeEvents(t *testing.T) {
 		t.Fatal("lock was not released", err)
 	}
 }
+
+func TestScheduleTaskListingDoesNotDecodeOperationPayload(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.DB.Close()
+	task, err := s.Enqueue(model.Operation{Name: "backup.run", Resource: model.Resource{ID: "backup-1"}, Params: model.Config{"scheduleId": "schedule-1", "content": strings.Repeat("x", 1024*1024)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Listing must use the small association, never decrypt file contents or credentials.
+	if _, err = s.DB.Exec(`UPDATE tasks SET payload='invalid encrypted payload' WHERE id=?`, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := s.Tasks()
+	if err != nil || len(tasks) != 1 || tasks[0].ScheduleID != "schedule-1" {
+		t.Fatal(tasks, err)
+	}
+	if _, _, err = s.Claim(); err == nil {
+		t.Fatal("claim must still validate the operation payload")
+	}
+}

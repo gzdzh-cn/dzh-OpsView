@@ -2,12 +2,18 @@
 import { usePageState } from '../composables/pageState'
 import { usePageQuery } from '../composables/pageQuery'
 import DataList from '../components/DataList.vue'
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { post, errorText } from '../lib/api'
 import { ElMessage } from 'element-plus'
 import FirewallManagement from '../components/FirewallManagement.vue'
 import SSHManagement from '../components/SSHManagement.vue'
 const tab = usePageState('tab', 'firewall')
+const firewall = ref<InstanceType<typeof FirewallManagement>>()
+async function openSSHProtection() {
+  tab.value = 'firewall'
+  await nextTick()
+  await firewall.value?.openProtection()
+}
 const {
   data,
   error,
@@ -39,8 +45,8 @@ async function readLogs() {
     <el-tab-pane label="系统日志" name="logs" />
     <el-tab-pane label="操作审计" name="audit" />
   </el-tabs>
-  <FirewallManagement v-if="tab === 'firewall'" />
-  <SSHManagement v-if="tab === 'ssh'" />
+  <FirewallManagement v-if="tab === 'firewall'" ref="firewall" />
+  <SSHManagement v-if="tab === 'ssh'" @protection="openSSHProtection" />
   <template v-if="tab === 'services'">
     <div v-if="error" class="notice warn">{{ error }}</div>
     <div class="notice">

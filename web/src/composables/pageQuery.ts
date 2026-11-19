@@ -11,7 +11,7 @@ import { api, errorText } from '../lib/api'
 import { queries, isAbort } from '../lib/query'
 export function usePageQuery<T>(key: MaybeRefOrGetter<string>, initial: T, ttl = 15000) {
   const data = shallowRef<T>(queries.peek<T>(toValue(key)) ?? initial)
-  const busy = ref(false),
+  const busy = ref(Boolean(toValue(key)) && queries.peek(toValue(key)) === undefined),
     error = ref('')
   let controller: AbortController | undefined,
     sequence = 0,

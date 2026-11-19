@@ -1094,7 +1094,7 @@ test('slow independent reads never block navigation and warm switches meet laten
   })
   await page.reload()
   await expect(page.getByRole('main', { name: '概览', exact: true })).toBeVisible()
-  await expect(page.locator('.page-skeleton')).toBeVisible()
+  await expect(page.locator('.loading-content[aria-busy="true"]')).toBeVisible()
   await page.locator('.sidebar a[href="/software"]').click()
   await expect(page.getByRole('tab', { name: '插件市场', exact: true })).toBeVisible()
   await expect(page.locator('.software-list .el-table__body tr').first()).toBeVisible()
@@ -1798,7 +1798,7 @@ test('SSH management loads lazily and stages connection settings with explicit c
       },
     })
   })
-  await page.route('**/api/v1/system/ssh/logs', (r) => {
+  await page.route('**/api/v1/system/ssh/logs?*', (r) => {
     logReads++
     return r.fulfill({
       json: {
@@ -2219,4 +2219,223 @@ test('deleting a management port collects source and explicit confirmation in it
   await expect(confirm).not.toBeVisible()
   expect(deleted).toMatchObject({ id: 'panel-port', source: '192.0.2.25', confirmedImpact: true })
   await expect(page.getByRole('button', { name: '访问正常，确认保留', exact: true })).toBeVisible()
+})
+
+test('overview omits task shortcut and cold pages keep navigation above local loading', async ({
+  page,
+}) => {
+  await expect(page.locator('.topbar a[href="/tasks"], .topbar .notification')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'GitHub 项目仓库（新标签页打开）' })).toHaveAttribute(
+    'target',
+    '_blank',
+  )
+  await page.route('**/api/v1/catalog', async (r) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    await r.fulfill({ json: [] }).catch(() => {})
+  })
+  await page.route('**/api/v1/plugins', async (r) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    await r.fulfill({ json: [] }).catch(() => {})
+  })
+  await page.goto('/software')
+  await expect(page.getByRole('tab', { name: '插件市场', exact: true })).toBeVisible()
+  await expect(page.locator('.software-list .loading-content[aria-busy="true"]')).toBeVisible()
+  await expect(page.locator('.page-skeleton')).toHaveCount(0)
+  const y = await page
+    .getByRole('tab', { name: '插件市场', exact: true })
+    .evaluate((el) => el.getBoundingClientRect().y)
+  await expect(page.locator('.software-list .el-table')).toBeVisible()
+  expect(
+    Math.abs(
+      (await page
+        .getByRole('tab', { name: '插件市场', exact: true })
+        .evaluate((el) => el.getBoundingClientRect().y)) - y,
+    ),
+  ).toBeLessThanOrEqual(1)
+  await page.route('**/api/v1/docker/status', async (r) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    await r.fulfill({ json: { status: 'ready' } }).catch(() => {})
+  })
+  await page.route('**/api/v1/docker/containers', async (r) => {
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    await r.fulfill({ json: { items: [] } }).catch(() => {})
+  })
+  await page.locator('.sidebar a[href="/docker"]').click()
+  await expect(page.getByRole('tab', { name: '容器', exact: true })).toBeVisible()
+  await expect(page.locator('.loading-content[aria-busy="true"]').first()).toBeVisible()
+  await expect(page.locator('.engine-message')).toHaveCount(0)
+  const dockerY = await page
+    .getByRole('tab', { name: '容器', exact: true })
+    .evaluate((el) => el.getBoundingClientRect().y)
+  await expect(page.getByText('当前没有资源', { exact: true })).toBeVisible()
+  expect(
+    Math.abs(
+      (await page
+        .getByRole('tab', { name: '容器', exact: true })
+        .evaluate((el) => el.getBoundingClientRect().y)) - dockerY,
+    ),
+  ).toBeLessThanOrEqual(1)
+})
+
+test('SSH accounts reverify administrator, clear secrets and retain fixed modal actions', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/system/firewall', (r) =>
+    r.fulfill({ json: { rules: [], counts: {}, installed: false } }),
+  )
+  await page.route('**/api/v1/system/ssh', (r) =>
+    r.fulfill({
+      json: {
+        available: true,
+        editable: true,
+        settings: sshSettingsFixture,
+        service: { running: true, controllable: true },
+        keys: { rows: [] },
+        pending: {},
+      },
+    }),
+  )
+  await page.route('**/api/v1/system/ssh/users', (r) =>
+    r.fulfill({
+      json: {
+        rows: [
+          {
+            username: 'example-user',
+            uid: 1000,
+            home: '/home/example-user',
+            shell: '/bin/bash',
+            locked: false,
+            revision: 'user-r1',
+          },
+        ],
+      },
+    }),
+  )
+  let changes = 0
+  await page.route('**/api/v1/system/security/ssh-user', (r) => {
+    const body = r.request().postDataJSON()
+    expect(body.currentPassword).toBe('fixture-admin-verification')
+    expect(body.password).toBe('fixture-new-system-password')
+    expect(body.revision).toBe('user-r1')
+    expect(body.confirmedImpact).toBe(true)
+    changes++
+    return r.fulfill({ status: 409, json: { error: '账号已由外部修改，请重新载入' } })
+  })
+  await page.goto('/system')
+  await page.getByRole('tab', { name: 'SSH 管理', exact: true }).click()
+  await page.getByText('系统账号', { exact: true }).click()
+  await page.getByRole('button', { name: '修改密码', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改系统账号密码', exact: true })
+  const before = await overlayGeometry(dialog)
+  await dialog
+    .getByRole('textbox', { name: '新系统密码', exact: true })
+    .fill('fixture-new-system-password')
+  await dialog
+    .getByRole('textbox', { name: '重复系统密码', exact: true })
+    .fill('fixture-new-system-password')
+  await dialog
+    .getByRole('textbox', { name: '面板管理员密码', exact: true })
+    .fill('fixture-admin-verification')
+  await dialog.getByRole('button', { name: '验证并执行' }).click()
+  await expect(dialog).toContainText('账号已由外部修改')
+  await expect(dialog.getByRole('textbox', { name: '新系统密码', exact: true })).toHaveValue('')
+  await expect(dialog.getByRole('textbox', { name: '面板管理员密码', exact: true })).toHaveValue('')
+  expectFixedOverlay(before, await overlayGeometry(dialog))
+  expect(changes).toBe(1)
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByText('基础设置', { exact: true }).click()
+  await page.getByRole('button', { name: '停用 SSH', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'SSH 服务操作' })).toContainText('120 秒')
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+})
+
+test('schedule rows support paused copies, run attribution and guided cycles', async ({ page }) => {
+  let enabled = true,
+    executions = 0
+  const backup = {
+    id: 'backup-schedule-test',
+    kind: 'backup',
+    name: 'site-backup',
+    status: 'ready',
+    revision: 1,
+    config: { targetId: 'test-site', destination: 'local', retention: 7 },
+  }
+  const schedule = () => ({
+    id: 'schedule-test',
+    kind: 'schedule',
+    name: 'daily-backup',
+    status: 'ready',
+    revision: 1,
+    config: { targetId: backup.id, operation: 'backup', cron: '0 3 * * *', enabled },
+  })
+  await page.route('**/api/v1/resources', (r) =>
+    r.request().method() === 'GET' ? r.fulfill({ json: [backup, schedule()] }) : r.continue(),
+  )
+  await page.route('**/api/v1/resources/schedule-test', (r) => {
+    enabled = r.request().postDataJSON().config.enabled
+    return r.fulfill({ json: schedule() })
+  })
+  await page.route('**/api/v1/schedules', (r) =>
+    r.fulfill({
+      json: {
+        timezone: 'Asia/Shanghai',
+        zone: 'CST',
+        rows: [
+          {
+            resource: schedule(),
+            targetName: 'site-backup',
+            nextRun: enabled ? '2026-11-20T03:00:00+08:00' : '',
+          },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/v1/resources/schedule-test/actions/run', (r) => {
+    executions++
+    return r.fulfill({ status: 202, json: { id: 'scheduled-task', state: 'queued' } })
+  })
+  await page.route('**/api/v1/tasks', (r) =>
+    r.fulfill({
+      json: executions
+        ? [
+            {
+              id: 'scheduled-task',
+              resourceId: backup.id,
+              scheduleId: 'schedule-test',
+              operation: 'backup.backup',
+              state: 'succeeded',
+              createdAt: '2026-11-19T01:00:00Z',
+            },
+          ]
+        : [],
+    }),
+  )
+  await page.route('**/api/v1/tasks/scheduled-task/events', (r) =>
+    r.fulfill({
+      json: [{ message: '加密备份及 SHA-256 校验完成', createdAt: '2026-11-19T01:00:00Z' }],
+    }),
+  )
+  await page.goto('/backups')
+  await page.getByRole('tab', { name: '计划任务', exact: true }).click()
+  await expect(page.getByText('daily-backup', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '已启用', exact: true }).click()
+  await expect(page.getByRole('button', { name: '已暂停', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '执行', exact: true }).click()
+  await expect.poll(() => executions).toBe(1)
+  await page.getByRole('button', { name: '日志', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '计划执行日志' })).toContainText('SHA-256 校验完成')
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: '复制', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '创建计划任务', exact: true })
+  await expect(dialog.getByRole('switch', { name: '启用', exact: true })).not.toBeChecked()
+  await expect(dialog.getByRole('textbox', { name: 'Cron 表达式', exact: true })).toHaveValue(
+    '0 3 * * *',
+  )
+  await dialog.getByRole('combobox', { name: '执行周期', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: '每隔 N 分钟', exact: true }).click()
+  await dialog.getByRole('spinbutton', { name: '间隔分钟', exact: true }).fill('15')
+  await dialog.getByRole('spinbutton', { name: '间隔分钟', exact: true }).press('Tab')
+  await expect(dialog.getByRole('textbox', { name: 'Cron 表达式', exact: true })).toHaveValue(
+    '*/15 * * * *',
+  )
 })

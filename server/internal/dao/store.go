@@ -262,7 +262,7 @@ func (s *Store) Audits() ([]model.Audit, error) {
 	return out, rows.Err()
 }
 func (s *Store) Enqueue(op model.Operation) (model.Task, error) {
-	t := model.Task{ID: security.ID(), ResourceID: op.Resource.ID, Operation: op.Name, State: "queued", CreatedAt: Now(), UpdatedAt: Now()}
+	t := model.Task{ScheduleID: op.Params.String("scheduleId"), ID: security.ID(), ResourceID: op.Resource.ID, Operation: op.Name, State: "queued", CreatedAt: Now(), UpdatedAt: Now()}
 	tx, e := s.DB.Begin()
 	if e != nil {
 		return t, e
@@ -279,6 +279,11 @@ func (s *Store) Enqueue(op model.Operation) (model.Task, error) {
 	if e != nil {
 		return t, e
 	}
+	if t.ScheduleID != "" {
+		if _, e = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, "schedule-task:"+t.ID, s.encode(t.ScheduleID)); e != nil {
+			return t, e
+		}
+	}
 	return t, tx.Commit()
 }
 func (s *Store) Task(id string) (model.Task, error) {
@@ -287,7 +292,7 @@ func (s *Store) Task(id string) (model.Task, error) {
 	return t, err
 }
 func (s *Store) Tasks() ([]model.Task, error) {
-	rows, e := s.DB.Query(`SELECT id,resource_id,operation,state,error,created_at,updated_at FROM tasks ORDER BY created_at DESC LIMIT 200`)
+	rows, e := s.DB.Query(`SELECT tasks.id,resource_id,operation,state,error,created_at,updated_at,COALESCE(settings.value,'') FROM tasks LEFT JOIN settings ON settings.key='schedule-task:'||tasks.id ORDER BY created_at DESC LIMIT 200`)
 	if e != nil {
 		return nil, e
 	}
@@ -295,8 +300,15 @@ func (s *Store) Tasks() ([]model.Task, error) {
 	out := []model.Task{}
 	for rows.Next() {
 		var t model.Task
-		if e = rows.Scan(&t.ID, &t.ResourceID, &t.Operation, &t.State, &t.Error, &t.CreatedAt, &t.UpdatedAt); e != nil {
+		var payload string
+
+		if e = rows.Scan(&t.ID, &t.ResourceID, &t.Operation, &t.State, &t.Error, &t.CreatedAt, &t.UpdatedAt, &payload); e != nil {
 			return nil, e
+		}
+		if payload != "" {
+			if e = s.decode(payload, &t.ScheduleID); e != nil {
+				return nil, e
+			}
 		}
 		out = append(out, t)
 	}

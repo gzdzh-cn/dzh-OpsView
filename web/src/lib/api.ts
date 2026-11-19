@@ -40,6 +40,7 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
       (key) =>
         (path.startsWith('/databases') && key.startsWith('/databases')) ||
         key === '/resources' ||
+        (path.startsWith('/resources') && key === '/schedules') ||
         key === '/tasks' ||
         key === '/overview' ||
         (path.startsWith('/resources')

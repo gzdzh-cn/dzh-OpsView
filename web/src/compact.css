@@ -356,3 +356,34 @@
     flex: 0 1 220px;
   }
 }
+
+/* Navigation remains visible while only its data region waits. */
+.loading-content {
+  position: relative;
+  min-width: 0;
+  min-height: 240px;
+}
+.loading-content > .el-loading-mask {
+  z-index: 10;
+}
+.loading-content[aria-busy='true'] {
+  background: var(--el-bg-color, #fff);
+  border-radius: var(--el-border-radius-base);
+}
+
+.schedule-cycle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+.schedule-cycle .el-select {
+  width: 140px;
+}
+.schedule-cycle .el-input-number {
+  width: 110px;
+}
+.schedule-cycle > .el-input {
+  flex-basis: 100%;
+}

@@ -20,7 +20,7 @@ docker run --rm --platform linux/amd64 --cap-add NET_ADMIN \
     if [ -f /tmp/opsview-host-ca.pem ]; then cp /tmp/opsview-host-ca.pem /etc/ssl/certs/ca-certificates.crt; fi
     sed -i "s@http://@https://@g" /etc/apt/sources.list.d/debian.sources
     apt-get -o Acquire::Retries=3 update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends openssh-server ufw iproute2 > /dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends openssh-server ufw iproute2 procps > /dev/null
     mkdir -p /run/sshd
     echo "root:OpsView-disposable-container-test-only!" | chpasswd
     /tmp/security.test -test.run "^TestLinuxSecuritySSHAndFirewall$" -test.v -test.timeout=3m

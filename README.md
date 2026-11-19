@@ -6,9 +6,9 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.3-rc.15 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.3-rc.16 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
-本轮在概览右上角增加 GitHub 图标，点击后在新标签页打开项目仓库；保留全站紧凑布局、固定高度弹窗及移动端适配。以 `v0.1.3-rc.15` 发布测试，保留系统防火墙、SSH、文件管理、插件市场、多版本原生安装、数据库及网站功能。默认 latest 入口仍获取正式 Release；测试新功能请使用下面的固定版本命令。已验证范围和未完成项见 [软件管理实现说明](软件管理实现说明.md)。
+本轮统一页面为“导航先显示、内容区域加载”，移除顶部任务图标，完善 SSH 服务、系统账号和登录记录，以及备份记录、计划执行、暂停、复制、日志、周期与导入导出。以 `v0.1.3-rc.16` 发布测试；保留紧凑布局、固定弹窗、现有管理员及业务功能。默认 latest 仍为正式 Release，测试版需指定版本。功能边界见 [软件管理实现说明](软件管理实现说明.md)。
 
 本版统一全站业务列表，文件管理扩展至服务器根目录，移除独立应用进程入口并保留旧服务，进程托管在网站内提供，增加 Docker 引擎状态与 API 协商；软件市场只提供原生极速/编译安装。继续验证内嵌资源及实际发布二进制的侧栏导航。
 
@@ -50,9 +50,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.15/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.15/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.15
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.16/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.16/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.16
 # 已安装面板：
-ov update --version v0.1.3-rc.15
+ov update --version v0.1.3-rc.16
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。

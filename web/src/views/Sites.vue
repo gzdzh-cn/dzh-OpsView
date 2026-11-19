@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingContent from '../components/LoadingContent.vue'
 import DialogActions from '../components/DialogActions.vue'
 import AppDialog from '../components/AppDialog.vue'
 import { queries, isAbort } from '../lib/query'
@@ -208,171 +209,173 @@ async function loadLogs() {
     <el-tab-pane label="反向代理" name="proxy" />
     <el-tab-pane label="其他项目" name="other" />
   </el-tabs>
-  <div v-if="!nginx.length" class="surface nginx-required">
-    <h2>安装 Nginx，开始管理网站</h2>
-    <p>网站需要受管的 Nginx 入口。已有外部服务请先检查端口与配置冲突。</p>
-    <el-button type="primary" @click="$router.push('/software')">前往软件市场安装</el-button>
-  </div>
-  <template v-else>
-    <div class="site-toolbar">
-      <el-button type="primary" @click="openCreate">
-        添加{{ tab === 'php' ? 'PHP 项目' : tab === 'proxy' ? '反向代理' : '项目' }}
-      </el-button>
-      <SiteTools
-        :nginx="nginx"
-        @settings="
-          (row, key) => {
-            open(row)
-            page = key
-          }
-        "
-      />
-      <el-input v-model="filter" placeholder="搜索名称、域名或备注" clearable />
-      <span>{{ rows.length }} 个项目</span>
+  <LoadingContent :busy="panel.pending.resources">
+    <div v-if="!nginx.length" class="surface nginx-required">
+      <h2>安装 Nginx，开始管理网站</h2>
+      <p>网站需要受管的 Nginx 入口。已有外部服务请先检查端口与配置冲突。</p>
+      <el-button type="primary" @click="$router.push('/software')">前往软件市场安装</el-button>
     </div>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <div class="surface site-table">
-      <DataList
-        :key="'Sites-1' + ':' + tab"
-        :state-key="'Sites-1' + ':' + tab"
-        :rows="rows"
-        row-key="id"
-        @row-dblclick="open"
-      >
-        <el-table-column
-          :label="tab === 'php' ? '网站名' : tab === 'proxy' ? '域名' : '项目名称'"
-          min-width="150"
+    <template v-else>
+      <div class="site-toolbar">
+        <el-button type="primary" @click="openCreate">
+          添加{{ tab === 'php' ? 'PHP 项目' : tab === 'proxy' ? '反向代理' : '项目' }}
+        </el-button>
+        <SiteTools
+          :nginx="nginx"
+          @settings="
+            (row, key) => {
+              open(row)
+              page = key
+            }
+          "
+        />
+        <el-input v-model="filter" placeholder="搜索名称、域名或备注" clearable />
+        <span>{{ rows.length }} 个项目</span>
+      </div>
+      <el-alert v-if="error" :title="error" type="error" :closable="false" />
+      <div class="surface site-table">
+        <DataList
+          :key="'Sites-1' + ':' + tab"
+          :state-key="'Sites-1' + ':' + tab"
+          :rows="rows"
+          row-key="id"
+          @row-dblclick="open"
         >
-          <template #default="{ row }">
-            <el-button link type="primary" @click="open(row)">
-              {{ tab === 'proxy' ? row.config.domains : row.name }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="95">
-          <template #default="{ row }">
-            <el-tag
-              :type="status(row) === '运行中' ? 'success' : 'info'"
-              @click="run(row, status(row) === '运行中' ? 'stop' : 'resume')"
-            >
-              {{ status(row) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="tab === 'php'" label="备份" width="120">
-          <template #default="{ row }">
-            <el-button
-              link
-              @click="
-                () => {
-                  open(row)
-                  page = 'backup'
-                }
-              "
-            >
-              {{ backupSummary(row) }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column
-          v-if="tab === 'proxy'"
-          label="代理地址"
-          min-width="180"
-          show-overflow-tooltip
-        >
-          <template #default="{ row }">{{ row.config.upstream }}</template>
-        </el-table-column>
-        <el-table-column v-if="tab === 'other'" label="运行端口" width="100">
-          <template #default="{ row }">{{ appPort(row) }}</template>
-        </el-table-column>
-        <el-table-column
-          v-if="tab !== 'proxy'"
-          label="根目录"
-          min-width="190"
-          show-overflow-tooltip
-        >
-          <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
-              :disabled="!row.config.documentRoot"
-              @click="$router.push({ path: '/files', query: { path: row.config.documentRoot } })"
-            >
-              {{ row.config.documentRoot || '部署后生成' }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="tab !== 'other'" label="日流量" width="110">
-          <template #default="{ row }">
-            <el-button
-              link
-              @click="
-                () => {
-                  open(row)
-                  page = 'traffic'
-                }
-              "
-            >
-              {{ traffic[row.id] ? size(traffic[row.id].todayBytes) : '查看' }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="tab !== 'proxy'" label="到期时间" width="155">
-          <template #default="{ row }">
-            <el-button
-              link
-              @click="
-                () => {
-                  open(row)
-                  page = 'expiry'
-                }
-              "
-            >
-              {{ row.config.expiresAt ? date(row.config.expiresAt) : '永久有效' }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="备注" min-width="110" show-overflow-tooltip>
-          <template #default="{ row }">
-            <el-button
-              link
-              @click="
-                () => {
-                  open(row)
-                  page = 'note'
-                }
-              "
-            >
-              {{ row.config.note || '添加备注' }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="SSL证书" width="150">
-          <template #default="{ row }">
-            <el-button
-              link
-              :type="row.config.tls ? 'success' : 'info'"
-              @click="
-                () => {
-                  open(row)
-                  page = 'ssl'
-                }
-              "
-            >
-              {{ row.config.certificateExpires ? date(row.config.certificateExpires) : '未部署' }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="170" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="open(row)">设置</el-button>
-            <el-button link @click="edit(row)">编辑</el-button>
-            <el-button link type="danger" @click="run(row, 'delete')">删除</el-button>
-          </template>
-        </el-table-column>
-      </DataList>
-    </div>
-  </template>
+          <el-table-column
+            :label="tab === 'php' ? '网站名' : tab === 'proxy' ? '域名' : '项目名称'"
+            min-width="150"
+          >
+            <template #default="{ row }">
+              <el-button link type="primary" @click="open(row)">
+                {{ tab === 'proxy' ? row.config.domains : row.name }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="95">
+            <template #default="{ row }">
+              <el-tag
+                :type="status(row) === '运行中' ? 'success' : 'info'"
+                @click="run(row, status(row) === '运行中' ? 'stop' : 'resume')"
+              >
+                {{ status(row) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="tab === 'php'" label="备份" width="120">
+            <template #default="{ row }">
+              <el-button
+                link
+                @click="
+                  () => {
+                    open(row)
+                    page = 'backup'
+                  }
+                "
+              >
+                {{ backupSummary(row) }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-if="tab === 'proxy'"
+            label="代理地址"
+            min-width="180"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">{{ row.config.upstream }}</template>
+          </el-table-column>
+          <el-table-column v-if="tab === 'other'" label="运行端口" width="100">
+            <template #default="{ row }">{{ appPort(row) }}</template>
+          </el-table-column>
+          <el-table-column
+            v-if="tab !== 'proxy'"
+            label="根目录"
+            min-width="190"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                :disabled="!row.config.documentRoot"
+                @click="$router.push({ path: '/files', query: { path: row.config.documentRoot } })"
+              >
+                {{ row.config.documentRoot || '部署后生成' }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="tab !== 'other'" label="日流量" width="110">
+            <template #default="{ row }">
+              <el-button
+                link
+                @click="
+                  () => {
+                    open(row)
+                    page = 'traffic'
+                  }
+                "
+              >
+                {{ traffic[row.id] ? size(traffic[row.id].todayBytes) : '查看' }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="tab !== 'proxy'" label="到期时间" width="155">
+            <template #default="{ row }">
+              <el-button
+                link
+                @click="
+                  () => {
+                    open(row)
+                    page = 'expiry'
+                  }
+                "
+              >
+                {{ row.config.expiresAt ? date(row.config.expiresAt) : '永久有效' }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="备注" min-width="110" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-button
+                link
+                @click="
+                  () => {
+                    open(row)
+                    page = 'note'
+                  }
+                "
+              >
+                {{ row.config.note || '添加备注' }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="SSL证书" width="150">
+            <template #default="{ row }">
+              <el-button
+                link
+                :type="row.config.tls ? 'success' : 'info'"
+                @click="
+                  () => {
+                    open(row)
+                    page = 'ssl'
+                  }
+                "
+              >
+                {{ row.config.certificateExpires ? date(row.config.certificateExpires) : '未部署' }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="170" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="open(row)">设置</el-button>
+              <el-button link @click="edit(row)">编辑</el-button>
+              <el-button link type="danger" @click="run(row, 'delete')">删除</el-button>
+            </template>
+          </el-table-column>
+        </DataList>
+      </div>
+    </template>
+  </LoadingContent>
   <SiteCreate v-model="createOpen" :initial="initial" :editing="editing" />
   <AppDialog
     v-model="settingsOpen"

@@ -432,6 +432,8 @@ func securityCommandFixture(argv []string) int {
 			if len(args) < 2 || args[1] != "ssh.service" {
 				return 3
 			}
+		case "is-enabled":
+			fmt.Println("enabled")
 		case "show":
 			for _, a := range args {
 				if a == "--property=ExecStart" {

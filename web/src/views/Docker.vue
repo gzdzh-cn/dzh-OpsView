@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingContent from '../components/LoadingContent.vue'
 import AppDialog from '../components/AppDialog.vue'
 import PluginMarket from '../components/PluginMarket.vue'
 import DataList from '../components/DataList.vue'
@@ -131,26 +132,7 @@ async function install() {
 }
 </script>
 <template>
-  <el-alert
-    v-if="engineError && engine?.status === 'ready'"
-    :title="engineError"
-    type="error"
-    :closable="false"
-  >
-    <el-button link @click="inspect">重试检测</el-button>
-  </el-alert>
-  <section v-if="!engine || engine.status !== 'ready'" class="surface engine-message">
-    <h3>{{ engineError || engine?.reason || '正在检测 Docker 引擎…' }}</h3>
-    <p v-if="engine?.status === 'incompatible'">面板支持 API 1.41–1.47，请手动配置兼容引擎。</p>
-    <el-button :loading="engineBusy" @click="inspect">重新检测</el-button>
-    <el-button v-if="engine?.status === 'not_installed'" type="primary" @click="install">
-      安装 Docker 引擎
-    </el-button>
-    <el-button v-if="engine?.status === 'stopped'" type="primary" @click="startEngine">
-      启动 Docker 服务
-    </el-button>
-  </section>
-  <el-tabs v-if="engine?.status === 'ready'" v-model="tab" class="panel-tabs">
+  <el-tabs v-model="tab" class="panel-tabs">
     <el-tab-pane label="容器" name="containers" />
     <el-tab-pane label="镜像" name="images" />
     <el-tab-pane label="网络" name="networks" />
@@ -158,105 +140,134 @@ async function install() {
     <el-tab-pane label="Compose 项目" name="compose" />
     <el-tab-pane label="应用模板" name="templates" />
   </el-tabs>
-  <PluginMarket v-if="engine?.status === 'ready' && tab === 'templates'" category="application" />
-  <Resources v-if="engine?.status === 'ready' && tab === 'compose'" kind="compose" />
-  <section
-    v-if="engine?.status === 'ready' && !['compose', 'templates'].includes(tab)"
-    class="surface"
-  >
-    <div class="page-toolbar">
-      <div class="page-toolbar-left">
-        <span class="count-badge">{{ items.length }}</span>
-      </div>
-      <div class="page-toolbar-right">
-        <el-button
-          :icon="RefreshRight"
-          :loading="busy"
-          aria-label="刷新 Docker 列表"
-          title="刷新"
-          @click="load"
-        />
-        <el-button
-          v-if="tab !== 'containers'"
-          :icon="Plus"
-          @click="manage(tab === 'images' ? 'pull' : 'create')"
-        >
-          {{ tab === 'images' ? '拉取镜像' : '创建' }}
-        </el-button>
-      </div>
-    </div>
-    <div v-if="error" class="notice warn" style="margin: 0 20px 20px">{{ error }}</div>
-    <DataList
-      :key="'Docker-1' + ':' + tab"
-      :state-key="'Docker-1' + ':' + tab"
-      v-if="items.length"
-      :rows="items"
+  <LoadingContent :busy="engineBusy">
+    <el-alert
+      v-if="engineError && engine?.status === 'ready'"
+      :title="engineError"
+      type="error"
+      :closable="false"
     >
-      <el-table-column label="名称 / ID" min-width="200">
-        <template #default="{ row }">
-          <span class="task-operation">
-            {{ (row.Names?.[0] || row.RepoTags?.[0] || row.Name || row.Id)?.replace(/^\//, '') }}
-          </span>
-          <small class="cell-subtext">{{ (row.Id || row.ID || row.Name)?.slice(0, 20) }}</small>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'containers'" label="镜像 / 状态" min-width="200">
-        <template #default="{ row }">
-          <span>{{ row.Image }}</span>
-          <small class="cell-subtext">{{ row.Status }}</small>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'containers'" label="发布端口" min-width="140">
-        <template #default="{ row }">
-          <span v-if="row.HostConfig?.NetworkMode === 'host'">宿主机网络 · 见监听端口</span>
-          <small
-            v-for="(p, i) in row.Ports?.filter((p: any) => p.PublicPort)"
-            :key="i"
-            class="cell-subtext"
+      <el-button link @click="inspect">重试检测</el-button>
+    </el-alert>
+    <section v-if="!engine || engine.status !== 'ready'" class="surface engine-message">
+      <h3>{{ engineError || engine?.reason || '正在检测 Docker 引擎…' }}</h3>
+      <p v-if="engine?.status === 'incompatible'">面板支持 API 1.41–1.47，请手动配置兼容引擎。</p>
+      <el-button :loading="engineBusy" @click="inspect">重新检测</el-button>
+      <el-button v-if="engine?.status === 'not_installed'" type="primary" @click="install">
+        安装 Docker 引擎
+      </el-button>
+      <el-button v-if="engine?.status === 'stopped'" type="primary" @click="startEngine">
+        启动 Docker 服务
+      </el-button>
+    </section>
+    <PluginMarket v-if="engine?.status === 'ready' && tab === 'templates'" category="application" />
+    <Resources v-if="engine?.status === 'ready' && tab === 'compose'" kind="compose" />
+    <section
+      v-if="engine?.status === 'ready' && !['compose', 'templates'].includes(tab)"
+      class="surface"
+    >
+      <div class="page-toolbar">
+        <div class="page-toolbar-left">
+          <span class="count-badge">{{ items.length }}</span>
+        </div>
+        <div class="page-toolbar-right">
+          <el-button
+            :icon="RefreshRight"
+            :loading="busy"
+            aria-label="刷新 Docker 列表"
+            title="刷新"
+            @click="load"
+          />
+          <el-button
+            v-if="tab !== 'containers'"
+            :icon="Plus"
+            @click="manage(tab === 'images' ? 'pull' : 'create')"
           >
-            {{ p.IP }}:{{ p.PublicPort }} → {{ p.PrivatePort }}/{{ p.Type }}
-          </small>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'images'" label="大小">
-        <template #default="{ row }">{{ size(row.Size) }}</template>
-      </el-table-column>
-      <el-table-column v-if="['networks', 'volumes'].includes(tab)" label="驱动" prop="Driver" />
-      <el-table-column label="操作" width="220">
-        <template #default="{ row }">
-          <div v-if="tab === 'containers'" class="row-actions">
-            <button @click="run(row.Id, row.State === 'running' ? 'restart' : 'start')">
-              {{ row.State === 'running' ? '重启' : '启动' }}
-            </button>
-            <button v-if="row.State === 'running'" @click="run(row.Id, 'stop')">停止</button>
-            <button @click="run(row.Id, 'logs')">日志</button>
-            <button @click="run(row.Id, 'stats')">资源</button>
-            <button
-              v-if="
-                row.State !== 'running' &&
-                !row.Labels?.['opsview.managed'] &&
-                !row.Labels?.['com.docker.compose.project']?.startsWith('opsview-')
-              "
-              @click="run(row.Id, 'remove')"
-            >
-              删除
-            </button>
-          </div>
-          <div v-else class="row-actions">
-            <button v-if="canDelete(row)" @click="manage('delete', row)">删除</button>
-            <span v-else class="form-help">外部资源</span>
-          </div>
-        </template>
-      </el-table-column>
-    </DataList>
-    <div v-else class="empty-page">
-      <span class="empty-symbol"><Box /></span>
-      <h3>{{ error ? 'Docker 暂不可用' : busy ? '正在读取…' : '当前没有资源' }}</h3>
-      <p>
-        连接 Linux 执行器和 Docker 引擎后显示真实资源。应用可以通过 Compose 项目或插件市场部署。
-      </p>
-    </div>
-  </section>
+            {{ tab === 'images' ? '拉取镜像' : '创建' }}
+          </el-button>
+        </div>
+      </div>
+      <div v-if="error" class="notice warn" style="margin: 0 20px 20px">{{ error }}</div>
+      <LoadingContent :busy="busy">
+        <DataList
+          :key="'Docker-1' + ':' + tab"
+          :state-key="'Docker-1' + ':' + tab"
+          v-if="items.length"
+          :rows="items"
+        >
+          <el-table-column label="名称 / ID" min-width="200">
+            <template #default="{ row }">
+              <span class="task-operation">
+                {{
+                  (row.Names?.[0] || row.RepoTags?.[0] || row.Name || row.Id)?.replace(/^\//, '')
+                }}
+              </span>
+              <small class="cell-subtext">{{ (row.Id || row.ID || row.Name)?.slice(0, 20) }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="tab === 'containers'" label="镜像 / 状态" min-width="200">
+            <template #default="{ row }">
+              <span>{{ row.Image }}</span>
+              <small class="cell-subtext">{{ row.Status }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="tab === 'containers'" label="发布端口" min-width="140">
+            <template #default="{ row }">
+              <span v-if="row.HostConfig?.NetworkMode === 'host'">宿主机网络 · 见监听端口</span>
+              <small
+                v-for="(p, i) in row.Ports?.filter((p: any) => p.PublicPort)"
+                :key="i"
+                class="cell-subtext"
+              >
+                {{ p.IP }}:{{ p.PublicPort }} → {{ p.PrivatePort }}/{{ p.Type }}
+              </small>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="tab === 'images'" label="大小">
+            <template #default="{ row }">{{ size(row.Size) }}</template>
+          </el-table-column>
+          <el-table-column
+            v-if="['networks', 'volumes'].includes(tab)"
+            label="驱动"
+            prop="Driver"
+          />
+          <el-table-column label="操作" width="220">
+            <template #default="{ row }">
+              <div v-if="tab === 'containers'" class="row-actions">
+                <button @click="run(row.Id, row.State === 'running' ? 'restart' : 'start')">
+                  {{ row.State === 'running' ? '重启' : '启动' }}
+                </button>
+                <button v-if="row.State === 'running'" @click="run(row.Id, 'stop')">停止</button>
+                <button @click="run(row.Id, 'logs')">日志</button>
+                <button @click="run(row.Id, 'stats')">资源</button>
+                <button
+                  v-if="
+                    row.State !== 'running' &&
+                    !row.Labels?.['opsview.managed'] &&
+                    !row.Labels?.['com.docker.compose.project']?.startsWith('opsview-')
+                  "
+                  @click="run(row.Id, 'remove')"
+                >
+                  删除
+                </button>
+              </div>
+              <div v-else class="row-actions">
+                <button v-if="canDelete(row)" @click="manage('delete', row)">删除</button>
+                <span v-else class="form-help">外部资源</span>
+              </div>
+            </template>
+          </el-table-column>
+        </DataList>
+        <div v-else class="empty-page">
+          <span class="empty-symbol"><Box /></span>
+          <h3>{{ error ? 'Docker 暂不可用' : busy ? '正在读取…' : '当前没有资源' }}</h3>
+          <p>
+            连接 Linux 执行器和 Docker 引擎后显示真实资源。应用可以通过 Compose 项目或插件市场部署。
+          </p>
+        </div>
+      </LoadingContent>
+    </section>
+  </LoadingContent>
   <AppDialog v-model="showLog" :title="logTitle" width="850px">
     <pre class="log-box">{{ content }}</pre>
   </AppDialog>

@@ -12,7 +12,6 @@ import {
   Clock,
   Lock,
   Setting,
-  Bell,
   ArrowRight,
   List,
   Menu,
@@ -210,10 +209,6 @@ onUnmounted(() => {
               />
             </svg>
           </a>
-          <router-link to="/tasks" class="notification icon-button" aria-label="任务通知">
-            <el-icon><Bell /></el-icon>
-            <i v-if="running"></i>
-          </router-link>
           <div class="topbar-divider"></div>
           <el-dropdown @command="logout">
             <div class="profile">
@@ -268,13 +263,6 @@ onUnmounted(() => {
         >
           <el-button link @click="panel.refresh([key])">重试</el-button>
         </el-alert>
-        <el-skeleton
-          v-if="pageLoading"
-          :rows="2"
-          animated
-          class="page-skeleton"
-          aria-label="正在加载页面数据"
-        />
         <el-alert
           v-if="fatal"
           :title="fatal"

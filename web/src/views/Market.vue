@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingContent from '../components/LoadingContent.vue'
 import AppDialog from '../components/AppDialog.vue'
 import { usePageState } from '../composables/pageState'
 import PluginMarket from '../components/PluginMarket.vue'
@@ -393,154 +394,170 @@ async function importPackage() {
     <el-alert v-if="pluginMarket?.error" :title="pluginMarket.error" type="error" :closable="false">
       <el-button link @click="pluginMarket?.load()">重试插件列表</el-button>
     </el-alert>
-    <DataList
-      :key="category + ':' + (route.query.software || '')"
-      :state-key="'market-' + category + ':' + (route.query.software || '')"
-      :rows="marketRows"
-      row-key="key"
-      searchable
-      :empty-text="pluginMarket?.loading ? '正在加载插件…' : '此分类暂无应用'"
+    <LoadingContent
+      :busy="
+        panel.pending.catalog ||
+        panel.pending.resources ||
+        (!['all', 'runtime', 'installed'].includes(category) && pluginMarket?.loading)
+      "
     >
-      <el-table-column label="软件名称" min-width="170">
-        <template #default="{ row }">
-          <div class="software-row-title">
-            <span class="software-logo green">{{ row.symbol }}</span>
-            <strong>{{ row.title }}</strong>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="来源" width="110">
-        <template #default="{ row }">
-          {{ row.kind === 'plugin' ? (row.plugin.builtin ? '项目维护' : '签名仓库') : '官方源' }}
-          <small v-if="row.category === 'docker'" class="version-label">Docker 应用</small>
-        </template>
-      </el-table-column>
-      <el-table-column label="简介" min-width="230">
-        <template #default="{ row }">
-          <button class="software-description" :title="row.description" @click="introduction = row">
-            {{ row.description }}
-          </button>
-        </template>
-      </el-table-column>
-      <el-table-column label="版本 / 实例" min-width="210">
-        <template #default="{ row }">
-          <template v-if="row.kind === 'software'">
-            <el-select
-              v-model="versions[row.software]"
-              :aria-label="row.title + '版本'"
-              @change="chosenVersions.add(row.software)"
-            >
-              <el-option
-                v-for="v in row.versions"
-                :key="v.id"
-                :value="v.id"
-                :label="v.version + (v.disabledReason ? ' · 待验证' : '')"
-              />
-            </el-select>
+      <DataList
+        :key="category + ':' + (route.query.software || '')"
+        :state-key="'market-' + category + ':' + (route.query.software || '')"
+        :rows="marketRows"
+        row-key="key"
+        searchable
+        :empty-text="pluginMarket?.loading ? '正在加载插件…' : '此分类暂无应用'"
+      >
+        <el-table-column label="软件名称" min-width="170">
+          <template #default="{ row }">
+            <div class="software-row-title">
+              <span class="software-logo green">{{ row.symbol }}</span>
+              <strong>{{ row.title }}</strong>
+            </div>
           </template>
-          <template v-else>
-            {{ row.version }}
-            <small v-if="row.kind === 'instance'" class="version-label">
-              {{ row.resource.name }} ·
-              {{ row.resource.config.mode === 'docker' ? 'Docker' : '原生' }}
-              <template v-if="row.resource.config.port">:{{ row.resource.config.port }}</template>
-            </small>
+        </el-table-column>
+        <el-table-column label="来源" width="110">
+          <template #default="{ row }">
+            {{ row.kind === 'plugin' ? (row.plugin.builtin ? '项目维护' : '签名仓库') : '官方源' }}
+            <small v-if="row.category === 'docker'" class="version-label">Docker 应用</small>
           </template>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag size="small" :type="rowResource(row)?.status === 'ready' ? 'success' : 'info'">
-            {{ rowStatus(row) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="230" fixed="right">
-        <template #default="{ row }">
-          <div class="market-actions">
-            <el-button
-              link
-              type="primary"
-              :disabled="
-                row.kind === 'software'
-                  ? !panel
-                      .kind('instance')
-                      .some((r) => r.config.software === row.software && r.status !== 'uninstalled')
-                  : !row.resource ||
-                    row.resource.status === 'uninstalled' ||
-                    row.plugin?.unavailable
-              "
-              @click="editRow(row)"
+        </el-table-column>
+        <el-table-column label="简介" min-width="230">
+          <template #default="{ row }">
+            <button
+              class="software-description"
+              :title="row.description"
+              @click="introduction = row"
             >
-              设置
-            </el-button>
+              {{ row.description }}
+            </button>
+          </template>
+        </el-table-column>
+        <el-table-column label="版本 / 实例" min-width="210">
+          <template #default="{ row }">
             <template v-if="row.kind === 'software'">
-              <el-tag v-if="selectedInstance(row.software)" size="small" type="info">
-                {{ installationLabel(selectedInstance(row.software)!) }}
-              </el-tag>
-              <el-button v-else type="primary" size="small" @click="openInstall(row.software)">
-                安装
-              </el-button>
-            </template>
-            <template v-else-if="row.kind === 'plugin'">
-              <el-button
-                v-if="!row.resource"
-                type="primary"
-                size="small"
-                @click="pluginMarket?.openPlugin(row.plugin)"
+              <el-select
+                v-model="versions[row.software]"
+                :aria-label="row.title + '版本'"
+                @change="chosenVersions.add(row.software)"
               >
-                安装
-              </el-button>
+                <el-option
+                  v-for="v in row.versions"
+                  :key="v.id"
+                  :value="v.id"
+                  :label="v.version + (v.disabledReason ? ' · 待验证' : '')"
+                />
+              </el-select>
+            </template>
+            <template v-else>
+              {{ row.version }}
+              <small v-if="row.kind === 'instance'" class="version-label">
+                {{ row.resource.name }} ·
+                {{ row.resource.config.mode === 'docker' ? 'Docker' : '原生' }}
+                <template v-if="row.resource.config.port">:{{ row.resource.config.port }}</template>
+              </small>
+            </template>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag size="small" :type="rowResource(row)?.status === 'ready' ? 'success' : 'info'">
+              {{ rowStatus(row) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="230" fixed="right">
+          <template #default="{ row }">
+            <div class="market-actions">
               <el-button
-                v-else-if="
-                  row.resource.config.version &&
-                  row.resource.config.version !== row.plugin.version &&
-                  !row.plugin.unavailable
+                link
+                type="primary"
+                :disabled="
+                  row.kind === 'software'
+                    ? !panel
+                        .kind('instance')
+                        .some(
+                          (r) => r.config.software === row.software && r.status !== 'uninstalled',
+                        )
+                    : !row.resource ||
+                      row.resource.status === 'uninstalled' ||
+                      row.plugin?.unavailable
                 "
-                link
-                type="primary"
-                @click="pluginMarket?.openPlugin(row.plugin)"
+                @click="editRow(row)"
               >
-                升级
+                设置
               </el-button>
-              <el-button
-                v-if="row.resource && row.plugin.type !== 'application' && !row.plugin.unavailable"
-                link
-                @click="pluginMarket?.checkPlugin(row.plugin)"
-              >
-                检查
-              </el-button>
-            </template>
-            <el-button
-              link
-              type="danger"
-              :disabled="
-                row.kind === 'software'
-                  ? !panel.kind('instance').some((r) => r.config.software === row.software)
-                  : !row.resource
-              "
-              @click="removeRow(row)"
-            >
-              {{ row.resource?.status === 'uninstalled' ? '清理记录' : '卸载' }}
-            </el-button>
-            <el-dropdown
-              v-if="row.kind === 'instance' && row.resource.status !== 'uninstalled'"
-              trigger="click"
-              @command="(command: string) => instanceAction(row, command)"
-            >
-              <el-button text :icon="MoreFilled" :aria-label="row.resource.name + '更多操作'" />
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="start">启动</el-dropdown-item>
-                  <el-dropdown-item command="stop">停止</el-dropdown-item>
-                  <el-dropdown-item command="restart">重启</el-dropdown-item>
-                </el-dropdown-menu>
+              <template v-if="row.kind === 'software'">
+                <el-tag v-if="selectedInstance(row.software)" size="small" type="info">
+                  {{ installationLabel(selectedInstance(row.software)!) }}
+                </el-tag>
+                <el-button v-else type="primary" size="small" @click="openInstall(row.software)">
+                  安装
+                </el-button>
               </template>
-            </el-dropdown>
-          </div>
-        </template>
-      </el-table-column>
-    </DataList>
+              <template v-else-if="row.kind === 'plugin'">
+                <el-button
+                  v-if="!row.resource"
+                  type="primary"
+                  size="small"
+                  @click="pluginMarket?.openPlugin(row.plugin)"
+                >
+                  安装
+                </el-button>
+                <el-button
+                  v-else-if="
+                    row.resource.config.version &&
+                    row.resource.config.version !== row.plugin.version &&
+                    !row.plugin.unavailable
+                  "
+                  link
+                  type="primary"
+                  @click="pluginMarket?.openPlugin(row.plugin)"
+                >
+                  升级
+                </el-button>
+                <el-button
+                  v-if="
+                    row.resource && row.plugin.type !== 'application' && !row.plugin.unavailable
+                  "
+                  link
+                  @click="pluginMarket?.checkPlugin(row.plugin)"
+                >
+                  检查
+                </el-button>
+              </template>
+              <el-button
+                link
+                type="danger"
+                :disabled="
+                  row.kind === 'software'
+                    ? !panel.kind('instance').some((r) => r.config.software === row.software)
+                    : !row.resource
+                "
+                @click="removeRow(row)"
+              >
+                {{ row.resource?.status === 'uninstalled' ? '清理记录' : '卸载' }}
+              </el-button>
+              <el-dropdown
+                v-if="row.kind === 'instance' && row.resource.status !== 'uninstalled'"
+                trigger="click"
+                @command="(command: string) => instanceAction(row, command)"
+              >
+                <el-button text :icon="MoreFilled" :aria-label="row.resource.name + '更多操作'" />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="start">启动</el-dropdown-item>
+                    <el-dropdown-item command="stop">停止</el-dropdown-item>
+                    <el-dropdown-item command="restart">重启</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+        </el-table-column>
+      </DataList>
+    </LoadingContent>
   </div>
   <Resources v-if="tab === 'repositories'" kind="repository" />
   <PluginMarket ref="pluginMarket" category="all" headless />

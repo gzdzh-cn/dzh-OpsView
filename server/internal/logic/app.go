@@ -85,10 +85,7 @@ func (a *App) ReloadSchedules() {
 			continue
 		}
 		_, e = a.schedule.AddFunc(r.Config.String("cron"), func() {
-			target, e := a.Store.Resource(r.Config.String("targetId"))
-			if e == nil {
-				_, e = a.Queue(target, r.Config.String("operation"), model.Config{})
-			}
+			_, e := a.QueueSchedule(r.ID, true)
 			if e != nil {
 				a.Store.Audit("schedule.failed:"+e.Error(), r.ID, "local")
 			}
@@ -396,4 +393,27 @@ func (a *App) queueFirewallCountryUpdate() {
 		return
 	}
 	_, _ = a.Store.Enqueue(model.Operation{Name: "system.firewall-admin-region-update", Resource: model.Resource{ID: "system-security", Kind: "system", Name: "地区数据自动更新"}, Params: model.Config{}})
+}
+
+// Resolve fresh settings when the timer fires; paused or deleted schedules cannot
+// dispatch stale work. The target's existing queue lock prevents overlapping runs.
+func (a *App) QueueSchedule(id string, automatic bool) (model.Task, error) {
+	r, err := a.Store.Resource(id)
+	if err != nil || r.Kind != "schedule" {
+		return model.Task{}, errors.New("计划任务不存在")
+	}
+	if automatic && !r.Config.Bool("enabled") {
+		return model.Task{}, errors.New("计划任务已暂停")
+	}
+	if err = Validate(r); err != nil {
+		return model.Task{}, err
+	}
+	target, err := a.Store.Resource(r.Config.String("targetId"))
+	if err != nil {
+		return model.Task{}, errors.New("计划目标不存在")
+	}
+	if (r.Config.String("operation") == "backup" && target.Kind != "backup") || (r.Config.String("operation") == "renew" && target.Kind != "site") {
+		return model.Task{}, errors.New("计划类型与目标不匹配")
+	}
+	return a.Queue(target, r.Config.String("operation"), model.Config{"scheduleId": r.ID})
 }

@@ -312,7 +312,8 @@ func sshIncludePatterns(text string) ([]string, error) {
 	flush()
 	return parts, nil
 }
-func (e *Engine) sshUnit(ctx context.Context) (string, error) {
+func (e *Engine) sshUnit(ctx context.Context) (string, error) { return e.sshUnitState(ctx, false) }
+func (e *Engine) sshUnitState(ctx context.Context, allowStopped bool) (string, error) {
 	if state, _ := output(ctx, "systemctl", "is-active", "ssh.socket", "sshd.socket"); state != "" {
 		for _, line := range strings.Fields(state) {
 			if line == "active" {
@@ -321,7 +322,13 @@ func (e *Engine) sshUnit(ctx context.Context) (string, error) {
 		}
 	}
 	for _, unit := range []string{"ssh.service", "sshd.service"} {
-		if state, err := output(ctx, "systemctl", "is-active", unit); err == nil && strings.TrimSpace(state) == "active" {
+		state, stateErr := output(ctx, "systemctl", "is-active", unit)
+		loaded := false
+		if allowStopped {
+			value, _ := output(ctx, "systemctl", "show", unit, "--property=LoadState", "--value")
+			loaded = strings.TrimSpace(value) == "loaded"
+		}
+		if (stateErr == nil && strings.TrimSpace(state) == "active") || loaded {
 			command, err := output(ctx, "systemctl", "show", unit, "--property=ExecStart", "--value")
 			if err != nil || !strings.Contains(command, "sshd") {
 				return "", errors.New("无法验证 SSH 服务启动配置")
@@ -408,25 +415,27 @@ func (e *Engine) sshOperation(ctx context.Context, op model.Operation, log func(
 		}
 		who, _ := output(ctx, "who", "-u")
 		fail2ban, _ := output(ctx, "fail2ban-client", "status", "sshd")
-		return model.Config{"available": true, "editable": unitErr == nil, "reason": reason, "unit": unit, "settings": settings, "revision": revision, "pending": pending, "sessions": who, "fail2ban": fail2ban, "keys": e.sshPublicKeys(ctx), "matchWarning": "这里修改全局基线；Match 条件、AllowUsers、PAM 和外部认证策略仍可能覆盖或限制登录，请保留现有 SSH 会话测试新连接"}, nil
+		serviceUnit, serviceErr := e.sshServiceUnit(ctx)
+		serviceState, _ := output(ctx, "systemctl", "is-active", serviceUnit)
+		servicePending := model.Config{}
+		if sp, er := e.loadSSHService(); er == nil {
+			servicePending = model.Config{"deadline": sp.Deadline, "error": sp.Error}
+		}
+		serviceReason := ""
+		if serviceErr != nil {
+			serviceReason = serviceErr.Error()
+		}
+		return model.Config{"service": model.Config{"running": strings.TrimSpace(serviceState) == "active", "controllable": serviceErr == nil, "reason": serviceReason, "pending": servicePending}, "available": true, "editable": unitErr == nil, "reason": reason, "unit": unit, "settings": settings, "revision": revision, "pending": pending, "sessions": who, "fail2ban": fail2ban, "keys": e.sshPublicKeys(ctx), "matchWarning": "这里修改全局基线；Match 条件、AllowUsers、PAM 和外部认证策略仍可能覆盖或限制登录，请保留现有 SSH 会话测试新连接"}, nil
 	case "system.ssh-logs":
-		text, err := output(ctx, "journalctl", "_COMM=sshd", "--since", "24 hours ago", "-n", "200", "--no-pager", "-o", "short-iso")
-		if err != nil {
-			return nil, errors.New("无法读取 SSH journal 日志")
-		}
-		rows := []model.Config{}
-		for _, line := range strings.Split(text, "\n") {
-			status := ""
-			if strings.Contains(line, "Accepted ") {
-				status = "成功"
-			} else if strings.Contains(line, "Failed ") || strings.Contains(line, "Invalid user") || strings.Contains(line, "authentication failure") {
-				status = "失败"
-			}
-			if status != "" {
-				rows = append(rows, model.Config{"status": status, "detail": line})
-			}
-		}
-		return model.Config{"rows": rows, "content": text, "notice": "最近 24 小时内最多 200 行 journal 记录，非完整登录统计"}, nil
+		return e.readSSHLogins(ctx, op.Params.String("period"))
+	case "system.ssh-users":
+		return e.sshUsers()
+	case "system.ssh-user":
+		return e.changeSSHUser(ctx, op.Params)
+	case "system.ssh-service":
+		return e.changeSSHService(ctx, op.Params)
+	case "system.ssh-service-confirm":
+		return model.Config{"confirmed": true}, e.confirmSSHService(op.Params)
 	case "system.ssh-key-add", "system.ssh-key-delete":
 		return e.changeSSHPublicKey(ctx, op)
 	case "system.ssh-confirm":
@@ -491,6 +500,9 @@ func (e *Engine) applySSH(ctx context.Context, p model.Config, log func(string))
 		return nil, err
 	}
 
+	if _, err := os.Stat(e.sshServicePath()); !os.IsNotExist(err) {
+		return nil, errors.New("SSH 服务停用待确认")
+	}
 	if !p.Bool("confirmedImpact") {
 		return nil, errors.New("请确认 SSH 登录影响")
 	}
@@ -736,6 +748,15 @@ func (e *Engine) watchSSH(ctx context.Context) {
 	for {
 		e.sshMu.Lock()
 		e.firewallMu.Lock()
+		if p, err := e.loadSSHService(); err == nil && time.Now().Unix() >= p.Deadline {
+			retry, cancel := context.WithTimeout(ctx, 30*time.Second)
+			if err = e.restoreSSHService(retry, p); err != nil {
+				p.Error = err.Error()
+				b, _ := json.Marshal(p)
+				_ = security.WriteAtomic(e.sshServicePath(), b, 0600)
+			}
+			cancel()
+		}
 		if p, err := e.loadSSH(); err == nil && time.Now().Unix() >= p.Deadline {
 			retry, cancel := context.WithTimeout(ctx, 30*time.Second)
 			if err = e.rollbackSSH(retry, p); err != nil {

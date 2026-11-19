@@ -80,11 +80,11 @@ func (c *Controller) Handler() http.Handler {
 		"POST /api/v1/auth/logout": c.logout, "POST /api/v1/auth/two-factor": c.twoFactor, "POST /api/v1/auth/password": c.password,
 		"GET /api/v1/overview": c.overview, "GET /api/v1/resources": c.resources, "POST /api/v1/resources": c.createResource, "PUT /api/v1/resources/{id}": c.updateResource, "DELETE /api/v1/resources/{id}": c.deleteResource, "POST /api/v1/resources/{id}/actions/{action}": c.action,
 		"GET /api/v1/catalog": func(w http.ResponseWriter, r *http.Request) { send(w, 200, catalog.ForSystem(catalogSystem())) }, "GET /api/v1/plugins": c.plugins, "POST /api/v1/plugins/import": c.importPlugin, "POST /api/v1/catalog/import": c.importCatalog,
-		"GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
+		"GET /api/v1/schedules": c.schedules, "GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
 		"POST /api/v1/files":         c.files,
 		"GET /api/v1/files/transfer": c.fileTransfer, "PUT /api/v1/files/transfer": c.fileTransfer, "GET /api/v1/files/tasks/{id}": c.fileTaskResult, "GET /api/v1/system": c.system, "POST /api/v1/system/actions/{action}": c.systemAction,
 		"POST /api/v1/system/firewall/{action}": c.firewallAdmin,
-		"GET /api/v1/system/ssh":                c.systemSecurity, "GET /api/v1/system/ssh/logs": c.systemSecurity, "GET /api/v1/system/firewall": c.systemSecurity, "POST /api/v1/system/security/{action}": c.systemSecurity,
+		"GET /api/v1/system/ssh/users":          c.systemSecurity, "GET /api/v1/system/ssh": c.systemSecurity, "GET /api/v1/system/ssh/logs": c.systemSecurity, "GET /api/v1/system/firewall": c.systemSecurity, "POST /api/v1/system/security/{action}": c.systemSecurity,
 		"GET /api/v1/docker/status":       func(w http.ResponseWriter, r *http.Request) { c.exec(w, r, model.Operation{Name: "docker.status"}) },
 		"GET /api/v1/docker/{collection}": c.dockerList, "POST /api/v1/docker/containers/{id}/{action}": c.dockerAction,
 		"POST /api/v1/docker/manage/{collection}/{action}": c.dockerManage,
@@ -294,6 +294,10 @@ func (c *Controller) validate(res *model.Resource) error {
 		}
 	}
 	if res.Kind == "schedule" {
+		target, err := c.App.Store.Resource(res.Config.String("targetId"))
+		if err != nil || (res.Config.String("operation") == "backup" && target.Kind != "backup") || (res.Config.String("operation") == "renew" && target.Kind != "site") {
+			return errors.New("计划类型与目标不匹配或目标不存在")
+		}
 		if _, e := cron.ParseStandard(res.Config.String("cron")); e != nil {
 			return errors.New("Cron 表达式无效，使用五段格式")
 		}
@@ -441,6 +445,17 @@ func (c *Controller) action(w http.ResponseWriter, r *http.Request) {
 	}
 	var p model.Config
 	if !decode(w, r, &p) {
+		return
+	}
+	delete(p, "scheduleId") // attribution is assigned only by the scheduler
+	if res.Kind == "schedule" && r.PathValue("action") == "run" {
+		task, err := c.App.QueueSchedule(res.ID, false)
+		if err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		c.App.Store.Audit("schedule.run", res.ID, clientIP(r))
+		send(w, 202, task)
 		return
 	}
 	if r.PathValue("action") == "logs" || (res.Kind == "site" && r.PathValue("action") == "configuration") {

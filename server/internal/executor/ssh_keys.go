@@ -91,6 +91,9 @@ func (e *Engine) changeSSHPublicKey(ctx context.Context, op model.Operation) (mo
 	if _, err := os.Stat(e.sshPendingPath()); !os.IsNotExist(err) {
 		return nil, errors.New("SSH 设置待确认，暂不可修改公钥")
 	}
+	if _, err := os.Stat(e.sshServicePath()); !os.IsNotExist(err) {
+		return nil, errors.New("SSH 服务停用待确认，暂不可修改公钥")
+	}
 	if !op.Params.Bool("confirmedImpact") {
 		return nil, errors.New("请确认 root 公钥变更影响")
 	}

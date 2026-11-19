@@ -8,7 +8,8 @@ def obj(fields, required=None):
 string = {"type": "string"}
 config = {"type": "object", "additionalProperties": True}
 resource = obj({"id": string, "kind": string, "name": string, "status": string, "config": config, "revision": {"type": "integer"}, "createdAt": string, "updatedAt": string})
-task = obj({"id": string, "resourceId": string, "operation": string, "state": {"type": "string", "enum": ["queued", "running", "succeeded", "failed", "interrupted", "cancelled"]}, "error": string, "createdAt": string, "updatedAt": string})
+task = obj({"id": string, "resourceId": string, "scheduleId": string, "operation": string, "state": {"type": "string", "enum": ["queued", "running", "succeeded", "failed", "interrupted", "cancelled"]}, "error": string, "createdAt": string, "updatedAt": string})
+task["required"].remove("scheduleId")
 schemas = {"Resource": resource, "Task": task, "Error": obj({"error": string,"code":string,"revision":string,"resourceId":string},["error"]), "ResourceInput": obj({"kind": string, "name": string, "config": config}, ["kind","config"]), "ResourceUpdate": obj({"name": string, "config": config, "revision": {"type": "integer"}}), "Envelope": obj({"keyId": string, "payload": string, "signature": string})}
 paths = {}
 def add(path, method, summary, response=config, body=None, public=False, status="200"):
@@ -122,7 +123,7 @@ for op in ['databases','scan','read','write','download']:
     add('/redis/{id}/'+op,'post','结构化 Redis '+op+'；无任意命令；WATCH 修订冲突返回 409；不缓存值',response,ref('RedisInput'))
 paths['/api/v1/redis/{id}/download']['post']['responses']['200']['content']={'application/octet-stream':{'schema':{'type':'string','format':'binary','description':'Redis DUMP 序列化，最大 2 GiB'}}}
 schemas['SSHSettings']=obj({'ports':{'type':'array','minItems':1,'maxItems':8,'items':{'type':'integer','minimum':1,'maximum':65535}},'password':boolean,'publicKey':boolean,'rootLogin':{'type':'string','enum':['yes','no','prohibit-password']},'maxAuthTries':{'type':'integer','minimum':1,'maximum':20},'loginGraceTime':{'type':'integer','minimum':10,'maximum':600},'clientAliveInterval':{'type':'integer','minimum':0,'maximum':3600},'clientAliveCountMax':{'type':'integer','minimum':1,'maximum':10}})
-schemas['SSHStatus']=obj({'available':boolean,'editable':boolean,'reason':string,'unit':string,'settings':ref('SSHSettings'),'revision':string,'pending':obj({'deadline':integer,'ports':{'type':'array','items':integer}},[]),'sessions':string,'fail2ban':string,'keys':config,'matchWarning':string},['available'])
+schemas['SSHStatus']=obj({'available':boolean,'editable':boolean,'reason':string,'unit':string,'settings':ref('SSHSettings'),'revision':string,'pending':obj({'deadline':integer,'ports':{'type':'array','items':integer}},[]),'sessions':string,'fail2ban':string,'keys':config,'matchWarning':string,'service':config},['available'])
 schemas['FirewallRule']=obj({'id':string,'revision':string,'kind':{'type':'string','enum':['port','ip','forward','region']},'protocol':string,'ports':string,'source':string,'destination':string,'action':string,'direction':string,'family':{'type':'string','enum':['ipv4','ipv6','dual']},'zone':string,'note':string,'createdAt':string,'editable':boolean,'reason':string,'raw':string,'position':integer,'target':string,'targetPorts':string,'masquerade':boolean,'countries':{'type':'array','items':string},'dataUpdatedAt':string,'runtime':boolean,'permanent':boolean,'listening':boolean},['id','revision','kind','protocol','ports','source','destination','action','direction','family','editable','runtime','permanent'])
 schemas['FirewallStatus']=obj({'backend':{'type':'string','enum':['ufw','firewalld','']},'installed':boolean,'enabled':boolean,'compatible':boolean,'reason':string,'warning':string,'modeAvailable':boolean,'modeReason':string,'managementSource':string,'rules':{'type':'array','items':ref('FirewallRule')},'revision':string,'counts':{'type':'object','additionalProperties':integer},'zones':{'type':'array','items':string},'defaultZone':string,'pingBlocked':boolean,'raw':string,'dockerRules':string,'dockerIPv6Rules':string,'protectedPorts':{'type':'array','items':integer},'portReason':string,'pending':obj({'deadline':integer,'mode':boolean,'feature':boolean,'rollbackError':string},[]),'externalRestrictions':string})
 schemas['FirewallRuleInput']=obj({key:value for key,value in schemas['FirewallRule']['properties'].items() if key in ['kind','protocol','ports','source','destination','action','direction','family','zone','note','target','targetPorts','masquerade','countries']},['kind','protocol','source','destination','action','direction','family'])
@@ -132,12 +133,18 @@ for action in ['save','delete','dependencies','import-apply','sync-observe','syn
 for action in ['export','import-preview','sync-preview','protection-status','confirm','rollback','rollback-feature']:
     add('/system/firewall/'+action,'post','防火墙 '+action+'；读取和确认返回 no-store；导入预览绑定修订与15分钟令牌',config,firewall_input)
     paths['/api/v1/system/firewall/'+action]['post']['responses']['200']['headers']={'Cache-Control':{'schema':{'type':'string','enum':['no-store']}}}
+add('/schedules','get','读取计划任务、服务器时区与真实下次执行时间；手动执行使用 resources/{id}/actions/run')
+add('/system/ssh/users','get','本机普通账号和 root 的脱敏状态，不返回密码哈希')
+add('/system/security/ssh-user','post','新鲜管理员密码/TOTP 验证后同步操作本机账号；密码不进入队列、日志和审计',config,obj({'operation':{'type':'string','enum':['create','password','lock','unlock','delete']},'username':string,'revision':string,'password':{'type':'string','format':'password'},'currentPassword':{'type':'string','format':'password'},'code':string,'confirmedImpact':boolean},['operation','username','currentPassword','confirmedImpact']))
+add('/system/security/ssh-service-confirm','post','验证备用控制台后确认保留 SSH 停用；超时自动恢复',config,obj({'consoleConfirmed':{'type':'boolean','enum':[True]}}))
 add('/system/ssh','get','读取实际 OpenSSH 配置、会话、公钥指纹及防爆破诊断',ref('SSHStatus'))
-add('/system/ssh/logs','get','最近 24 小时最多 200 行 SSH journal 记录，不作为完整统计')
+add('/system/ssh/logs','get','结构化 SSH journal 采样，最多 2000 行，不作为完整登录总量')
+paths['/api/v1/system/ssh/logs']['get']['parameters']=[{'name':'period','in':'query','schema':{'type':'string','enum':['24h','7d','30d']}}]
 add('/system/firewall','get','自动读取 UFW/firewalld 系统规则、四类计数、修订、真实管理端口及待确认事务',ref('FirewallStatus'))
 for path in ['/system/ssh','/system/ssh/logs','/system/firewall']:
     paths['/api/v1'+path]['get']['responses']['200']['headers']={'Cache-Control':{'schema':{'type':'string','enum':['no-store']}}}
 security_bodies={
+ 'ssh-service':obj({'operation':{'type':'string','enum':['start','stop','restart']},'confirmedImpact':boolean}),
  'ssh-apply':obj({'revision':string,'settings':ref('SSHSettings'),'source':string,'confirmedImpact':{'type':'boolean','enum':[True]}}),
  'ssh-key-add':obj({'revision':string,'publicKey':string,'confirmedImpact':{'type':'boolean','enum':[True]}}),
  'ssh-key-delete':obj({'revision':string,'fingerprint':string,'confirmedImpact':{'type':'boolean','enum':[True]}}),

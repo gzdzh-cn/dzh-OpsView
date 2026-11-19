@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppDialog from './AppDialog.vue'
+import ScheduleCycle from './ScheduleCycle.vue'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePanel } from '../stores/panel'
@@ -531,7 +532,7 @@ void api
             </el-select>
           </el-form-item>
           <el-form-item label="Cron 表达式（五段）" class="wide" required>
-            <el-input v-model="form.cron" placeholder="0 3 * * *" />
+            <ScheduleCycle v-model="form.cron" />
           </el-form-item>
           <p class="form-help wide">
             以服务器时区执行。例如 0 3 * * * 表示每天 03:00。支持备份与证书续期，不执行任意 Shell。
