@@ -1,0 +1,232 @@
+/* All surfaces, including teleported overlays, share the same semantic palette.
+   Concrete colors and contrast normalization live in lib/theme.ts. */
+:root {
+  color-scheme: light;
+  --el-bg-color: var(--ops-surface);
+  --el-bg-color-page: var(--ops-page);
+  --el-bg-color-overlay: var(--ops-raised);
+  --el-text-color-primary: var(--ops-text);
+  --el-text-color-regular: var(--ops-text-regular);
+  --el-text-color-secondary: var(--ops-text-muted);
+  --el-text-color-placeholder: var(--ops-text-placeholder);
+  --el-text-color-disabled: var(--ops-text-disabled);
+  --el-border-color: var(--ops-border);
+  --el-border-color-light: var(--ops-border-soft);
+  --el-border-color-lighter: var(--ops-border-soft);
+  --el-border-color-extra-light: var(--ops-border-soft);
+  --el-border-color-dark: var(--ops-text-placeholder);
+  --el-border-color-darker: var(--ops-text-muted);
+  --el-fill-color: var(--ops-hover);
+  --el-fill-color-light: var(--ops-subtle);
+  --el-fill-color-lighter: var(--ops-subtle);
+  --el-fill-color-extra-light: var(--ops-subtle);
+  --el-fill-color-dark: var(--ops-border-soft);
+  --el-fill-color-darker: var(--ops-border);
+  --el-fill-color-blank: var(--ops-surface);
+  --el-disabled-bg-color: var(--ops-subtle);
+  --el-disabled-text-color: var(--ops-text-disabled);
+  --el-disabled-border-color: var(--ops-border-soft);
+  --el-mask-color: var(--ops-mask);
+  --el-mask-color-extra-light: var(--ops-mask);
+  --el-overlay-color: var(--ops-backdrop);
+  --el-overlay-color-light: var(--ops-backdrop);
+  --el-overlay-color-lighter: var(--ops-backdrop);
+  --el-box-shadow: var(--ops-shadow);
+  --el-box-shadow-light: var(--ops-shadow);
+  --el-box-shadow-lighter: var(--ops-shadow);
+  --el-box-shadow-dark: var(--ops-shadow);
+  --el-color-error: var(--el-color-danger);
+  --ops-backdrop: #0b142466;
+  --ops-terminal-error: #ffadb5;
+  --ops-terminal-accent: #91baff;
+}
+html.dark {
+  color-scheme: dark;
+}
+.el-dialog,
+.el-drawer,
+.el-message-box {
+  --el-dialog-bg-color: var(--ops-raised);
+  --el-drawer-bg-color: var(--ops-raised);
+  background: var(--ops-raised);
+}
+.ops-dialog > .el-dialog__footer,
+.ops-drawer > .el-drawer__footer,
+.el-message-box__btns {
+  background: var(--ops-raised);
+}
+body {
+  background: var(--ops-page);
+  color: var(--ops-text);
+}
+::selection {
+  background: var(--ops-selection);
+  color: var(--ops-text);
+}
+
+/* List selection and hover use the same accent as navigation and controls. */
+.el-table,
+.data-list .el-table {
+  --el-table-bg-color: var(--ops-surface);
+  --el-table-tr-bg-color: var(--ops-surface);
+  --el-table-expanded-cell-bg-color: var(--ops-subtle);
+  --el-table-header-bg-color: var(--ops-subtle);
+  --el-table-header-text-color: var(--ops-text-regular);
+  --el-table-text-color: var(--ops-text-regular);
+  --el-table-border-color: var(--ops-border-soft);
+  --el-table-row-hover-bg-color: var(--ops-subtle);
+  --el-table-current-row-bg-color: var(--ops-selection);
+}
+.el-loading-mask {
+  background: var(--ops-mask);
+}
+.el-skeleton {
+  --el-skeleton-color: var(--ops-subtle);
+  --el-skeleton-to-color: var(--ops-hover);
+}
+.el-tabs__nav-wrap::after {
+  background: var(--ops-border-soft);
+}
+.el-popper.is-dark,
+.el-popper.is-dark > .el-popper__arrow::before {
+  background: var(--ops-raised);
+  border-color: var(--ops-border);
+  color: var(--ops-text);
+}
+.el-empty {
+  --el-empty-fill-color-0: var(--ops-surface);
+  --el-empty-fill-color-1: var(--ops-border);
+  --el-empty-fill-color-2: var(--ops-border-soft);
+  --el-empty-fill-color-3: var(--ops-subtle);
+  --el-empty-fill-color-4: var(--ops-hover);
+  --el-empty-fill-color-5: var(--ops-subtle);
+  --el-empty-fill-color-6: var(--ops-border-soft);
+  --el-empty-fill-color-7: var(--ops-hover);
+  --el-empty-fill-color-8: var(--ops-subtle);
+  --el-empty-fill-color-9: var(--ops-border-soft);
+}
+
+/* Filled buttons need a different foreground from links/plain buttons,
+   especially when a bright accent is chosen in dark mode. */
+.el-button--primary,
+.el-link--primary {
+  --ops-action-color: var(--el-color-primary);
+  --ops-action-hover: var(--el-color-primary-dark-2);
+  --ops-action-on: var(--ops-on-primary);
+  --el-button-hover-link-text-color: var(--ops-action-hover);
+  --el-link-hover-text-color: var(--ops-action-hover);
+}
+.el-button--success,
+.el-link--success {
+  --ops-action-color: var(--el-color-success);
+  --ops-action-hover: var(--el-color-success-dark-2);
+  --ops-action-on: var(--ops-on-success);
+  --el-button-hover-link-text-color: var(--ops-action-hover);
+  --el-link-hover-text-color: var(--ops-action-hover);
+}
+.el-button--warning,
+.el-link--warning {
+  --ops-action-color: var(--el-color-warning);
+  --ops-action-hover: var(--el-color-warning-dark-2);
+  --ops-action-on: var(--ops-on-warning);
+  --el-button-hover-link-text-color: var(--ops-action-hover);
+  --el-link-hover-text-color: var(--ops-action-hover);
+}
+.el-button--danger,
+.el-link--danger {
+  --ops-action-color: var(--el-color-danger);
+  --ops-action-hover: var(--el-color-danger-dark-2);
+  --ops-action-on: var(--ops-on-danger);
+  --el-button-hover-link-text-color: var(--ops-action-hover);
+  --el-link-hover-text-color: var(--ops-action-hover);
+}
+.el-button--info,
+.el-link--info {
+  --ops-action-color: var(--el-color-info);
+  --ops-action-hover: var(--el-color-info-dark-2);
+  --ops-action-on: var(--ops-on-info);
+  --el-button-hover-link-text-color: var(--ops-action-hover);
+  --el-link-hover-text-color: var(--ops-action-hover);
+}
+:is(
+    .el-button--primary,
+    .el-button--success,
+    .el-button--warning,
+    .el-button--danger,
+    .el-button--info
+  ):not(.is-plain):not(.is-text):not(.is-link):not(.is-dashed) {
+  --el-button-text-color: var(--ops-action-on);
+  --el-button-hover-text-color: var(--ops-action-on);
+  --el-button-active-text-color: var(--ops-action-on);
+  --el-button-hover-bg-color: var(--ops-action-hover);
+  --el-button-hover-border-color: var(--ops-action-hover);
+}
+:is(
+  .el-button--primary,
+  .el-button--success,
+  .el-button--warning,
+  .el-button--danger,
+  .el-button--info
+).is-plain {
+  --el-button-hover-text-color: var(--ops-action-on);
+  --el-button-active-text-color: var(--ops-action-on);
+}
+.el-button.is-disabled {
+  --el-button-disabled-text-color: var(--ops-text-disabled);
+}
+.el-button {
+  --el-button-outline-color: var(--el-color-primary);
+}
+.sidebar nav a:focus-visible,
+.account-button:focus-visible,
+.row-actions button:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: -2px;
+}
+.account-button:hover {
+  background: var(--ops-subtle);
+  border-radius: 4px;
+}
+
+/* CodeMirror uses CSS variables so a theme preview updates an open editor. */
+.code-editor .cm-editor {
+  background: var(--ops-surface);
+  color: var(--ops-text);
+}
+.code-editor .cm-gutters {
+  background: var(--ops-subtle);
+  color: var(--ops-text-muted);
+}
+.code-editor .cm-activeLine,
+.code-editor .cm-activeLineGutter {
+  background: var(--ops-subtle);
+}
+.code-editor .cm-cursor {
+  border-left-color: var(--ops-text);
+}
+.code-editor .cm-selectionBackground,
+.code-editor .cm-focused .cm-selectionBackground,
+.code-editor .cm-selectionMatch {
+  background: var(--ops-selection) !important;
+}
+.code-editor .cm-searchMatch {
+  background: var(--el-color-warning-light-7);
+}
+.code-editor .cm-panels,
+.code-editor .cm-tooltip {
+  background: var(--ops-raised);
+  color: var(--ops-text);
+  border-color: var(--ops-border);
+}
+.code-editor .cm-textfield,
+.code-editor .cm-button {
+  color: var(--ops-text);
+  background: var(--ops-subtle);
+  border: 1px solid var(--ops-border);
+  border-radius: var(--el-border-radius-base);
+}
+.code-editor .cm-foldPlaceholder {
+  color: var(--ops-text-regular);
+  background: var(--ops-hover);
+  border-color: var(--ops-border);
+}

@@ -17,6 +17,7 @@ import {
 } from '@element-plus/icons-vue'
 import { size, date } from '../lib/api'
 import StatusBadge from '../components/StatusBadge.vue'
+import { resolvedTheme } from '../lib/appearance'
 import type * as ECharts from 'echarts/core'
 let echarts: Pick<typeof ECharts, 'init' | 'graphic'>
 let alive = true
@@ -33,7 +34,7 @@ const cards = computed(() => [
     value: (overview.value?.cpu || 0).toFixed(1),
     unit: '%',
     meta: `${overview.value?.cpuCores || '—'} 核心处理器`,
-    color: '#35896c',
+    color: 'var(--el-color-primary)',
     usage: overview.value?.cpu || 0,
   },
   {
@@ -41,7 +42,7 @@ const cards = computed(() => [
     value: (overview.value?.memory?.usedPercent || 0).toFixed(1),
     unit: '%',
     meta: `${size(overview.value?.memory?.used)} / ${size(overview.value?.memory?.total)}`,
-    color: '#6685c0',
+    color: 'var(--ops-chart-secondary)',
     usage: overview.value?.memory?.usedPercent || 0,
   },
   {
@@ -49,7 +50,7 @@ const cards = computed(() => [
     value: (overview.value?.disk?.usedPercent || 0).toFixed(1),
     unit: '%',
     meta: `${size(overview.value?.disk?.used)} / ${size(overview.value?.disk?.total)}`,
-    color: '#be9861',
+    color: 'var(--el-color-warning)',
     usage: overview.value?.disk?.usedPercent || 0,
   },
 ])
@@ -86,15 +87,17 @@ const shortcuts = computed(() => [
 const net = computed(() => overview.value?.network?.[0])
 function draw() {
   if (!chart) return
+  const color = (name: string) => resolvedTheme.value.colors[name]!
   chart.setOption({
     animationDuration: 250,
-    color: ['#388c6b', '#7d9ac9'],
+    color: [color('--el-color-primary'), color('--ops-chart-secondary')],
     grid: { left: 8, right: 18, top: 22, bottom: 6, containLabel: true },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#18372a',
-      textStyle: { color: '#fff', fontSize: 12 },
-      borderWidth: 0,
+      backgroundColor: color('--ops-raised'),
+      textStyle: { color: color('--ops-text'), fontSize: 12 },
+      borderWidth: 1,
+      borderColor: color('--ops-border'),
       valueFormatter: (v: unknown) => `${Number(v).toFixed(1)}%`,
     },
     xAxis: {
@@ -103,15 +106,15 @@ function draw() {
       data: samples.value.map((v) => v.time),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#9ba6a0', fontFamily: 'monospace', fontSize: 10 },
+      axisLabel: { color: color('--ops-text-muted'), fontFamily: 'monospace', fontSize: 10 },
     },
     yAxis: {
       type: 'value',
       min: 0,
       max: 100,
       splitNumber: 4,
-      axisLabel: { color: '#9ba6a0', formatter: '{value}%', fontSize: 10 },
-      splitLine: { lineStyle: { color: '#edf1ee', type: 'dashed' } },
+      axisLabel: { color: color('--ops-text-muted'), formatter: '{value}%', fontSize: 10 },
+      splitLine: { lineStyle: { color: color('--ops-border-soft'), type: 'dashed' } },
     },
     series: [
       {
@@ -122,8 +125,8 @@ function draw() {
         lineStyle: { width: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(56,140,107,0.15)' },
-            { offset: 1, color: 'rgba(56,140,107,0.01)' },
+            { offset: 0, color: color('--el-color-primary') + '30' },
+            { offset: 1, color: color('--el-color-primary') + '00' },
           ]),
         },
         data: samples.value.map((v) => v.cpu),
@@ -164,6 +167,7 @@ async function mountChart() {
 watch(graph, () => {
   void nextTick(mountChart)
 })
+watch(resolvedTheme, draw, { flush: 'post' })
 onMounted(async () => {
   echarts = await import('../lib/chart')
   await mountChart()

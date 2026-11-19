@@ -469,8 +469,8 @@ async function resetTheme() {
       body: JSON.stringify({
         revision: groupRevisions.value.appearance,
         patch: {
-          theme: 'auto',
-          primaryColor: '#409eff',
+          theme: 'light',
+          primaryColor: '#2563eb',
           fontSize: 14,
           hiddenMenus: [],
           loginLogo: '',
@@ -762,7 +762,7 @@ onMounted(async () => {
     @closed="closeEditor"
   >
     <el-alert v-if="editError" :title="editError" type="error" :closable="false" />
-    <el-form v-if="field" v-loading="busy" label-width="120px">
+    <el-form v-if="field" v-loading="busy" :disabled="busy" label-width="120px">
       <el-form-item :label="field.label">
         <el-switch v-if="['switch', 'basic'].includes(field.type || '')" v-model="editValue" />
         <el-input-number
@@ -834,7 +834,7 @@ onMounted(async () => {
     </el-form>
     <template #footer>
       <el-button @click="editor = false">取消</el-button>
-      <el-button v-if="field?.group === 'appearance'" @click="previewTheme">预览</el-button>
+      <el-button v-if="field?.group === 'appearance'" :disabled="busy" @click="previewTheme">预览</el-button>
       <el-button type="primary" :loading="busy" @click="save">保存</el-button>
     </template>
   </AppDialog>

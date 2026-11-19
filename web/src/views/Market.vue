@@ -678,7 +678,7 @@ async function importPackage() {
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: pointer;
-  color: #475569;
+  color: var(--el-text-color-regular);
   margin: 0;
   font-size: 13px;
   text-align: left;

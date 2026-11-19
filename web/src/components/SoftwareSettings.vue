@@ -1108,7 +1108,7 @@ const documentGlobal = window.document
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  color: #94a3b8;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   margin-bottom: 12px;
 }
@@ -1125,14 +1125,14 @@ const documentGlobal = window.document
 .software-fields small {
   display: block;
   width: 100%;
-  color: #94a3b8;
+  color: var(--el-text-color-secondary);
   font-size: 11px;
 }
 .service-log,
 pre {
   white-space: pre-wrap;
   word-break: break-word;
-  background: #f8fafc;
+  background: var(--el-fill-color-light);
   padding: 16px;
   max-height: 400px;
   overflow: auto;

@@ -151,7 +151,7 @@ async function cancelInstall(id: string) {
         </el-table-column>
         <el-table-column label="结果" min-width="180">
           <template #default="{ row }">
-            <span v-if="row.error" style="color: #b9826d">{{ row.error }}</span>
+            <span v-if="row.error" style="color: var(--el-color-danger)">{{ row.error }}</span>
             <span v-else class="muted">
               {{ row.state === 'succeeded' ? '操作已完成' : '等待执行结果' }}
             </span>

@@ -8,4 +8,5 @@ import { router } from './router'
 import './style.css'
 import './compact.css'
 import './overlays.css'
+import './theme.css'
 createApp(App).use(createPinia()).use(router).use(ElementPlus, { locale: zhCn }).mount('#app')

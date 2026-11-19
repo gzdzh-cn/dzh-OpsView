@@ -1,4 +1,5 @@
-import { test, expect, type Locator } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
+import { contrast } from '../src/lib/theme'
 import fs from 'node:fs'
 import path from 'node:path'
 const username = 'e2e-admin',
@@ -2515,9 +2516,17 @@ test('settings CAS conflicts preserve editor and notification tabs load independ
     return r.fulfill({json:[]})
   })
   await page.goto('/settings')
+  let releaseGroup!: () => void
+  const groupResponse = new Promise<void>((resolve) => { releaseGroup = resolve })
+  await page.route('**/api/v1/settings/groups/panel', async (route) => {
+    await groupResponse
+    await route.continue()
+  })
   const setting = page.locator('.preference-row').filter({has:page.getByText('面板名称',{exact:true})})
   await setting.getByRole('button',{name:'修改',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:'面板名称',exact:true})
+  await expect(dialog.getByRole('textbox',{name:'面板名称',exact:true})).toBeDisabled()
+  releaseGroup()
   await dialog.getByRole('textbox',{name:'面板名称',exact:true}).fill('conflicting-name')
   await page.route('**/api/v1/settings/groups/panel',r=>r.request().method()==='PATCH'?r.fulfill({status:409,json:{error:'设置已被修改，请重新载入'}}):r.continue())
   await dialog.getByRole('button',{name:'保存',exact:true}).click()
@@ -2552,4 +2561,208 @@ test('backup integrity checks consume queued task results and expose failures',a
   await expect(row).toContainText('待校验')
   await row.getByRole('button',{name:'校验',exact:true}).click()
   await expect(row).toContainText('已校验')
+})
+
+// Theme checks use real computed styles, including overlays teleported to body.
+async function themeStyle(locator: Locator) {
+  await locator.evaluate(async (el) => {
+    await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => {})))
+  })
+  return locator.evaluate((el) => {
+    const style = getComputedStyle(el)
+    const hex = (value: string) => {
+      const channels = value.match(/[\d.]+/g)!.slice(0, 3)
+      return '#' + channels.map((v) => Number(v).toString(16).padStart(2, '0')).join('')
+    }
+    return { color: hex(style.color), background: hex(style.backgroundColor) }
+  })
+}
+async function mockTheme(page: Page, theme: string, primaryColor = '#2563eb') {
+  for (const endpoint of ['public/preferences', 'settings', 'settings/groups/appearance']) {
+    await page.route(`**/api/v1/${endpoint}`, async (route) => {
+      const response = await route.fetch()
+      const data = await response.json()
+      const config = { theme, primaryColor }
+      await route.fulfill({
+        json: endpoint.includes('groups')
+          ? { ...data, config: { ...data.config, ...config } }
+          : { ...data, ...config },
+      })
+    })
+  }
+}
+for (const mode of ['light', 'dark']) {
+  test(`${mode} theme shares colors across navigation, lists and fixed overlays`, async ({
+    page,
+  }) => {
+    await mockTheme(page, mode)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto('/')
+    await expect(page.locator('.metric-card').first()).toBeVisible()
+    const surface = await themeStyle(page.locator('.metric-card').first())
+    expect(surface.background).toBe(mode === 'dark' ? '#182230' : '#ffffff')
+    expect(contrast(surface.color, surface.background)).toBeGreaterThanOrEqual(4.5)
+    const active = await themeStyle(page.locator('.sidebar nav a.active'))
+    expect(contrast(active.color, active.background)).toBeGreaterThanOrEqual(4.5)
+    await page.screenshot({
+      path: `../.opsview/screenshots/theme-${mode}-overview.png`,
+      fullPage: true,
+    })
+    for (const url of [
+      '/software',
+      '/sites',
+      '/databases',
+      '/docker',
+      '/files',
+      '/backups',
+      '/system',
+      '/settings',
+      '/tasks',
+    ]) {
+      await page.locator(`.sidebar a[href="${url}"]`).click()
+      await expect(page).toHaveURL(url)
+      await expect(page.locator('.navigation-progress')).toHaveCount(0)
+      await expect(page.locator('.surface').first()).toBeVisible()
+      expect((await themeStyle(page.locator('.surface').first())).background).toBe(
+        surface.background,
+      )
+      const header = page.locator('.el-table__header th').first()
+      if (await header.count()) {
+        const style = await themeStyle(header)
+        expect(style.background).toBe(mode === 'dark' ? '#1d2938' : '#f6f8fb')
+        expect(contrast(style.color, style.background)).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+    await page.goto('/settings')
+    await page.getByRole('tab', { name: '界面设置', exact: true }).click()
+    const setting = page
+      .locator('.preference-row')
+      .filter({ has: page.getByText('界面模式', { exact: true }) })
+    await setting.getByRole('button', { name: '修改', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '界面模式', exact: true })
+    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+    const style = await themeStyle(dialog.locator('.el-dialog'))
+    expect(style.background).toBe(mode === 'dark' ? '#202d3d' : '#ffffff')
+    const button = await themeStyle(dialog.getByRole('button', { name: '保存', exact: true }))
+    expect(button.background).toBe(active.color)
+    expect(contrast(button.color, button.background)).toBeGreaterThanOrEqual(4.5)
+    await dialog.getByRole('button', { name: '保存', exact: true }).hover()
+    const hovered = await themeStyle(dialog.getByRole('button', { name: '保存', exact: true }))
+    expect(contrast(hovered.color, hovered.background)).toBeGreaterThanOrEqual(4.5)
+    await dialog.locator('.el-select__wrapper').click()
+    const option = page.getByRole('option', { name: '深色', exact: true })
+    await expect(option).toBeVisible()
+    const popup = page.locator('.el-select__popper:visible')
+    expect((await themeStyle(popup)).background).toBe(style.background)
+    await page.keyboard.press('Escape')
+    await page.screenshot({
+      path: `../.opsview/screenshots/theme-${mode}-settings.png`,
+      fullPage: true,
+    })
+    await page.setViewportSize({ width: 390, height: 600 })
+    const geometry = await overlayGeometry(dialog)
+    await dialog.locator('.el-dialog__body').evaluate((el) => (el.scrollTop = el.scrollHeight))
+    expectFixedOverlay(geometry, await overlayGeometry(dialog))
+    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeInViewport()
+    await page.screenshot({
+      path: `../.opsview/screenshots/theme-${mode}-mobile.png`,
+      fullPage: true,
+    })
+  })
+}
+
+test('theme preview updates an open dialog and cancel restores the saved palette', async ({
+  page,
+}) => {
+  await mockTheme(page, 'light')
+  await page.goto('/settings')
+  await page.getByRole('tab', { name: '界面设置', exact: true }).click()
+  await page
+    .locator('.preference-row')
+    .filter({ has: page.getByText('界面模式', { exact: true }) })
+    .getByRole('button', { name: '修改', exact: true })
+    .click()
+  const dialog = page.getByRole('dialog', { name: '界面模式', exact: true })
+  await expect(dialog.getByRole('combobox')).toBeEnabled()
+  await dialog.locator('.el-select__wrapper').click()
+  await page.getByRole('option', { name: '深色', exact: true }).click()
+  const geometry = await overlayGeometry(dialog)
+  await dialog.getByRole('button', { name: '预览', exact: true }).click()
+  await expect(page.locator('html')).toHaveClass('dark')
+  expect((await themeStyle(dialog.locator('.el-dialog'))).background).toBe('#202d3d')
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.locator('html')).not.toHaveClass('dark')
+  expect((await themeStyle(page.locator('.surface').first())).background).toBe('#ffffff')
+})
+
+test('default appearance stays light on a dark system until follow-system is selected', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  await expect(page.locator('.metric-card').first()).toBeVisible()
+  await expect(page.locator('html')).not.toHaveClass('dark')
+  await mockTheme(page, 'auto')
+  await page.reload()
+  await expect(page.locator('html')).toHaveClass('dark')
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(page.locator('html')).not.toHaveClass('dark')
+})
+
+test('dark software editor and error state have no light surface remnants', async ({ page }) => {
+  await mockTheme(page, 'dark', '#ffffff')
+  await page.route('**/api/v1/resources', (r) => r.fulfill({ json: [nginxFixture] }))
+  await page.route('**/api/v1/instances/nginx-fixture/settings', (r) =>
+    r.fulfill({
+      json: {
+        software: 'nginx',
+        version: '1.30.6',
+        state: 'active',
+        editable: true,
+        reload: true,
+        files: ['main'],
+        associated: [],
+      },
+    }),
+  )
+  await page.route('**/api/v1/instances/nginx-fixture/configuration?*', (r) =>
+    r.fulfill({
+      json: {
+        revision: 'a'.repeat(64),
+        content: 'worker_processes auto;\nevents { worker_connections 1024; }\nhttp {}',
+        values: {},
+        fields: [],
+        history: [],
+      },
+    }),
+  )
+  await page.route('**/api/v1/instances/nginx-fixture/validate', (r) =>
+    r.fulfill({ status: 409, json: { error: '配置已被修改，请重新载入' } }),
+  )
+  await page.goto('/software')
+  await page
+    .locator('.software-list .el-table__body tr')
+    .filter({ hasText: 'Nginx' })
+    .getByRole('button', { name: '设置', exact: true })
+    .click()
+  const dialog = page.locator('.software-settings')
+  await dialog.locator('aside').getByRole('button', { name: '配置文件', exact: true }).click()
+  const editor = dialog.locator('.cm-editor')
+  await expect(editor).toBeVisible()
+  const editorStyle = await themeStyle(editor)
+  expect(editorStyle.background).toBe('#182230')
+  expect(contrast(editorStyle.color, editorStyle.background)).toBeGreaterThanOrEqual(4.5)
+  expect((await themeStyle(dialog.locator('.cm-gutters'))).background).toBe('#1d2938')
+  const geometry = await overlayGeometry(dialog)
+  await dialog.getByRole('button', { name: '校验配置', exact: true }).click()
+  const alert = dialog.locator('.el-alert')
+  await expect(alert).toContainText('配置已被修改')
+  const errorStyle = await themeStyle(alert)
+  expect(contrast(errorStyle.background, '#ffffff')).toBeGreaterThan(8)
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  const color = await themeStyle(dialog.getByRole('button', { name: '保存并重载', exact: true }))
+  expect(contrast(color.color, color.background)).toBeGreaterThanOrEqual(4.5)
+  await page.screenshot({ path: '../.opsview/screenshots/theme-dark-editor.png', fullPage: true })
 })

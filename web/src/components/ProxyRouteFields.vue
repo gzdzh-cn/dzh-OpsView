@@ -44,7 +44,7 @@ function targets(value: string) {
 </template>
 <style scoped>
 .proxy-route {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;
   padding: 16px;
   margin-bottom: 16px;

@@ -6,9 +6,9 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.3-rc.17 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.3-rc.18 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
-本轮新增计划任务、备份记录、脚本库，补齐低权限脚本和 root 授权、HTTP 与日志任务、加密归档核对及六类面板设置。高级认证、范围 API 和异步告警默认按需启用；以 `v0.1.3-rc.17` 发布测试。保留紧凑布局、固定弹窗、已有管理员及业务数据。
+本轮统一浅色与深色配色：侧栏、按钮、表格、弹窗、编辑器及图表共用主题色，改善文字与状态的对比度。默认浅色与蓝色主色，保留已保存的主题选择；修复设置加载覆盖输入草稿的问题。保留备份、计划、安全认证与告警能力。
 
 本版统一全站业务列表，文件管理扩展至服务器根目录，移除独立应用进程入口并保留旧服务，进程托管在网站内提供，增加 Docker 引擎状态与 API 协商；软件市场只提供原生极速/编译安装。继续验证内嵌资源及实际发布二进制的侧栏导航。
 
@@ -50,9 +50,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.17/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.17/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.17
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.18/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.18/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.18
 # 已安装面板：
-ov update --version v0.1.3-rc.17
+ov update --version v0.1.3-rc.18
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。

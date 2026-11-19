@@ -566,7 +566,7 @@ async function loadLogs() {
 }
 .site-toolbar > span {
   margin-left: auto;
-  color: #94a3b8;
+  color: var(--el-text-color-secondary);
 }
 .site-table {
   padding: 12px;
@@ -576,12 +576,12 @@ async function loadLogs() {
   padding: 70px 20px;
 }
 .nginx-required p {
-  color: #64748b;
+  color: var(--el-text-color-secondary);
 }
 .site-settings pre {
   white-space: pre-wrap;
   word-break: break-word;
-  background: #f8fafc;
+  background: var(--el-fill-color-light);
   padding: 12px;
 }
 .traffic-bars > div {

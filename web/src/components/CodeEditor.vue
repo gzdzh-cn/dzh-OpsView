@@ -27,7 +27,7 @@ onMounted(async () => {
           maxHeight: '480px',
           overflow: 'auto',
         },
-        '.cm-gutters': { backgroundColor: '#f7f9f8', border: 'none' },
+        '.cm-gutters': { border: 'none' },
       }),
       EditorView.updateListener.of((v) => {
         if (v.docChanged) emit('update:modelValue', v.state.doc.toString())
