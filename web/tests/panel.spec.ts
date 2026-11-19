@@ -2887,3 +2887,25 @@ test('closing an inline read does not leave subsequent settings busy and securit
   await expect(row.getByRole('textbox')).toHaveCount(0)
   await expect(row.getByRole('button',{name:'修改默认建站目录',exact:true})).toHaveText('/www/wwwroot')
 })
+
+test('changing theme keeps the configured polling interval',async({page})=>{
+  await page.clock.install()
+  let resourceReads=0, preferencesRead=false
+  await page.route('**/api/v1/resources',r=>{resourceReads++;return r.fulfill({json:[]})})
+  await page.route('**/api/v1/settings',async r=>{
+    const response=await r.fetch()
+    const data=await response.json()
+    preferencesRead=true
+    return r.fulfill({json:{...data,theme:'light',refreshSeconds:5}})
+  })
+  await page.route('**/api/v1/public/preferences',r=>r.fulfill({json:{theme:'light'}}))
+  await page.route('**/api/v1/settings/groups/appearance',r=>r.fulfill({json:{revision:2,config:{theme:r.request().method()==='PATCH'?'dark':'light'}}}))
+  await page.goto('/')
+  await expect.poll(()=>preferencesRead).toBe(true)
+  await page.getByRole('button',{name:'切换主题',exact:true}).click()
+  await page.getByRole('menuitem',{name:'黑色',exact:true}).click()
+  await expect(page.locator('html')).toHaveClass('dark')
+  const previous=resourceReads
+  await page.clock.runFor(5200)
+  await expect.poll(()=>resourceReads,{timeout:1500}).toBeGreaterThan(previous)
+})

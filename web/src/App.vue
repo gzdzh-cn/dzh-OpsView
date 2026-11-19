@@ -125,8 +125,9 @@ function visible() {
   if (!document.hidden) refresh(true)
 }
 function preferences(e: Event) {
-  setRefresh((e as CustomEvent).detail.refreshSeconds || 15)
-  applyAppearance((e as CustomEvent).detail)
+  const patch = (e as CustomEvent).detail
+  if (patch.refreshSeconds !== undefined) setRefresh(patch.refreshSeconds)
+  applyAppearance(patch)
 }
 onMounted(async () => {
   document.addEventListener('visibilitychange', visible)
