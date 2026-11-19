@@ -610,3 +610,14 @@ SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update -
 - SQLite schema 5；成功升级后的降级要求恢复配套元数据快照，不能只替换旧二进制。实际供应商 S3、浏览器硬件 Passkey、公网 ACME、真实用户通知平台及完整灾难恢复仍需按目标环境演练。
 
 此版只发布测试包，不自动更新生产服务器。历史记录中的“单 worker”和“无告警渠道”描述已由 rc.17 的四 worker 资源锁及通知实现取代。
+
+### rc.17 公开发布结果
+
+标签 `v0.1.3-rc.17` 对应提交 `0db0407`。[发布流水线](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44500482713) 的 build、publish、verify-public-install 全部通过，已公开 Linux amd64 测试包、SHA256SUMS 和安装脚本。
+
+- 四种 Linux 的离线测试、SSH/UFW 回退、UFW/firewalld 独立客户端矩阵、真实数据库、日志轮转及 PHP Session 回归全部通过。
+- 真实 systemd 脚本验证退出码 0/7、私密变量遮盖和取消后的控制组清理。源码服务与发布包各自的 44 项 Playwright 均通过。
+- 实际安装包验证 root 所有归档的本机恢复、新目录核对、恢复切换后登录、证书保留、单独启停网页入口、正常更新和故障回退。
+- 公开安装入口验证固定标签下载、摘要、安装、登录和 `ov update`。本次没有连接或更新生产服务器。
+
+这些结果不扩大上文列出的 S3 服务商、硬件 Passkey、真实通知平台及公网环境验收范围。
