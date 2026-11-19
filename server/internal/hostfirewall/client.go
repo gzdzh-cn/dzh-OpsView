@@ -16,10 +16,11 @@ import (
 
 type Runner func(context.Context, string, ...string) (string, error)
 type Client struct {
-	Preferred  string
-	Run        Runner
-	ConfigDir  string
-	Compatible func() bool
+	Preferred    string
+	Run          Runner
+	ConfigDir    string
+	DefaultsPath string
+	Compatible   func() bool
 }
 type Status struct {
 	Backend    string   `json:"backend"`
@@ -27,6 +28,7 @@ type Status struct {
 	Enabled    bool     `json:"enabled"`
 	Compatible bool     `json:"compatible"`
 	Reason     string   `json:"reason"`
+	Warning    string   `json:"warning,omitempty"`
 	Rules      []Rule   `json:"rules"`
 	Revision   string   `json:"revision"`
 	Zones      []string `json:"zones"`
@@ -42,7 +44,7 @@ func Default() *Client {
 			return string(b), fmt.Errorf("%s: %w: %s", name, e, strings.TrimSpace(string(b)))
 		}
 		return string(b), nil
-	}, ConfigDir: "/etc/ufw"}
+	}, ConfigDir: "/etc/ufw", DefaultsPath: "/etc/default/ufw"}
 }
 func (c *Client) Detect(ctx context.Context) Status {
 	s := Status{Rules: []Rule{}, Zones: []string{}}
@@ -78,6 +80,18 @@ func (c *Client) Detect(ctx context.Context) Status {
 		s.Raw = u
 		if !s.Compatible {
 			s.Reason = "检测到不兼容的自定义防火墙，仅提供诊断"
+		} else if err := c.CheckUFWLifecycle(); err != nil {
+			s.Compatible = false
+			s.Reason = err.Error()
+		} else {
+			for _, bin := range []string{"iptables", "ip6tables"} {
+				text, _ := c.Run(ctx, bin, "-S", "INPUT")
+				for _, line := range strings.Split(text, "\n") {
+					if strings.HasPrefix(line, "-A INPUT ") && !strings.Contains(line, "-j ufw-") && !strings.Contains(line, "-j ufw6-") {
+						s.Warning = "检测到其他软件的入站规则。此处仅管理 UFW，保留外部规则；关闭 UFW 后，其他软件的过滤仍可能生效。"
+					}
+				}
+			}
 		}
 		return s
 	}
@@ -304,6 +318,9 @@ func UFWArgs(r Rule) []string {
 }
 func (c *Client) SetEnabled(ctx context.Context, backend string, enabled bool) error {
 	if backend == "ufw" {
+		if err := c.CheckUFWMode(ctx); err != nil {
+			return err
+		}
 		action := "disable"
 		if enabled {
 			action = "enable"
@@ -332,6 +349,9 @@ func (c *Client) Change(ctx context.Context, backend string, r Rule, remove bool
 		return errors.New("该规则由扩展适配器管理")
 	}
 	if backend == "ufw" {
+		if err := c.CheckUFWLifecycle(); err != nil {
+			return err
+		}
 		args := UFWArgs(r)
 		if remove {
 			args = append([]string{"--force", "delete"}, args...)

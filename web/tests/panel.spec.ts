@@ -1879,3 +1879,204 @@ test('firewall tabs edit inherited rules, preview imports and reconcile selected
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
 })
+
+test('firewall switch updates system state both ways while preserving inherited rules', async ({
+  page,
+}) => {
+  const modes: any[] = []
+  const status = {
+    backend: 'ufw',
+    installed: true,
+    enabled: true,
+    compatible: true,
+    modeAvailable: true,
+    warning: '检测到其他软件的入站规则。此处仅管理 UFW，保留外部规则。',
+    managementSource: '192.0.2.25',
+    revision: 'mode-1',
+    pending: {} as any,
+    rules: [
+      {
+        id: 'existing',
+        kind: 'port',
+        protocol: 'tcp',
+        ports: '8080',
+        family: 'ipv4',
+        direction: 'in',
+        action: 'allow',
+        source: 'any',
+        destination: 'any',
+        editable: true,
+        permanent: true,
+        runtime: true,
+      },
+    ],
+    counts: { port: 1, ip: 0, forward: 0, region: 0 },
+    protectedPorts: [555, 18790],
+  }
+  await page.route('**/api/v1/system/firewall', (r) => r.fulfill({ json: status }))
+  await page.route('**/api/v1/tasks', (r) =>
+    r.fulfill({ json: [{ id: 'mode-task', state: 'succeeded' }] }),
+  )
+  await page.route('**/api/v1/system/security/firewall-mode', (r) => {
+    const params = r.request().postDataJSON()
+    modes.push(params)
+    status.enabled = params.enabled
+    status.rules[0]!.runtime = params.enabled
+    status.pending = { mode: true, deadline: Math.floor(Date.now() / 1000) + 120 }
+    return r.fulfill({ status: 202, json: { id: 'mode-task' } })
+  })
+  await page.route('**/api/v1/system/security/firewall-confirm', (r) => {
+    expect(r.request().postDataJSON().connected).toBe(true)
+    status.pending = {}
+    return r.fulfill({ json: { confirmed: true } })
+  })
+  await page.goto('/system')
+  const control = page.getByRole('switch', { name: '防火墙开关', exact: true })
+  await expect(control).toBeEnabled()
+  for (const enabled of [false, true]) {
+    await page.locator('.el-switch').filter({ has: control }).click()
+    const dialog = page.getByRole('dialog', {
+      name: enabled ? '启用防火墙' : '关闭防火墙',
+      exact: true,
+    })
+    if (enabled)
+      await expect(dialog.getByPlaceholder('面板和 SSH 客户端 IP/CIDR')).toHaveValue('192.0.2.25')
+    await dialog.getByText('已了解影响，并保留现有 SSH 会话', { exact: true }).click()
+    await dialog.getByRole('button', { name: '应用并等待确认', exact: true }).click()
+    await expect(dialog).not.toBeVisible()
+    if (enabled) await expect(control).toBeChecked()
+    else await expect(control).not.toBeChecked()
+    await expect(page.getByRole('tab', { name: '端口规则：1', exact: true })).toBeVisible()
+    await expect(control).toBeDisabled()
+    await page.getByRole('button', { name: '访问正常，确认保留', exact: true }).click()
+    await page.getByRole('button', { name: '访问正常，保留', exact: true }).click()
+    await expect(control).toBeEnabled()
+    await expect(page.getByRole('button', { name: '修改', exact: true })).toBeEnabled()
+  }
+  expect(modes.map((p) => p.enabled)).toEqual([false, true])
+  expect(modes.every((p) => p.confirmedImpact && p.source === '192.0.2.25')).toBe(true)
+})
+
+test('firewall edits and deletes inherited system ports and exposes separate mode restrictions', async ({
+  page,
+}) => {
+  let saved: any, deleted: any
+  const status = {
+    backend: 'firewalld',
+    installed: true,
+    enabled: true,
+    compatible: true,
+    modeAvailable: false,
+    modeReason: '存在外部 iptables 链，firewalld 普通规则仍可修改',
+    managementSource: '192.0.2.25',
+    revision: 'ports-1',
+    pending: {},
+    rules: [
+      {
+        id: 'existing',
+        service: '@port:8080/tcp',
+        kind: 'port',
+        protocol: 'tcp',
+        ports: '8080',
+        family: 'dual',
+        direction: 'in',
+        action: 'allow',
+        source: 'any',
+        destination: 'any',
+        editable: true,
+        permanent: true,
+        runtime: true,
+      },
+    ],
+    counts: { port: 1, ip: 0, forward: 0, region: 0 },
+    protectedPorts: [555, 18790],
+  }
+  await page.route('**/api/v1/system/firewall', (r) => r.fulfill({ json: status }))
+  await page.route('**/api/v1/tasks', (r) =>
+    r.fulfill({ json: [{ id: 'port-task', state: 'succeeded' }] }),
+  )
+  await page.route('**/api/v1/system/firewall/save', (r) => {
+    saved = r.request().postDataJSON()
+    status.rules = [{ ...status.rules[0], ...saved.rule, id: 'updated' }]
+    status.revision = 'ports-2'
+    return r.fulfill({ status: 202, json: { id: 'port-task' } })
+  })
+  await page.route('**/api/v1/system/firewall/delete', (r) => {
+    deleted = r.request().postDataJSON()
+    status.rules = []
+    status.counts.port = 0
+    status.revision = 'ports-3'
+    return r.fulfill({ status: 202, json: { id: 'port-task' } })
+  })
+  await page.goto('/system')
+  await expect(page.getByRole('switch', { name: '防火墙开关', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '修改', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '修改', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '修改端口规则', exact: true })
+  await editor.getByLabel('规则端口').fill('8081')
+  await editor.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(editor).not.toBeVisible()
+  expect(saved.id).toBe('existing')
+  expect(saved.revision).toBe('ports-1')
+  expect(saved.rule.ports).toBe('8081')
+  await expect(page.getByRole('cell', { name: '8081 双栈', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+  const confirm = page.getByRole('dialog', { name: '删除防火墙规则', exact: true })
+  await expect(confirm.getByText('修改同时保存到系统配置。', { exact: false })).toBeVisible()
+  await confirm.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(confirm).not.toBeVisible()
+  expect(deleted.id).toBe('updated')
+  expect(deleted.revision).toBe('ports-2')
+  await expect(page.getByRole('tab', { name: '端口规则：0', exact: true })).toBeVisible()
+})
+
+test('deleting a management port collects source and explicit confirmation in its dialog', async ({
+  page,
+}) => {
+  let deleted: any
+  const status = {
+    backend: 'ufw',
+    installed: true,
+    enabled: true,
+    compatible: true,
+    managementSource: '192.0.2.25',
+    revision: 'protected-1',
+    pending: {} as any,
+    rules: [
+      {
+        id: 'panel-port',
+        kind: 'port',
+        protocol: 'tcp',
+        ports: '18790',
+        family: 'ipv4',
+        direction: 'in',
+        action: 'allow',
+        source: 'any',
+        destination: 'any',
+        editable: true,
+      },
+    ],
+    counts: { port: 1, ip: 0, forward: 0, region: 0 },
+    protectedPorts: [555, 18790],
+  }
+  await page.route('**/api/v1/system/firewall', (r) => r.fulfill({ json: status }))
+  await page.route('**/api/v1/tasks', (r) =>
+    r.fulfill({ json: [{ id: 'protected-task', state: 'succeeded' }] }),
+  )
+  await page.route('**/api/v1/system/firewall/delete', (r) => {
+    deleted = r.request().postDataJSON()
+    status.rules = []
+    status.pending = { deadline: Math.floor(Date.now() / 1000) + 120 }
+    return r.fulfill({ status: 202, json: { id: 'protected-task' } })
+  })
+  await page.goto('/system')
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+  const confirm = page.getByRole('dialog', { name: '删除防火墙规则', exact: true })
+  await expect(confirm.getByLabel('删除管理来源')).toHaveValue('192.0.2.25')
+  await expect(confirm.getByRole('button', { name: '删除', exact: true })).toBeDisabled()
+  await confirm.getByText('已确认影响并保留 SSH 会话', { exact: true }).click()
+  await confirm.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(confirm).not.toBeVisible()
+  expect(deleted).toMatchObject({ id: 'panel-port', source: '192.0.2.25', confirmedImpact: true })
+  await expect(page.getByRole('button', { name: '访问正常，确认保留', exact: true })).toBeVisible()
+})

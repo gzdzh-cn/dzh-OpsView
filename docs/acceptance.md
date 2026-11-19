@@ -465,3 +465,16 @@ a61c677c3de6e3608bc0719d47cf8504c21b2d022cb5beaca755315608942df8  opsview-linux-
 ```
 
 更新：`ov backup`、`ov update --version v0.1.3-rc.11`。本次未更新用户服务器或业务软件；整机重启、公网入站和云安全组仍需部署环境验收。SQLite schema 4 降级必须恢复升级前完整元数据，不能仅更换二进制。验收记录追加不修改公开标签和发布附件。
+
+## 2026-11-19 rc.12 防火墙开关与继承端口修复
+
+只读检查用户服务器发现，UFW 正常启用但存在宝塔遗留 `IN_BT` INPUT 跳转，旧兼容性判断因此锁死全部操作。本轮改为区分 UFW 生命周期限制与普通规则能力，在确认 `MANAGE_BUILTINS=no` 后保留外部链并允许管理；不自动修改系统默认配置。另修复 firewalld 的 `@port` 内部标记误判为服务附件，避免普通业务端口编辑被错误要求管理连接确认。
+
+- Go 全量 race/vet、前端类型检查和生产构建、7 项 Vitest、16 项安装器检查已通过。
+- 本地 Ubuntu 24.04 Linux arm64 隔离环境，真实 UFW/firewalld 均通过继承端口编辑、删除及独立客户端流量验证；UFW 真实关闭、开启及确认后，IPv4/IPv6 的 IN_BT 和 Docker/NAT 哨兵仍保留。管理来源保护、超时回退、转发、Ping、地区过滤和 Fail2ban 实际封禁/解封通过。
+- 浏览器新增开关启停、继承端口编辑删除、firewalld 双栈普通端口、管理端口删除来源确认测试；最新完整结果及 GitHub 发布结果完成后追加。
+- 未更新用户服务器，未修改其防火墙或服务。隔离容器测试不代表整机重启、公网入站、云安全组及全部自定义链组合验收。
+
+SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update --version v0.1.3-rc.12`；涉及管理通道的操作仍需在 120 秒内重新连接并确认。恢复要求见 [运维说明](operations.md)。
+
+最新前端构建后完整 37 项 Playwright 通过（1.4 分钟），含本轮全部防火墙交互；缓存导航 P95 为 66.6ms。相关 Go hostfirewall/executor race/vet 在最后的 firewalld 修正后再次通过。GitHub 四系统 Linux amd64、实际发布二进制及公开安装验证仍待发布流水线完成。

@@ -73,7 +73,8 @@ func (e *Engine) firewallSystem(ctx context.Context, op model.Operation, log fun
 	defer e.firewallMu.Unlock()
 	status, statusErr := output(ctx, "ufw", "status", "verbose")
 	active := strings.Contains(status, "Status: active")
-	compatible := statusErr == nil && runtimeconfig.UFWEnvironmentCompatible()
+	backend := e.hostFirewall().Detect(ctx)
+	compatible := statusErr == nil && backend.Backend == "ufw" && backend.Compatible
 	switch op.Name {
 	case "system.firewall-status":
 		numbered, _ := output(ctx, "ufw", "status", "numbered")
@@ -133,6 +134,9 @@ func (e *Engine) firewallSystem(ctx context.Context, op model.Operation, log fun
 		if !compatible || !active {
 			return nil, errors.New("仅支持重载兼容且已启用的 UFW")
 		}
+		if err := e.hostFirewall().CheckUFWLifecycle(); err != nil {
+			return nil, err
+		}
 		return model.Config{}, run(ctx, log, "", nil, nil, "ufw", "reload")
 	case "system.firewall-mode":
 		if err := e.ensureFirewallIdle(); err != nil {
@@ -146,7 +150,10 @@ func (e *Engine) firewallSystem(ctx context.Context, op model.Operation, log fun
 			return e.firewallAdminMode(ctx, op.Params, s, log)
 		}
 		if !compatible {
-			return nil, errors.New("UFW 不可用或防火墙体系不兼容")
+			return nil, fmt.Errorf("UFW 不可用或防火墙体系不兼容：%s", backend.Reason)
+		}
+		if err := e.hostFirewall().CheckUFWMode(ctx); err != nil {
+			return nil, err
 		}
 		if !op.Params.Bool("confirmedImpact") {
 			return nil, errors.New("请确认防火墙启停影响")
@@ -244,6 +251,9 @@ func (e *Engine) rollbackFirewallMode(ctx context.Context, p pendingFirewallMode
 			return err
 		}
 		return os.Remove(e.firewallModePath())
+	}
+	if err := e.hostFirewall().CheckUFWLifecycle(); err != nil {
+		return err
 	}
 	action := "disable"
 	if p.OldActive {

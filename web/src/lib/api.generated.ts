@@ -2173,6 +2173,10 @@ export interface components {
             enabled: boolean;
             compatible: boolean;
             reason: string;
+            warning: string;
+            modeAvailable: boolean;
+            modeReason: string;
+            managementSource: string;
             rules: components["schemas"]["FirewallRule"][];
             revision: string;
             counts: {

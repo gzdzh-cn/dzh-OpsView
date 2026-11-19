@@ -8,7 +8,7 @@ import { useSecurityActions } from '../composables/securityActions'
 import { post, errorText, type Config } from '../lib/api'
 const { data, busy: reading, error, load } = usePageQuery<Config>('/system/firewall', {})
 const { busy, taskId, run } = useSecurityActions(() => load(true), '/system/firewall/')
-const { busy: modeBusy, run: modeRun } = useSecurityActions(() => load(true))
+const { busy: modeBusy, taskId: modeTaskId, run: modeRun } = useSecurityActions(() => load(true))
 const tab = usePageState('firewall-category', 'port')
 const actionLabels: Record<string, string> = {
   allow: '放行',
@@ -32,6 +32,7 @@ const locked = computed(
   () =>
     !data.value.compatible || busy.value || modeBusy.value || Boolean(data.value.pending?.deadline),
 )
+const modeLocked = computed(() => locked.value || data.value.modeAvailable === false)
 const selected = ref<Config[]>([]),
   editOpen = ref(false),
   editing = ref(''),
@@ -39,7 +40,11 @@ const selected = ref<Config[]>([]),
 const source = ref(''),
   acknowledged = ref(false),
   modeOpen = ref(false)
+function prepareManagementSource() {
+  if (!source.value) source.value = data.value.managementSource || ''
+}
 function openMode() {
+  prepareManagementSource()
   acknowledged.value = false
   modeOpen.value = true
 }
@@ -48,6 +53,7 @@ function openImport() {
   importOpen.value = true
 }
 function openEdit(row?: Config) {
+  prepareManagementSource()
   editing.value = row?.id || ''
   form.value = row
     ? { ...row, countries: [...(row.countries || [])] }
@@ -113,31 +119,47 @@ async function save() {
   if (await run('save', { ...safeParams(), id: editing.value, rule: form.value }))
     editOpen.value = false
 }
-async function remove(row: Config) {
-  try {
-    await ElMessageBox.confirm(
-      `删除 ${row.ports || row.source || row.countries?.join('、')}？关联访问可能受到影响。`,
-      '删除防火墙规则',
-      { type: 'warning' },
+const deleteOpen = ref(false),
+  deleteTargets = ref<Config[]>([])
+const deleteNeedsProtection = computed(() =>
+  deleteTargets.value.some((row) => {
+    if (row.direction !== 'in' || (row.action !== 'allow' && !row.service)) return false
+    if (row.protocol === 'service' && row.service) return true
+    return (data.value.protectedPorts || []).some(
+      (port: number) =>
+        !row.ports ||
+        row.ports
+          .replaceAll(':', '-')
+          .split(',')
+          .some((span: string) => {
+            const [a, b] = span.split('-').map(Number)
+            return port >= a! && port <= (b ?? a)!
+          }),
     )
-    await run('delete', { ...safeParams(), id: row.id })
-  } catch {
-    /* cancelled */
-  }
+  }),
+)
+function remove(row: Config) {
+  openDelete([row])
 }
-async function removeSelected() {
-  try {
-    const targets = [...selected.value]
-    await ElMessageBox.confirm(`删除已勾选的 ${targets.length} 条规则？`, '批量删除', {
-      type: 'warning',
-    })
-    for (const row of targets) {
-      if (!(await run('delete', { ...safeParams(), id: row.id }))) break
-      if (data.value.pending?.deadline) break
+function removeSelected() {
+  openDelete([...selected.value])
+}
+function openDelete(targets: Config[]) {
+  prepareManagementSource()
+  acknowledged.value = false
+  deleteTargets.value = targets
+  deleteOpen.value = true
+}
+async function applyDelete() {
+  for (const row of [...deleteTargets.value]) {
+    if (!(await run('delete', { ...safeParams(), id: row.id }))) return
+    deleteTargets.value = deleteTargets.value.filter((target) => target.id !== row.id)
+    if (data.value.pending?.deadline) {
+      deleteOpen.value = false
+      return
     }
-  } catch {
-    /* cancelled */
   }
+  deleteOpen.value = false
 }
 async function confirmPending() {
   try {
@@ -328,7 +350,7 @@ function rowName(row: Config) {
         <span>防火墙</span>
         <el-switch
           :model-value="Boolean(data.enabled)"
-          :disabled="locked"
+          :disabled="modeLocked"
           aria-label="防火墙开关"
           @change="openMode"
         />
@@ -363,6 +385,12 @@ function rowName(row: Config) {
       <el-button v-if="error" text @click="load(true)">重试</el-button>
     </el-alert>
     <el-alert
+      v-if="data.warning || data.modeReason"
+      :title="[data.warning, data.modeReason].filter(Boolean).join(' ')"
+      type="info"
+      :closable="false"
+    />
+    <el-alert
       v-if="data.pending?.deadline"
       type="warning"
       :closable="false"
@@ -386,7 +414,7 @@ function rowName(row: Config) {
         立即回退
       </el-button>
     </el-alert>
-    <router-link v-if="taskId" to="/tasks">操作进行中，查看任务日志</router-link>
+    <router-link v-if="taskId || modeTaskId" to="/tasks">操作进行中，查看任务日志</router-link>
     <el-tabs v-model="tab" @tab-change="selected = []">
       <el-tab-pane
         v-for="(label, kind) in kinds"
@@ -576,6 +604,42 @@ function rowName(row: Config) {
     </details>
   </section>
   <el-dialog
+    v-model="deleteOpen"
+    title="删除防火墙规则"
+    width="560px"
+    :close-on-click-modal="false"
+  >
+    <p>将从系统防火墙删除以下 {{ deleteTargets.length }} 条规则，修改同时保存到系统配置。</p>
+    <p v-for="row in deleteTargets" :key="row.id">
+      {{ rowName(row) }} · {{ row.family }} · {{ actionLabels[row.action] || row.action }}
+    </p>
+    <el-alert
+      v-if="deleteNeedsProtection"
+      title="涉及 SSH 或面板访问。会临时保留管理来源通道，120 秒未确认自动回退。"
+      type="warning"
+      :closable="false"
+    />
+    <el-form v-if="deleteNeedsProtection" label-width="95px" class="security-form">
+      <el-form-item label="管理来源">
+        <el-input v-model="source" placeholder="实际客户端 IP/CIDR" aria-label="删除管理来源" />
+      </el-form-item>
+      <el-form-item>
+        <el-checkbox v-model="acknowledged">已确认影响并保留 SSH 会话</el-checkbox>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button :disabled="busy" @click="deleteOpen = false">取消</el-button>
+      <el-button
+        type="danger"
+        :loading="busy"
+        :disabled="!deleteTargets.length || (deleteNeedsProtection && (!acknowledged || !source))"
+        @click="applyDelete"
+      >
+        删除
+      </el-button>
+    </template>
+  </el-dialog>
+  <el-dialog
     v-model="editOpen"
     :title="`${editing ? '修改' : '添加'}${kinds[form.kind]}`"
     width="620px"
@@ -586,6 +650,7 @@ function rowName(row: Config) {
         <el-radio-group v-model="form.family">
           <el-radio value="ipv4">IPv4</el-radio>
           <el-radio value="ipv6">IPv6</el-radio>
+          <el-radio v-if="data.backend === 'firewalld'" value="dual">IPv4 + IPv6</el-radio>
         </el-radio-group>
       </el-form-item>
       <el-form-item v-if="data.backend === 'firewalld'" label="区域">

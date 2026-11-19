@@ -45,13 +45,21 @@ func TestLinuxFirewallAdmin(t *testing.T) {
 		}
 		return native(ctx, name, args...)
 	}
-	e.firewallClient.Compatible = func() bool { return true }
 	e.firewallClient.Preferred = backend
 	if backend == "ufw" {
 		if _, err := native(ctx, "ufw", "--force", "enable"); err != nil {
 			t.Fatal(err)
 		}
 		_, _ = native(ctx, "ufw", "allow", "18861/tcp", "comment", "inherited")
+		// Reproduce a migrated host: Baota/Fail2ban's independent INPUT chains
+		// must not disable UFW management, and UFW must never flush them.
+		for _, bin := range []string{"iptables", "ip6tables"} {
+			for _, args := range [][]string{{"-N", "IN_BT"}, {"-A", "IN_BT", "-p", "tcp", "--dport", "19998", "-j", "RETURN"}, {"-A", "INPUT", "-j", "IN_BT"}} {
+				if _, err := native(ctx, bin, args...); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
 	} else {
 		if _, err := native(ctx, "firewall-cmd", "--state"); err != nil {
 			t.Fatal(err)
@@ -64,7 +72,7 @@ func TestLinuxFirewallAdmin(t *testing.T) {
 		}
 	}
 	s, err := e.firewallSnapshot(ctx)
-	if err != nil || s.Backend != backend || !s.Enabled {
+	if err != nil || s.Backend != backend || !s.Enabled || !s.Compatible {
 		t.Fatal(s, err)
 	}
 	inherited := false
@@ -87,6 +95,56 @@ func TestLinuxFirewallAdmin(t *testing.T) {
 			t.Fatal(er)
 		}
 	}
+	t.Run("edit-and-delete-inherited-system-port", func(t *testing.T) {
+		var inherited hostfirewall.Rule
+		for _, row := range s.Rules {
+			if row.Ports == "18861" && (row.Family == "ipv4" || row.Family == "dual") {
+				inherited = row
+				break
+			}
+		}
+		if inherited.ID == "" {
+			t.Fatal("inherited port not found")
+		}
+		candidate := inherited
+		candidate.Ports = "18860"
+		if _, err := e.firewallAdmin(ctx, model.Operation{Name: "system.firewall-admin-save", Params: model.Config{"revision": s.Revision, "id": inherited.ID, "rule": candidate}}, func(line string) { t.Log(line) }); err != nil {
+			t.Fatal(err)
+		}
+		actual, err := e.firewallSnapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, row := range actual.Rules {
+			if row.Ports == "18861" && (backend == "firewalld" || row.Family == "ipv4") {
+				t.Fatal("old inherited port remained")
+			}
+			if row.Ports == "18860" {
+				found = true
+				if !row.Runtime || !row.Permanent {
+					t.Fatal("edited rule was not applied in both planes", row)
+				}
+				if _, err := e.firewallAdmin(ctx, model.Operation{Name: "system.firewall-admin-delete", Params: model.Config{"revision": actual.Revision, "id": row.ID}}, func(line string) { t.Log(line) }); err != nil {
+					t.Fatal(err)
+				}
+				// A firewalld attachment is dual-stack; a modification expands it
+				// into individual rules, so refresh the revision before each delete.
+				actual, err = e.firewallSnapshot(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("edited port missing")
+		}
+		for _, row := range actual.Rules {
+			if row.Ports == "18860" {
+				t.Fatal("deleted port remained in system state", row)
+			}
+		}
+	})
 	save(rule, "")
 	s, err = e.firewallSnapshot(ctx)
 	if err != nil {
@@ -219,7 +277,6 @@ func TestLinuxFirewallAdmin(t *testing.T) {
 	}
 	if os.Getenv("OPSVIEW_FIREWALL_PEER") != "" {
 		t.Run("independent-traffic", func(t *testing.T) { testFirewallTraffic(t, e, backend, save, rule, region) })
-		t.Run("fail2ban-log-ban", func(t *testing.T) { testFirewallProtectionLive(t, e, backend) })
 	}
 	// Exercise restart recovery of a durable, expired transaction.
 	newRule := rule
@@ -245,6 +302,39 @@ func TestLinuxFirewallAdmin(t *testing.T) {
 	foreign, err := native(ctx, "iptables-save")
 	if err != nil || !strings.Contains(foreign, "-A DOCKER-USER -s 198.51.100.0/24 -j DROP") || !strings.Contains(foreign, "-A FOREIGN-NAT -p tcp") {
 		t.Fatal("foreign / Docker rules changed", err, foreign)
+	}
+	if backend == "ufw" {
+		t.Run("coexisting-ufw-switch", func(t *testing.T) {
+			source := os.Getenv("OPSVIEW_FIREWALL_PEER_IP")
+			if source == "" {
+				source = "127.0.0.1"
+			}
+			for _, enabled := range []bool{false, true} {
+				if _, err := e.firewallSystem(ctx, model.Operation{Name: "system.firewall-mode", Params: model.Config{"enabled": enabled, "confirmedImpact": true, "source": source}}, func(line string) { t.Log(line) }); err != nil {
+					t.Fatal(err)
+				}
+				actual, err := e.firewallSnapshot(ctx)
+				if err != nil || actual.Enabled != enabled || !actual.Compatible || len(actual.Rules) == 0 {
+					t.Fatal("mode did not reach the real system", actual, err)
+				}
+				if _, err := e.firewallSystem(ctx, model.Operation{Name: "system.firewall-confirm", Params: model.Config{"connected": true}}, func(string) {}); err != nil {
+					t.Fatal(err)
+				}
+				for _, bin := range []string{"iptables-save", "ip6tables-save"} {
+					text, err := native(ctx, bin)
+					if err != nil || !strings.Contains(text, "-A INPUT -j IN_BT") || !strings.Contains(text, "-A IN_BT -p tcp") {
+						t.Fatal("external INPUT chain lost", text, err)
+					}
+				}
+				text, err := native(ctx, "iptables-save")
+				if err != nil || !strings.Contains(text, "-A DOCKER-USER -s 198.51.100.0/24 -j DROP") || !strings.Contains(text, "-A FOREIGN-NAT -p tcp") {
+					t.Fatal("external Docker/NAT sentinel lost on UFW toggle", text, err)
+				}
+			}
+		})
+	}
+	if os.Getenv("OPSVIEW_FIREWALL_PEER") != "" {
+		t.Run("fail2ban-log-ban", func(t *testing.T) { testFirewallProtectionLive(t, e, backend) })
 	}
 	fmt.Fprintln(os.Stdout, "verified firewall backend:", backend)
 }

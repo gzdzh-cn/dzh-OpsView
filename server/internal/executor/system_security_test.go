@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"opsview/internal/hostfirewall"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
 	"os"
@@ -22,6 +23,11 @@ func securityFixture(t *testing.T) (*Engine, sshSettings) {
 	t.Helper()
 	dir := t.TempDir()
 	e := &Engine{Root: dir, sshConfigPath: filepath.Join(dir, "sshd_config"), PanelConfigPath: filepath.Join(dir, "panel.json")}
+	e.firewallClient = hostfirewall.Default()
+	e.firewallClient.DefaultsPath = filepath.Join(dir, "ufw-defaults")
+	if err := os.WriteFile(e.firewallClient.DefaultsPath, []byte("MANAGE_BUILTINS=no\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(dir, "firewall"), 0700); err != nil {
 		t.Fatal(err)
 	}

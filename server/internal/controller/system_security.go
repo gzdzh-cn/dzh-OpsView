@@ -19,6 +19,7 @@ func (c *Controller) systemSecurity(w http.ResponseWriter, r *http.Request) {
 				fail(w, 500, "保存防火墙观察记录失败")
 				return
 			}
+			data["managementSource"] = clientIP(r)
 			send(w, 200, data)
 			return
 		}

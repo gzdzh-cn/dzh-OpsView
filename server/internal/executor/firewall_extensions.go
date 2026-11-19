@@ -158,6 +158,9 @@ func (e *Engine) applyFirewallExtensions(ctx context.Context, backend string, ol
 	if backend == "firewalld" {
 		return e.applyFirewalldExtensions(ctx, old, next, active, log)
 	}
+	if err := e.hostFirewall().CheckUFWLifecycle(); err != nil {
+		return err
+	}
 	// Both address families are validated before either file is activated.
 	type change struct {
 		path          string

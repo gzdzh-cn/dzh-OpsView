@@ -8,7 +8,6 @@ import (
 	"net"
 	"opsview/internal/hostfirewall"
 	"opsview/internal/model"
-	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
 	"os"
 	"path/filepath"
@@ -38,7 +37,6 @@ func (e *Engine) hostFirewall() *hostfirewall.Client {
 		return e.firewallClient
 	}
 	c := hostfirewall.Default()
-	c.Compatible = runtimeconfig.UFWEnvironmentCompatible
 	var backend model.Config
 	if e.readFirewallAdmin("backend", &backend) == nil {
 		c.Preferred = backend.String("name")
@@ -128,11 +126,22 @@ func (e *Engine) firewallAdminStatus(ctx context.Context) (model.Config, error) 
 	}
 	docker, _ := output(ctx, "iptables", "-S", "DOCKER-USER")
 	docker6, _ := output(ctx, "ip6tables", "-S", "DOCKER-USER")
+	modeReason := ""
+	if s.Compatible && s.Backend == "ufw" {
+		if err := c.CheckUFWMode(ctx); err != nil {
+			modeReason = err.Error()
+		}
+	}
+	if s.Compatible && s.Backend == "firewalld" {
+		if err := c.CheckForeignTables(ctx); err != nil {
+			modeReason = err.Error()
+		}
+	}
 	ping := false
 	var settings firewallExtensionState
 	_ = e.readFirewallAdmin("extensions", &settings)
 	ping = settings.Ping
-	return model.Config{"backend": s.Backend, "installed": s.Installed, "enabled": s.Enabled, "compatible": s.Compatible, "reason": s.Reason, "rules": s.Rules, "revision": s.Revision, "counts": counts, "zones": s.Zones, "defaultZone": firewallDefaultZone(ctx, c, s.Backend), "raw": s.Raw, "protectedPorts": ports, "portReason": portReason, "pending": pending, "pingBlocked": ping, "dockerRules": docker, "dockerIPv6Rules": docker6, "externalRestrictions": "云安全组需单独配置；监听和放行不代表公网可达"}, nil
+	return model.Config{"backend": s.Backend, "installed": s.Installed, "enabled": s.Enabled, "compatible": s.Compatible, "reason": s.Reason, "warning": s.Warning, "modeAvailable": s.Compatible && modeReason == "", "modeReason": modeReason, "rules": s.Rules, "revision": s.Revision, "counts": counts, "zones": s.Zones, "defaultZone": firewallDefaultZone(ctx, c, s.Backend), "raw": s.Raw, "protectedPorts": ports, "portReason": portReason, "pending": pending, "pingBlocked": ping, "dockerRules": docker, "dockerIPv6Rules": docker6, "externalRestrictions": "云安全组需单独配置；监听和放行不代表公网可达"}, nil
 }
 func decodeFirewallRule(v any) (hostfirewall.Rule, error) {
 	var r hostfirewall.Rule
@@ -350,9 +359,10 @@ func (e *Engine) firewallAdmin(ctx context.Context, op model.Operation, log func
 	}
 	danger := false
 	for _, ch := range tx.Changes {
-		if ch.Before != nil && (ch.Before.Action == "allow" || ch.Before.Service != "") && (ch.After == nil || ch.Before.Key() != ch.After.Key()) {
+		serviceAttachment := ch.Before != nil && ch.Before.Protocol == "service" && ch.Before.Service != ""
+		if ch.Before != nil && (ch.Before.Action == "allow" || serviceAttachment) && (ch.After == nil || ch.Before.Key() != ch.After.Key()) {
 			for _, port := range ports {
-				if ch.Before.Direction == "in" && (hostfirewall.Contains(ch.Before.Ports, port) || ch.Before.Service != "") {
+				if ch.Before.Direction == "in" && (hostfirewall.Contains(ch.Before.Ports, port) || serviceAttachment) {
 					danger = true
 				}
 			}
