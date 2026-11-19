@@ -478,3 +478,22 @@ a61c677c3de6e3608bc0719d47cf8504c21b2d022cb5beaca755315608942df8  opsview-linux-
 SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update --version v0.1.3-rc.12`；涉及管理通道的操作仍需在 120 秒内重新连接并确认。恢复要求见 [运维说明](operations.md)。
 
 最新前端构建后完整 37 项 Playwright 通过（1.4 分钟），含本轮全部防火墙交互；缓存导航 P95 为 66.6ms。相关 Go hostfirewall/executor race/vet 在最后的 firewalld 修正后再次通过。GitHub 四系统 Linux amd64、实际发布二进制及公开安装验证仍待发布流水线完成。
+
+### rc.12 发布与公开安装验证完成
+
+发布提交 `3dd4ae38edfdf6d0582e4d9581637aecd3776deb`，标签 `v0.1.3-rc.12`。[发布流水线 44443016290](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44443016290) 的 build、publish、verify-public-install 全部成功。
+
+- Go 全量 race/vet、前端类型检查和生产构建、7 项 Vitest、安装器、文件及 SSH/UFW 回退检查通过；四系统离线测试、真实网站、MySQL/PostgreSQL/Redis、日志轮转和 PHP Session 检查通过。
+- Linux amd64 的 Ubuntu 22.04/24.04、Debian 12/13 均完成 UFW/firewalld 独立客户端流量测试，含继承端口编辑删除、IPv4/IPv6、出站规则、转发、地区过滤、管理来源保护、回退和 Fail2ban；UFW 实际关闭再开启仍保留外部链及原规则。
+- 源码服务与实际发布二进制分别完成全部 37 项 Playwright；真实 systemd 安装、更新和故障回退成功。临时 Ubuntu 24.04 从公开固定标签下载、校验、安装、登录、改端口和执行 `ov update` 成功。
+- [常规检查 44443006130](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44443006130) 的 check、deployment、websites 及 [候选构建 44443005884](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44443005884) 全部成功。
+- 独立工作站下载公开安装脚本和校验清单，核对摘要及脚本与仓库一致；完整面板包下载超时，不把部分下载视为成功。完整公开下载及安装验证以发布流水线为依据。
+
+公开面板包为 24,316,887 字节，附件摘要与公开校验清单一致：
+
+```text
+6355f4300ff136431a0402c3f4bfc96a7d62ded67c0dd45d564716b09623309d  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+```
+
+更新：`ov backup`、`ov update --version v0.1.3-rc.12`。本次未自动更新用户服务器或修改其防火墙；四系统隔离测试不替代整机重启、公网入站和云安全组验收。SQLite 保持 schema 4；历史发布包及标签不变，本次验收追加不修改已公开标签或附件。
