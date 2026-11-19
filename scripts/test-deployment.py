@@ -66,7 +66,7 @@ def api(path, payload=None, opener=None, scheme='https'):
         return json.load(response)
 
 def enter(opener, scheme='https'):
-    entry = json.loads(CONFIG.read_text()).get('entry', '')
+    entry = (json.loads(CONFIG.read_text()) if CONFIG.exists() else {}).get('entry', '')
     if entry:
         with opener.open(f'{scheme}://127.0.0.1:{PORT}/{entry}') as response:
             assert response.status == 200
@@ -179,7 +179,8 @@ with tempfile.TemporaryDirectory() as stage:
     assert 'ov <命令>' in run(['ov'])  # PIPE is noninteractive; never waits for a menu selection.
     run(['ov','status'])
     info = run(['ov','info'])
-    assert username in info and password not in info and '密码不保存' in info
+    assert username in info and password not in info and '密码：********' in info
+    assert '/' + json.loads(CONFIG.read_text())['entry'] in info
     run(['ov','info','--public-host','ops.example.com'])
     assert json.loads(CONFIG.read_text())['publicHost'] == 'ops.example.com'
     run(['ov','init'], ok=False)
