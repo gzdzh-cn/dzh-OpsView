@@ -536,3 +536,10 @@ SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update -
 ## 2026-11-19 rc.14 概览 GitHub 入口（发布前检查）
 
 概览右上角新增 GitHub 图标，在新标签页打开项目仓库；提供悬浮说明、键盘焦点及移动端 44px 点击区域。版本、OpenAPI、安装和更新文档统一至 `v0.1.3-rc.14`。本地 Go 全量 race/vet、前端类型检查与生产构建、7 项 Vitest、16 项安装器检查通过；桌面/移动端布局和导航相关 2 项 Playwright 通过并检查截图。无数据库迁移，SQLite 沿用 schema 4。最终 Linux 包及公开安装结果通过后追加；本次不自动更新用户服务器。
+
+
+### rc.14 发布中止及 rc.15 测试修正
+
+[rc.14 发布构建 44456308309](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44456308309) 的页面测试为 37 项通过、1 项失败，尚未公开 Release。失败是小屏 MessageBox 测试测到约 1.5px 位移：测试只等待自身和子节点动画，而 Element Plus 在外层 `.el-overlay-message-box` 上执行入场位移。修正测量辅助函数，使其同时等待祖先元素的有限动画，保留原有 1px 固定布局断言。使用新标签 `v0.1.3-rc.15` 重新执行发布验证，不移动 rc.14 标签，不跳过检查。
+
+修正后小屏 MessageBox 用例连续运行 10 次通过；重新构建 rc.15 前端后，全部 38 项 Playwright 通过（1.5 分钟），缓存导航 P95 为 66.7ms。最终 Linux 包及公开安装结果由 rc.15 发布流水线继续验证。

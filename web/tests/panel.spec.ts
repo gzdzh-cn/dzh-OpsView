@@ -6,9 +6,13 @@ const username = 'e2e-admin',
 
 async function overlayGeometry(overlay: Locator) {
   await overlay.evaluate(async (el) => {
+    // MessageBox animates its enclosing overlay, which also moves the dialog.
+    const animations = new Set(el.getAnimations({ subtree: true }))
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+      for (const animation of parent.getAnimations()) animations.add(animation)
+    }
     await Promise.all(
-      el
-        .getAnimations({ subtree: true })
+      [...animations]
         .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
         .map((animation) => animation.finished.catch(() => {})),
     )
