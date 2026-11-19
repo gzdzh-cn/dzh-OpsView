@@ -543,3 +543,24 @@ SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update -
 [rc.14 发布构建 44456308309](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44456308309) 的页面测试为 37 项通过、1 项失败，尚未公开 Release。失败是小屏 MessageBox 测试测到约 1.5px 位移：测试只等待自身和子节点动画，而 Element Plus 在外层 `.el-overlay-message-box` 上执行入场位移。修正测量辅助函数，使其同时等待祖先元素的有限动画，保留原有 1px 固定布局断言。使用新标签 `v0.1.3-rc.15` 重新执行发布验证，不移动 rc.14 标签，不跳过检查。
 
 修正后小屏 MessageBox 用例连续运行 10 次通过；重新构建 rc.15 前端后，全部 38 项 Playwright 通过（1.5 分钟），缓存导航 P95 为 66.7ms。最终 Linux 包及公开安装结果由 rc.15 发布流水线继续验证。
+
+
+### rc.15 发布与公开安装验证完成
+
+发布提交 `e1b22e85b5a9d97638a335766f294b3e905da38c`，标签 `v0.1.3-rc.15`。[发布流水线 44458149097](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44458149097) 的 build、publish、verify-public-install 全部成功，总耗时 23 分 59 秒。rc.14 没有公开 Release，原标签保留。
+
+- Go race/vet、前端类型检查、生产构建、7 项 Vitest、安装器、文件及真实 SSH/UFW 回退检查通过。
+- 四系统离线测试、真实网站部署、MySQL/PostgreSQL/Redis、日志轮转、PHP Session 以及 Ubuntu 22.04/24.04、Debian 12/13 的 UFW/firewalld 独立客户端验证通过。
+- 源码服务和最终 Linux 发布二进制分别完成全部 38 项 Playwright，包含修正后的小屏弹窗固定布局测量；真实 systemd 安装、更新及故障回退通过。
+- 临时 Ubuntu 24.04 从公开固定标签下载、校验、安装、登录、修改端口并执行 `ov update` 成功。
+- 已从公开 Release 页面确认三个发布附件存在及其摘要。完整附件公开下载与安装验证以发布流水线为依据，本机访问 GitHub 偶有超时，不将部分下载视为成功。
+
+公开 Release 页面显示的附件 SHA-256：
+
+```text
+324eaacbefd80db6e6d9370be9cd9b9fdb5c008a0fbd1deb216bb4d8c05c1de1  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+83b2b1df43811f69a8716030db0848854487bd7131a23d2a5531051c485cf5b8  SHA256SUMS
+```
+
+更新：`ov backup`、`ov update --version v0.1.3-rc.15`。本版为预发布测试版，不改变正式 latest 入口；SQLite 保持 schema 4，无新增数据库迁移。本次未更新用户服务器。整机重启、公网入站及云安全组仍需部署环境验收；回退需要恢复更新前配套程序、运行配置及元数据，详见 [运维说明](operations.md#rc15-概览-github-入口)。本次记录追加不修改已公开标签或附件。
