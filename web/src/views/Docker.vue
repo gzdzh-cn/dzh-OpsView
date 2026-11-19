@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '../components/AppDialog.vue'
 import PluginMarket from '../components/PluginMarket.vue'
 import DataList from '../components/DataList.vue'
 import { ref, computed } from 'vue'
@@ -256,7 +257,7 @@ async function install() {
       </p>
     </div>
   </section>
-  <el-dialog v-model="showLog" :title="logTitle" width="850px">
+  <AppDialog v-model="showLog" :title="logTitle" width="850px">
     <pre class="log-box">{{ content }}</pre>
-  </el-dialog>
+  </AppDialog>
 </template>

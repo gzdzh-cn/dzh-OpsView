@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from './DialogActions.vue'
+import AppDialog from './AppDialog.vue'
 import { ref, watch, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, downloadPOST, toBase64, errorText, type Config, type Resource } from '../lib/api'
@@ -235,7 +237,7 @@ async function download() {
     </el-button>
     <small v-else-if="started">本轮扫描完成</small>
   </div>
-  <el-dialog
+  <AppDialog
     v-model="open"
     :title="current.key ? 'Redis 键管理' : '添加 Redis 键'"
     width="min(850px,94vw)"
@@ -290,7 +292,7 @@ async function download() {
           placeholder="单次编辑最多 1 MiB"
         />
       </el-form-item>
-      <el-form-item>
+      <DialogActions>
         <el-button type="primary" :loading="busy" @click="save()">保存（保留 TTL）</el-button>
         <el-button
           v-if="current.key && ['hash', 'list', 'set', 'zset'].includes(draft.type)"
@@ -298,7 +300,7 @@ async function download() {
         >
           删除指定成员
         </el-button>
-      </el-form-item>
+      </DialogActions>
       <template v-if="current.key">
         <el-form-item label="TTL 秒">
           <el-input-number v-model="draft.ttl" :min="-1" :max="2147483647" />
@@ -309,13 +311,13 @@ async function download() {
           <el-input v-model="draft.target" />
           <el-button @click="save('rename')">重命名</el-button>
         </el-form-item>
-        <el-form-item>
+        <DialogActions>
           <el-button type="danger" @click="save('delete')">删除键</el-button>
-        </el-form-item>
+        </DialogActions>
       </template>
     </el-form>
     <p v-else>此类型或大小当前仅支持只读查看。</p>
-  </el-dialog>
+  </AppDialog>
 </template>
 <style scoped>
 .redis-content {

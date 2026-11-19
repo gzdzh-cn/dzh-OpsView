@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from './AppDialog.vue'
 import { usePageQuery } from '../composables/pageQuery'
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -190,12 +191,17 @@ defineExpose({
       </el-table-column>
     </DataList>
   </ListPanel>
-  <el-dialog :model-value="!!details" :title="details?.name" @close="details = undefined">
+  <AppDialog
+    size="small"
+    :model-value="!!details"
+    :title="details?.name"
+    @close="details = undefined"
+  >
     <p>{{ details?.description }}</p>
     <p>权限：{{ details?.permissions?.join('、') || '无额外权限' }}</p>
     <p>依赖：{{ details?.dependencies?.join('、') || '无' }}</p>
-  </el-dialog>
-  <el-dialog
+  </AppDialog>
+  <AppDialog
     v-model="pluginOpen"
     :title="(selected && installed(selected) ? '设置 ' : '安装 ') + (selected?.name || '')"
     width="540px"
@@ -223,13 +229,13 @@ defineExpose({
         {{ selected && installed(selected) ? '保存设置' : '安装' }}
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="importOpen" title="导入签名插件" width="700px">
+  </AppDialog>
+  <AppDialog v-model="importOpen" title="导入签名插件" width="700px">
     <p>名称从签名清单自动读取，安装前由执行器验证受信任签名与权限。</p>
     <CodeEditor v-model="importText" />
     <template #footer>
       <el-button @click="importOpen = false">取消</el-button>
       <el-button type="primary" @click="importPackage">验证并导入</el-button>
     </template>
-  </el-dialog>
+  </AppDialog>
 </template>

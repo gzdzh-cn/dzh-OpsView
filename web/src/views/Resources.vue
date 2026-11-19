@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppDialog from '../components/AppDialog.vue'
+import AppDrawer from '../components/AppDrawer.vue'
 import { usePageState } from '../composables/pageState'
 import DataList from '../components/DataList.vue'
 import { computed, ref } from 'vue'
@@ -450,7 +452,7 @@ async function sync(row: Resource) {
     </div>
   </section>
   <ResourceForm v-model="dialog" :kind="kind" :editing="editing" />
-  <el-dialog v-model="redisRestoreOpen" title="恢复 Redis 到新实例" width="min(600px,90vw)">
+  <AppDialog v-model="redisRestoreOpen" title="恢复 Redis 到新实例" width="min(600px,90vw)">
     <p>
       先在软件市场安装另一个 Redis
       实例。目标必须为空且没有关联资源；源实例和持久化文件保留，成功后再切换应用连接。
@@ -478,8 +480,8 @@ async function sync(row: Resource) {
         校验并恢复
       </el-button>
     </template>
-  </el-dialog>
-  <el-drawer
+  </AppDialog>
+  <AppDrawer
     :model-value="!!details"
     :title="details?.name + ' · 资源详情'"
     size="540px"
@@ -501,8 +503,8 @@ async function sync(row: Resource) {
       </div>
       <pre class="log-box">{{ JSON.stringify(details.config, null, 2) }}</pre>
     </template>
-  </el-drawer>
-  <el-dialog v-model="migrationOpen" title="迁移数据库到新实例" width="560px">
+  </AppDrawer>
+  <AppDialog v-model="migrationOpen" title="迁移数据库到新实例" width="560px">
     <div class="notice warn">
       迁移前停止应用写入。支持 MySQL 8.4 内迁移、PostgreSQL public schema
       向相同或更高版本迁移；完成后原库仍保留。
@@ -525,8 +527,8 @@ async function sync(row: Resource) {
         继续迁移
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="certificateOpen" title="上传站点证书" width="650px">
+  </AppDialog>
+  <AppDialog v-model="certificateOpen" title="上传站点证书" width="650px">
     <el-form label-position="top">
       <el-form-item label="PEM 证书链">
         <el-input v-model="certificateValues.certificate" type="textarea" :rows="6" />
@@ -539,8 +541,8 @@ async function sync(row: Resource) {
       <el-button @click="certificateOpen = false">取消</el-button>
       <el-button type="primary" @click="uploadCertificate">验证并应用</el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="showLog" :title="logTitle" width="800px">
+  </AppDialog>
+  <AppDialog v-model="showLog" :title="logTitle" width="800px">
     <pre class="log-box">{{ logs }}</pre>
-  </el-dialog>
+  </AppDialog>
 </template>

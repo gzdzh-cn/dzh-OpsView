@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from './AppDialog.vue'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePanel } from '../stores/panel'
@@ -181,14 +182,13 @@ async function save() {
 }
 </script>
 <template>
-  <el-dialog
+  <AppDialog
     v-model="visible"
     :title="title"
     width="min(760px,96vw)"
     :close-on-click-modal="false"
     destroy-on-close
     class="site-create-dialog"
-    top="5vh"
   >
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <el-form
@@ -367,8 +367,8 @@ async function save() {
         {{ saved ? '重试部署' : editing ? '保存并部署' : '创建并部署' }}
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog
+  </AppDialog>
+  <AppDialog
     v-model="directoryOpen"
     title="选择 /www/wwwroot 项目目录"
     width="min(560px,94vw)"
@@ -407,24 +407,9 @@ async function save() {
       layout="prev,pager,next"
       @current-change="browseDirectory"
     />
-  </el-dialog>
+  </AppDialog>
 </template>
 <style scoped>
-:global(.site-create-dialog) {
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh;
-  margin-bottom: 0;
-}
-:global(.site-create-dialog .el-dialog__body) {
-  overflow: auto;
-  min-height: 0;
-}
-:global(.site-create-dialog .el-dialog__header),
-:global(.site-create-dialog .el-dialog__footer) {
-  flex-shrink: 0;
-}
-
 .site-create-form :deep(.el-checkbox) {
   height: auto;
   white-space: normal;
@@ -433,12 +418,6 @@ async function save() {
 .site-create-form :deep(.el-checkbox__label) {
   white-space: normal;
   line-height: 1.6;
-}
-.site-create-form {
-  padding: 4px 12px 0 0;
-}
-.site-create-form :deep(.el-form-item) {
-  margin-bottom: 14px;
 }
 .site-create-form :deep(.el-select) {
   width: 100%;
@@ -456,13 +435,6 @@ async function save() {
 @media (max-width: 600px) {
   .site-create-form {
     padding: 0;
-  }
-  .site-create-form :deep(.el-form-item__label) {
-    width: 84px !important;
-  }
-  .site-create-form :deep(.el-form-item__content) {
-    margin-left: 0 !important;
-    min-width: 0;
   }
   .site-create-form :deep(.el-date-editor) {
     max-width: 100%;

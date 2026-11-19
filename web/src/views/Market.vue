@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '../components/AppDialog.vue'
 import { usePageState } from '../composables/pageState'
 import PluginMarket from '../components/PluginMarket.vue'
 import DataList from '../components/DataList.vue'
@@ -544,7 +545,7 @@ async function importPackage() {
   <Resources v-if="tab === 'repositories'" kind="repository" />
   <PluginMarket ref="pluginMarket" category="all" headless />
   <SoftwareSettings v-model="settingsOpen" :resource="settingsResource" />
-  <el-dialog v-model="chooseOpen" title="选择实例" width="600px">
+  <AppDialog size="small" v-model="chooseOpen" title="选择实例" width="600px">
     <DataList
       :key="'Market-2' + ':' + tab"
       :state-key="'Market-2' + ':' + tab"
@@ -570,8 +571,9 @@ async function importPackage() {
         </template>
       </el-table-column>
     </DataList>
-  </el-dialog>
-  <el-dialog
+  </AppDialog>
+  <AppDialog
+    size="small"
     :model-value="!!introduction"
     :title="introduction?.title"
     width="650px"
@@ -579,7 +581,6 @@ async function importPackage() {
   >
     <div class="software-intro">
       <span class="software-logo green">{{ introduction?.symbol }}</span>
-      <h2>{{ introduction?.title }}</h2>
       <p>{{ introduction?.description }}</p>
       <p v-if="introduction?.kind !== 'plugin'">
         独立版本、配置、日志与数据目录；由 systemd 托管，所有安装和配置变更均可追踪。
@@ -589,9 +590,9 @@ async function importPackage() {
       </p>
       <p v-else>插件通过声明式表单配置，安装前会校验来源、权限与兼容范围。</p>
     </div>
-  </el-dialog>
+  </AppDialog>
   <ResourceForm v-model="install" kind="instance" :initial="initial" />
-  <el-dialog
+  <AppDialog
     v-model="importOpen"
     :title="importType === 'catalog' ? '导入签名安装配方' : '导入签名插件清单'"
     width="700px"
@@ -607,7 +608,7 @@ async function importPackage() {
       <el-button @click="importOpen = false">取消</el-button>
       <el-button type="primary" :loading="busy" @click="importPackage">验证并导入</el-button>
     </template>
-  </el-dialog>
+  </AppDialog>
 </template>
 
 <style scoped>

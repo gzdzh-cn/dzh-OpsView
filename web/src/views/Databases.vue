@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from '../components/DialogActions.vue'
+import AppDialog from '../components/AppDialog.vue'
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -546,7 +548,7 @@ async function batchBackup() {
   />
   <ResourceForm v-model="backupForm" :kind="formKind" :initial="formInitial" @saved="refresh" />
   <SoftwareSettings v-model="settings" :resource="instance" />
-  <el-dialog
+  <AppDialog
     :model-value="!!mode"
     :title="`${titles[mode] || mode}${current ? ' · ' + current.name : ''}`"
     width="min(1040px,94vw)"
@@ -567,7 +569,7 @@ async function batchBackup() {
           v-model="identity.code"
           placeholder="双因素验证码"
         />
-        <el-button @click="reveal">验证并查看</el-button>
+        <DialogActions><el-button @click="reveal">验证并查看</el-button></DialogActions>
         <div v-if="secret" class="page-toolbar">
           <code>{{ secret }}</code>
           <el-button @click="copy(secret)">复制密码</el-button>
@@ -881,12 +883,12 @@ async function batchBackup() {
         确认提交
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="structureOpen" title="表结构" width="min(900px,94vw)">
+  </AppDialog>
+  <AppDialog v-model="structureOpen" title="表结构" width="min(900px,94vw)">
     <pre class="db-readout">{{ read.content }}</pre>
     <pre v-if="read.indexes">{{ read.indexes }}</pre>
-    <el-button @click="downloadText">导出结构</el-button>
-  </el-dialog>
+    <DialogActions><el-button @click="downloadText">导出结构</el-button></DialogActions>
+  </AppDialog>
 </template>
 <style scoped>
 .text-link {

@@ -46,7 +46,7 @@ async function readLogs() {
     <div class="notice">
       监听端口与防火墙放行是不同状态。云厂商安全组需单独检查；已有服务只检测，不自动接管。
     </div>
-    <section class="surface" style="margin-bottom: 20px">
+    <section class="surface" style="margin-bottom: var(--ops-space)">
       <div class="page-toolbar">
         <h3>监听端口</h3>
         <el-button :loading="busy" @click="load">刷新</el-button>
@@ -92,8 +92,7 @@ async function readLogs() {
     </section>
   </template>
   <section v-if="tab === 'logs'" class="surface system-detail">
-    <h3>服务日志</h3>
-    <div class="page-toolbar-left" style="margin-bottom: 18px">
+    <div class="page-toolbar">
       <el-input v-model="unit" placeholder="opsview-panel.service" style="max-width: 400px" />
       <el-button type="primary" @click="readLogs">读取最近 200 行</el-button>
     </div>

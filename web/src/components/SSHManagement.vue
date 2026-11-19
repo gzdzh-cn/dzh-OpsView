@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from './AppDialog.vue'
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DataList from './DataList.vue'
@@ -221,7 +222,7 @@ async function addKey() {
       </el-collapse>
     </template>
   </section>
-  <el-dialog v-model="editOpen" title="SSH 连接设置" width="640px" :close-on-click-modal="false">
+  <AppDialog v-model="editOpen" title="SSH 连接设置" width="640px" :close-on-click-modal="false">
     <el-alert :title="data.matchWarning" type="warning" :closable="false" />
     <el-form label-width="135px" class="security-form">
       <el-form-item label="监听端口">
@@ -264,8 +265,8 @@ async function addKey() {
         校验并应用
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="keyOpen" title="添加 root 公钥" width="600px" @closed="key = ''">
+  </AppDialog>
+  <AppDialog size="small" v-model="keyOpen" title="添加 root 公钥" width="600px" @closed="key = ''">
     <el-input
       v-model="key"
       type="textarea"
@@ -278,5 +279,5 @@ async function addKey() {
         添加公钥
       </el-button>
     </template>
-  </el-dialog>
+  </AppDialog>
 </template>

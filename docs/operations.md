@@ -322,3 +322,15 @@ ov update --version v0.1.3-rc.12
 UFW 的 `MANAGE_BUILTINS` 必须明确为 `no`，配置不可读或可能清空外部链时拒绝操作；不要通过删除外部链或待确认记录绕过提示。独立 nftables 入站基链单独限制开关，普通 UFW 规则仍可逐项管理。firewalld 外部链的生命周期保护保持不变。
 
 SQLite 继续使用 schema 4，无新增迁移。从 rc.11 更新失败沿用安装器自动回退；成功后退回 rc.11，应先处理 pending 事务，再按已有完整快照恢复流程切换旧程序和相匹配元数据。从 rc.10 或更旧版本升级后的降级仍按前一节恢复 schema 3 的完整旧快照。
+
+
+## rc.13 全站 UI 更新与回退
+
+```bash
+ov backup
+ov update --version v0.1.3-rc.13
+```
+
+本版统一紧凑页面、固定高度弹窗、固定顶部与底部操作以及移动端显示。更新后通过 `ov info` 查看实际登录地址，并检查插件设置、网站添加、文件编辑和系统安全页面；现有账号及业务数据沿用。
+
+SQLite 沿用 schema 4，没有新增迁移。更新失败由安装器恢复更新前快照。成功后若需回退，先处理全部 pending 事务并停止新操作，按本手册已有完整快照恢复步骤，将 `OPSVIEW_ROLLBACK` 指向本次更新前目录，同时恢复匹配的 `panel/`（含 SQLite、WAL 和 master.key）、`bin/`、单元和 `panel.json`，保留 systemd drop-in 及业务数据；不要仅替换程序后混用不同时间的元数据与密钥。恢复后验证 `ov status`、`ov info`、实际登录、SSH 连接及系统规则。从 rc.10 或更早版本升级后的降级仍遵循 schema 3 的完整旧快照要求。

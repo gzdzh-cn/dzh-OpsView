@@ -1063,27 +1063,6 @@ svg {
 .form-grid .wide {
   grid-column: 1/-1;
 }
-.el-form-item__label {
-  font-size: 11px !important;
-}
-.el-dialog {
-  border-radius: 10px !important;
-}
-.el-dialog__header {
-  padding: 8px 9px 18px !important;
-  border-bottom: 1px solid #edf1e9;
-}
-.el-dialog__body {
-  padding: 20px 9px 5px !important;
-}
-.el-dialog__title {
-  font-size: 17px !important;
-  color: #354e3c !important;
-}
-.el-dialog__footer {
-  padding: 15px 9px 6px !important;
-  border-top: 1px solid #edf1e9;
-}
 .el-button {
   font-size: 11px;
   min-height: 31px;
@@ -1746,13 +1725,6 @@ svg {
   }
   .form-grid {
     grid-template-columns: 1fr;
-  }
-  .el-dialog {
-    width: calc(100% - 24px) !important;
-    margin-top: 7vh !important;
-  }
-  .el-drawer {
-    width: 92% !important;
   }
   .page-footer {
     font-size: 8px;

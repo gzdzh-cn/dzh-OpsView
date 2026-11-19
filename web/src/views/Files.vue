@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '../components/AppDialog.vue'
 import { usePageState } from '../composables/pageState'
 import { isAbort } from '../lib/query'
 import { cachedDirectorySizes } from '../lib/fileSizes'
@@ -1060,7 +1061,7 @@ onUnmounted(() => {
       </div>
     </template>
   </ListPanel>
-  <el-dialog
+  <AppDialog
     v-model="editOpen"
     :title="'编辑 ' + editPath"
     width="85%"
@@ -1074,15 +1075,15 @@ onUnmounted(() => {
       <el-button @click="editOpen = false">取消</el-button>
       <el-button type="primary" @click="diffOpen = true">查看差异并保存</el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="diffOpen" title="确认文件修改" width="75%">
+  </AppDialog>
+  <AppDialog v-model="diffOpen" title="确认文件修改" width="75%">
     <pre class="log-box">{{ changes }}</pre>
     <template #footer>
       <el-button @click="diffOpen = false">返回编辑</el-button>
       <el-button type="primary" :loading="saving" @click="save">保存</el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="permissionOpen" title="权限与所有者" width="540px">
+  </AppDialog>
+  <AppDialog size="small" v-model="permissionOpen" title="权限与所有者" width="540px">
     <el-form label-position="top">
       <el-form-item label="八进制权限（0000–0777）">
         <el-input v-model="permission.mode" />
@@ -1101,8 +1102,8 @@ onUnmounted(() => {
       <el-button @click="permissionOpen = false">取消</el-button>
       <el-button type="primary" @click="savePermissions">应用</el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="trashOpen" title="文件回收站" width="85%">
+  </AppDialog>
+  <AppDialog v-model="trashOpen" title="文件回收站" width="85%">
     <div class="page-toolbar">
       <p>默认保留 30 天，恢复时不会覆盖已有文件。</p>
       <el-button type="danger" @click="trashAction('empty')">清空回收站</el-button>
@@ -1122,8 +1123,8 @@ onUnmounted(() => {
         </template>
       </el-table-column>
     </DataList>
-  </el-dialog>
-  <el-dialog v-model="resultOpen" :title="resultTitle" width="85%">
+  </AppDialog>
+  <AppDialog v-model="resultOpen" :title="resultTitle" width="85%">
     <DataList
       state-key="Files-2"
       v-if="taskResult?.items?.length && typeof taskResult.items[0] === 'object'"
@@ -1151,5 +1152,5 @@ onUnmounted(() => {
       </el-table-column>
     </DataList>
     <pre v-else class="log-box">{{ resultJSON }}</pre>
-  </el-dialog>
+  </AppDialog>
 </template>

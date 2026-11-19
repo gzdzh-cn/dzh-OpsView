@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from './DialogActions.vue'
+import AppDialog from './AppDialog.vue'
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DataList from './DataList.vue'
@@ -603,7 +605,8 @@ function rowName(row: Config) {
       <el-checkbox v-model="acknowledged">已确认影响并保留 SSH 会话</el-checkbox>
     </details>
   </section>
-  <el-dialog
+  <AppDialog
+    size="small"
     v-model="deleteOpen"
     title="删除防火墙规则"
     width="560px"
@@ -638,8 +641,8 @@ function rowName(row: Config) {
         删除
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog
+  </AppDialog>
+  <AppDialog
     v-model="editOpen"
     :title="`${editing ? '修改' : '添加'}${kinds[form.kind]}`"
     width="620px"
@@ -757,8 +760,9 @@ function rowName(row: Config) {
       <el-button @click="editOpen = false">取消</el-button>
       <el-button type="primary" :loading="busy" @click="save">保存</el-button>
     </template>
-  </el-dialog>
-  <el-dialog
+  </AppDialog>
+  <AppDialog
+    size="small"
     v-model="modeOpen"
     :title="data.enabled ? '关闭防火墙' : '启用防火墙'"
     width="560px"
@@ -788,8 +792,8 @@ function rowName(row: Config) {
         应用并等待确认
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="importOpen" title="导入防火墙规则" width="850px">
+  </AppDialog>
+  <AppDialog v-model="importOpen" title="导入防火墙规则" width="850px">
     <el-alert
       title="支持 OpsView JSON、宝塔 JSON 及分隔记录。先预览，再明确勾选可应用项。"
       :closable="false"
@@ -831,8 +835,8 @@ function rowName(row: Config) {
         应用所选规则
       </el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="syncOpen" title="同步规则差异" width="850px">
+  </AppDialog>
+  <AppDialog v-model="syncOpen" title="同步规则差异" width="850px">
     <el-alert
       title="默认以系统实际配置更新记录。恢复历史规则会写入系统，需要单独选择并确认。"
       type="info"
@@ -862,21 +866,23 @@ function rowName(row: Config) {
       </el-button>
       <el-button type="primary" :loading="busy" @click="observe">以系统更新记录</el-button>
     </template>
-  </el-dialog>
-  <el-dialog v-model="protectionOpen" title="端口防扫描 · 服务异常访问防护" width="720px">
+  </AppDialog>
+  <AppDialog v-model="protectionOpen" title="端口防扫描 · 服务异常访问防护" width="720px">
     <el-alert
       :title="protection.notice || '基于 Fail2ban 日志的防护'"
       type="info"
       :closable="false"
     />
-    <el-button
-      v-if="!protection.installed"
-      :loading="busy"
-      @click="run('protection-install').then(openProtection)"
-    >
-      安装 Fail2ban
-    </el-button>
-    <el-form v-else label-width="110px">
+    <DialogActions>
+      <el-button
+        v-if="!protection.installed"
+        :loading="busy"
+        @click="run('protection-install').then(openProtection)"
+      >
+        安装 Fail2ban
+      </el-button>
+    </DialogActions>
+    <el-form v-if="protection.installed" label-width="110px">
       <el-form-item label="SSH 防护">
         <el-switch v-model="protectionConfig.ssh" :disabled="!protection.sshAvailable" />
       </el-form-item>
@@ -899,9 +905,9 @@ function rowName(row: Config) {
           placeholder="每行一个 IP/CIDR，必须包含管理来源"
         />
       </el-form-item>
-      <el-form-item>
+      <DialogActions>
         <el-button type="primary" :loading="busy" @click="saveProtection">保存防护设置</el-button>
-      </el-form-item>
+      </DialogActions>
     </el-form>
     <el-collapse>
       <el-collapse-item v-for="item in protection.jails || []" :key="item.name" :title="item.name">
@@ -921,7 +927,7 @@ function rowName(row: Config) {
         解封
       </el-button>
     </div>
-  </el-dialog>
+  </AppDialog>
 </template>
 <style scoped>
 .firewall-switches {

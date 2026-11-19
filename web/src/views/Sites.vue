@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from '../components/DialogActions.vue'
+import AppDialog from '../components/AppDialog.vue'
 import { queries, isAbort } from '../lib/query'
 import { usePageState } from '../composables/pageState'
 import DataList from '../components/DataList.vue'
@@ -372,13 +374,14 @@ async function loadLogs() {
     </div>
   </template>
   <SiteCreate v-model="createOpen" :initial="initial" :editing="editing" />
-  <el-dialog
+  <AppDialog
     v-model="settingsOpen"
     :title="selected?.name + ' · 网站设置'"
+    split
     width="min(1000px,95vw)"
     :close-on-click-modal="false"
   >
-    <div class="site-settings">
+    <div class="site-settings ops-settings-layout">
       <aside>
         <button
           v-for="[key, label] in [
@@ -403,7 +406,7 @@ async function loadLogs() {
           {{ label }}
         </button>
       </aside>
-      <section>
+      <section class="ops-settings-content">
         <el-alert v-if="error" :title="error" type="error" :closable="false" />
         <template v-if="page === 'general'">
           <el-form label-position="top">
@@ -427,7 +430,9 @@ async function loadLogs() {
             <SiteRuntimeOptions v-model="draft" />
             <el-form-item label="高级配置"><CodeEditor v-model="draft.advanced" /></el-form-item>
           </el-form>
-          <el-button type="primary" @click="save">保存并应用</el-button>
+          <DialogActions>
+            <el-button type="primary" @click="save">保存并应用</el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'ssl'">
           <p>当前证书：{{ date(selected?.config.certificateExpires) }}</p>
@@ -438,16 +443,20 @@ async function loadLogs() {
               <el-switch v-model="draft.redirectHTTPS" />
             </el-form-item>
           </el-form>
-          <el-button @click="save">保存申请设置</el-button>
-          <el-button v-if="selected" type="primary" @click="run(selected, 'renew')">
-            免费申请 / 续期
-          </el-button>
+          <DialogActions><el-button @click="save">保存申请设置</el-button></DialogActions>
+          <DialogActions>
+            <el-button v-if="selected" type="primary" @click="run(selected, 'renew')">
+              免费申请 / 续期
+            </el-button>
+          </DialogActions>
           <el-divider />
           <el-input v-model="cert.certificate" type="textarea" placeholder="PEM 证书链" :rows="4" />
           <el-input v-model="cert.privateKey" type="textarea" placeholder="PEM 私钥" :rows="4" />
-          <el-button v-if="selected" @click="run(selected, 'certificate', cert)">
-            验证并上传证书
-          </el-button>
+          <DialogActions>
+            <el-button v-if="selected" @click="run(selected, 'certificate', cert)">
+              验证并上传证书
+            </el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'traffic'">
           <h3>今日流量 {{ size(traffic[selected?.id || '']?.todayBytes) }}</h3>
@@ -475,12 +484,18 @@ async function loadLogs() {
             placeholder="永久有效"
             clearable
           />
-          <el-button type="primary" @click="save">保存到期时间</el-button>
-          <el-button v-if="selected" @click="run(selected, 'resume')">恢复访问</el-button>
+          <DialogActions>
+            <el-button type="primary" @click="save">保存到期时间</el-button>
+          </DialogActions>
+          <DialogActions>
+            <el-button v-if="selected" @click="run(selected, 'resume')">恢复访问</el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'note'">
           <el-input v-model="draft.note" type="textarea" maxlength="1000" :rows="6" />
-          <el-button type="primary" @click="save">保存备注</el-button>
+          <DialogActions>
+            <el-button type="primary" @click="save">保存备注</el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'process'">
           <p>执行文件：{{ selected?.config.executable }}</p>
@@ -489,18 +504,22 @@ async function loadLogs() {
               selected?.config.autoStart ? '开启' : '关闭'
             }}
           </p>
-          <el-button
-            v-if="selected"
-            @click="
-              () => {
-                settingsOpen = false
-                edit(selected!)
-              }
-            "
-          >
-            编辑进程配置
-          </el-button>
-          <el-button v-if="selected" @click="run(selected, 'apply')">重新部署进程</el-button>
+          <DialogActions>
+            <el-button
+              v-if="selected"
+              @click="
+                () => {
+                  settingsOpen = false
+                  edit(selected!)
+                }
+              "
+            >
+              编辑进程配置
+            </el-button>
+          </DialogActions>
+          <DialogActions>
+            <el-button v-if="selected" @click="run(selected, 'apply')">重新部署进程</el-button>
+          </DialogActions>
           <el-button @click="loadLogs">读取进程日志</el-button>
           <pre>{{ logs }}</pre>
         </template>
@@ -513,20 +532,22 @@ async function loadLogs() {
             {{ b.name }} · {{ b.status }}
             <el-button link @click="run(b, 'backup')">立即备份</el-button>
           </p>
-          <el-button
-            @click="
-              () => {
-                $router.push('/backups')
-                settingsOpen = false
-              }
-            "
-          >
-            创建备份与计划
-          </el-button>
+          <DialogActions>
+            <el-button
+              @click="
+                () => {
+                  $router.push('/backups')
+                  settingsOpen = false
+                }
+              "
+            >
+              创建备份与计划
+            </el-button>
+          </DialogActions>
         </template>
       </section>
     </div>
-  </el-dialog>
+  </AppDialog>
 </template>
 <style scoped>
 .site-toolbar {
@@ -553,33 +574,6 @@ async function loadLogs() {
 }
 .nginx-required p {
   color: #64748b;
-}
-.site-settings {
-  display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  min-height: 500px;
-}
-.site-settings aside {
-  background: #f5f7fa;
-}
-.site-settings aside button {
-  display: block;
-  border: 0;
-  background: none;
-  padding: 15px;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-.site-settings aside button.active {
-  background: white;
-  color: #16a34a;
-  border-left: 3px solid #16a34a;
-}
-.site-settings section {
-  padding: 10px 24px;
-  overflow: auto;
-  max-height: 70vh;
 }
 .site-settings pre {
   white-space: pre-wrap;

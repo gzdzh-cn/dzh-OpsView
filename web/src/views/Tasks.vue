@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppDialog from '../components/AppDialog.vue'
+import AppDrawer from '../components/AppDrawer.vue'
 import { isAbort } from '../lib/query'
 import { usePageState } from '../composables/pageState'
 import DataList from '../components/DataList.vue'
@@ -188,10 +190,10 @@ async function cancelInstall(id: string) {
       <p>安装软件、部署网站和执行备份后，这里将显示真实进度与日志。</p>
     </div>
   </section>
-  <el-dialog v-model="resultOpen" title="文件任务结果" width="min(760px, 95vw)">
+  <AppDialog v-model="resultOpen" title="文件任务结果" width="min(760px, 95vw)">
     <pre class="log-box">{{ JSON.stringify(fileResult?.result, null, 2) }}</pre>
-  </el-dialog>
-  <el-drawer :model-value="!!selected" title="任务执行详情" size="680px" @close="close">
+  </AppDialog>
+  <AppDrawer :model-value="!!selected" title="任务执行详情" size="680px" @close="close">
     <template v-if="selected">
       <dl class="detail-grid">
         <dt>任务</dt>
@@ -217,5 +219,5 @@ async function cancelInstall(id: string) {
         服务重启导致任务中断。请检查实际安装现场或资源状态，再决定重试；面板不会自动重复此操作。
       </div>
     </template>
-  </el-drawer>
+  </AppDrawer>
 </template>

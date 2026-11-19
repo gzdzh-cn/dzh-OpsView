@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from './DialogActions.vue'
+import AppDialog from './AppDialog.vue'
 import { computed, ref, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, action, put, errorText, size, date, type Config, type Resource } from '../lib/api'
@@ -150,7 +152,7 @@ const totalBytes = computed(() => results.value.reduce((n, r) => n + Number(r.to
     </template>
   </el-dropdown>
   <SoftwareSettings v-model="settingsOpen" :resource="instance" />
-  <el-dialog
+  <AppDialog
     :model-value="!!dialog"
     @update:model-value="
       (v: boolean) => {
@@ -283,7 +285,7 @@ const totalBytes = computed(() => results.value.reduce((n, r) => n + Number(r.to
         <el-form-item label="敏感文件保护">
           <span>静态站与 PHP 站默认禁止访问隐藏文件及 SQL、备份、配置、日志文件。</span>
         </el-form-item>
-        <el-form-item>
+        <DialogActions>
           <el-button type="primary" @click="applySecurity">保存并应用</el-button>
           <el-button
             @click="
@@ -295,10 +297,10 @@ const totalBytes = computed(() => results.value.reduce((n, r) => n + Number(r.to
           >
             SSL 证书
           </el-button>
-        </el-form-item>
+        </DialogActions>
       </el-form>
     </template>
-  </el-dialog>
+  </AppDialog>
 </template>
 <style scoped>
 .tool-summary {

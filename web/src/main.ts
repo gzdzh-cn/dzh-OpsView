@@ -7,4 +7,5 @@ import App from './App.vue'
 import { router } from './router'
 import './style.css'
 import './compact.css'
+import './overlays.css'
 createApp(App).use(createPinia()).use(router).use(ElementPlus, { locale: zhCn }).mount('#app')

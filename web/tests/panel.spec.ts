@@ -1,8 +1,47 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 const username = 'e2e-admin',
   password = 'OpsView-e2e-only-Password-2026!'
+
+async function overlayGeometry(overlay: Locator) {
+  await overlay.evaluate(async (el) => {
+    await Promise.all(
+      el
+        .getAnimations({ subtree: true })
+        .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+        .map((animation) => animation.finished.catch(() => {})),
+    )
+  })
+  return overlay.evaluate((el) => {
+    const rect = (node: Element) => {
+      const { top, bottom, height } = node.getBoundingClientRect()
+      return { top, bottom, height }
+    }
+    return {
+      outer: rect(el),
+      header: rect(
+        el.querySelector('.el-dialog__header, .el-drawer__header, .el-message-box__header')!,
+      ),
+      footer: rect(
+        el.querySelector('.el-dialog__footer, .el-drawer__footer, .el-message-box__btns')!,
+      ),
+      viewport: innerHeight,
+    }
+  })
+}
+
+function expectFixedOverlay(
+  before: Awaited<ReturnType<typeof overlayGeometry>>,
+  after: Awaited<ReturnType<typeof overlayGeometry>>,
+) {
+  expect(after.outer.top).toBeGreaterThanOrEqual(0)
+  expect(after.outer.bottom).toBeLessThanOrEqual(after.viewport)
+  for (const key of ['outer', 'header', 'footer'] as const) {
+    expect(Math.abs(after[key].top - before[key].top)).toBeLessThanOrEqual(1)
+    expect(Math.abs(after[key].height - before[key].height)).toBeLessThanOrEqual(1)
+  }
+}
 test.beforeAll(async ({ request }) => {
   const status = await (await request.get('/api/v1/auth')).json()
   if (status.setupRequired) {
@@ -64,6 +103,8 @@ test('invalid site never becomes a deployed resource', async ({ page }) => {
   await page.goto('/sites')
   await page.getByRole('tab', { name: '其他项目', exact: true }).click()
   await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  const geometry = await overlayGeometry(dialog)
   await page.getByPlaceholder('默认使用第一个域名').fill('e2e-invalid-site')
   await page
     .getByRole('textbox', { name: '绑定域名', exact: true })
@@ -71,6 +112,8 @@ test('invalid site never becomes a deployed resource', async ({ page }) => {
   await page.getByRole('button', { name: '创建并部署' }).click()
   await expect(page.locator('.el-dialog .el-alert')).toBeVisible()
   await expect(page.locator('.el-dialog')).toBeVisible()
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  await expect(dialog.getByRole('button', { name: '创建并部署' })).toBeInViewport()
 })
 test('queued installation reports executor unavailable instead of success', async ({ page }) => {
   // This scenario exercises task failure, independently of native host qualification.
@@ -101,6 +144,10 @@ test('queued installation reports executor unavailable instead of success', asyn
   })
   await page.locator('.el-table__body tr').first().click()
   await expect(page.locator('.el-drawer .log-box')).toContainText('执行器不可用')
+  const drawer = page.getByRole('dialog', { name: '任务执行详情', exact: true })
+  await expect(drawer.getByRole('button', { name: '关闭', exact: true })).toBeInViewport()
+  await drawer.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(drawer).toBeHidden()
 })
 test('desktop and mobile layouts remain inside viewport', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
@@ -241,7 +288,11 @@ test('software settings show version context and configuration conflict', async 
         editable: true,
         reload: true,
         files: ['main'],
-        associated: [],
+        associated: Array.from({ length: 60 }, (_, index) => ({
+          id: `site-${index}`,
+          kind: 'site',
+          name: `associated-${index}.example.com`,
+        })),
       },
     }),
   )
@@ -267,11 +318,47 @@ test('software settings show version context and configuration conflict', async 
     .click()
   const dialog = page.locator('.software-settings')
   await expect(dialog).toContainText('NGINX 1.30.6')
+  await expect(dialog.getByRole('button', { name: '保存守护设置', exact: true })).toBeVisible()
+  const geometry = await overlayGeometry(dialog)
+  const scroll = dialog.locator('.software-settings-content')
+  expect(await scroll.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+  await scroll.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
   await dialog.locator('aside').getByRole('button', { name: '配置文件', exact: true }).click()
   await expect(dialog.locator('.cm-editor')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '保存守护设置', exact: true })).toHaveCount(0)
+  await expect(
+    dialog.locator('.el-dialog__footer').getByRole('button', { name: '校验配置', exact: true }),
+  ).toBeVisible()
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
   await dialog.getByRole('button', { name: '校验配置', exact: true }).click()
   await expect(dialog.locator('.el-alert')).toContainText('外部程序修改')
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  await dialog.getByRole('button', { name: '保存并重载', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '确认配置变更', exact: true })
+  await expect(confirmation.getByRole('button', { name: '确认应用', exact: true })).toBeInViewport()
+  await confirmation.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(confirmation).toBeHidden()
+  await expect(dialog.getByRole('button', { name: '保存并重载', exact: true })).toBeFocused()
+  await expect(
+    dialog.locator('.el-dialog__footer').getByRole('button', { name: '保存并重载', exact: true }),
+  ).toBeVisible()
   await page.screenshot({ path: '../.opsview/screenshots/software-settings.png', fullPage: true })
+  await page.setViewportSize({ width: 390, height: 600 })
+  await expect(dialog.getByRole('button', { name: '保存并重启', exact: true })).toBeInViewport()
+  const mobileGeometry = await overlayGeometry(dialog)
+  await scroll.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  expectFixedOverlay(mobileGeometry, await overlayGeometry(dialog))
+  await page.screenshot({
+    path: '../.opsview/screenshots/software-settings-mobile.png',
+    fullPage: true,
+  })
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(dialog).toBeHidden()
 })
 test('panel settings have five tabs and stage HTTPS changes', async ({ page }) => {
   await page.route('**/api/v1/settings/runtime', async (route) => {
@@ -658,6 +745,38 @@ test('server file page navigates root, shows revisions, recovers conflicts and s
     'static',
   )
   await page.screenshot({ path: '../.opsview/screenshots/files-mobile.png', fullPage: true })
+})
+
+test('compact file prompts keep validation, keyboard focus and fixed actions on small screens', async ({
+  page,
+}) => {
+  const mutations: string[] = []
+  await page.route('**/api/v1/files', (route) => {
+    const payload = route.request().postDataJSON()
+    if (payload.action === 'metadata')
+      return route.fulfill({ json: { favorites: [], shortcuts: [] } })
+    if (payload.action === 'list')
+      return route.fulfill({ json: { path: '/', items: [], total: 0 } })
+    mutations.push(payload.action)
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/files')
+  await page.setViewportSize({ width: 390, height: 500 })
+  const trigger = page.getByRole('button', { name: '新建文件', exact: true })
+  await trigger.click()
+  const prompt = page.locator('.el-message-box')
+  const geometry = await overlayGeometry(prompt)
+  const input = prompt.getByRole('textbox')
+  await expect(input).toBeFocused()
+  await input.fill('../escape')
+  await prompt.getByRole('button', { name: '创建', exact: true }).click()
+  await expect(prompt).toContainText('名称无效')
+  expectFixedOverlay(geometry, await overlayGeometry(prompt))
+  await expect(prompt.getByRole('button', { name: '取消', exact: true })).toBeInViewport()
+  await page.keyboard.press('Escape')
+  await expect(prompt).toBeHidden()
+  await expect(trigger).toBeFocused()
+  expect(mutations).toEqual([])
 })
 
 test('file address keeps drafts separate from the open directory and preserves listing on errors', async ({
@@ -1297,6 +1416,7 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
   await page.route('**/api/v1/resources/site-create-fixture/actions/*', (route) =>
     route.fulfill({ status: 202, json: { id: 'site-task' } }),
   )
+  await page.route('**/api/v1/files', (route) => route.fulfill({ json: { items: [], total: 0 } }))
   await page.goto('/sites')
   await page.getByRole('tab', { name: 'PHP 项目', exact: true }).click()
   await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
@@ -1336,6 +1456,22 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(dialog.getByRole('button', { name: '创建并部署', exact: true })).toBeInViewport()
+  const geometry = await overlayGeometry(dialog)
+  await dialog.getByRole('button', { name: '高级设置', exact: true }).click()
+  const body = dialog.locator('.el-dialog__body')
+  expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+  await body.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeInViewport()
+  await dialog.getByRole('button', { name: '浏览', exact: true }).click()
+  const directory = page.getByRole('dialog', { name: '选择 /www/wwwroot 项目目录', exact: true })
+  await expect(directory).toBeVisible()
+  await directory.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(directory).toBeHidden()
+  await expect(dialog.getByRole('button', { name: '创建并部署', exact: true })).toBeInViewport()
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
   expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
   await page.screenshot({
     path: '../.opsview/screenshots/site-create-mobile.png',

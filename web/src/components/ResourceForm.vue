@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from './AppDialog.vue'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePanel } from '../stores/panel'
@@ -194,7 +195,7 @@ const visible = computed({ get: () => props.modelValue, set: (v) => emit('update
 void api
 </script>
 <template>
-  <el-dialog
+  <AppDialog
     v-model="visible"
     :title="(editing ? '编辑' : '创建') + (titles[kind] || kind)"
     width="650px"
@@ -561,5 +562,5 @@ void api
         }}
       </el-button>
     </template>
-  </el-dialog>
+  </AppDialog>
 </template>

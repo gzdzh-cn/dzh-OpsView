@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from './DialogActions.vue'
+import AppDialog from './AppDialog.vue'
 import DataList from './DataList.vue'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -506,16 +508,16 @@ function download() {
 const documentGlobal = window.document
 </script>
 <template>
-  <el-dialog
+  <AppDialog
     v-model="visible"
     :title="`${sw.toUpperCase()} ${resource?.config.version || ''} · ${resource?.name || ''}`"
     width="min(1120px, 95vw)"
-    top="6vh"
     :close-on-click-modal="false"
     class="software-settings"
+    split
     destroy-on-close
   >
-    <div class="software-settings-layout">
+    <div class="software-settings-layout ops-settings-layout">
       <aside>
         <button
           v-for="[key, label] in menus"
@@ -526,7 +528,7 @@ const documentGlobal = window.document
           {{ label }}
         </button>
       </aside>
-      <section v-loading="loading" class="software-settings-content">
+      <section v-loading="loading" class="software-settings-content ops-settings-content">
         <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
         <div
           v-if="sw === 'php' && !['metrics', 'extensions', 'phpinfo'].includes(page)"
@@ -580,9 +582,11 @@ const documentGlobal = window.document
               <el-input-number v-model="guardian.attempts" :min="1" :max="20" />
             </el-form-item>
           </el-form>
-          <el-button type="primary" :disabled="!editable" @click="submit('guardian', guardian)">
-            保存守护设置
-          </el-button>
+          <DialogActions>
+            <el-button type="primary" :disabled="!editable" @click="submit('guardian', guardian)">
+              保存守护设置
+            </el-button>
+          </DialogActions>
           <h4>关联资源</h4>
           <p v-for="r in info.associated" :key="r.id">{{ r.name }} · {{ r.kind }}</p>
           <p v-if="!info.associated?.length" class="form-help">暂无关联资源</p>
@@ -613,7 +617,7 @@ const documentGlobal = window.document
             {{ document.revision?.slice(0, 12) }}
           </p>
           <CodeEditor v-model="text" />
-          <div class="settings-toolbar">
+          <DialogActions>
             <el-button :disabled="!editable" @click="validate">校验配置</el-button>
             <el-button :disabled="!editable" @click="save('draft', 'text')">保存草稿</el-button>
             <el-button
@@ -625,7 +629,7 @@ const documentGlobal = window.document
               保存并重载
             </el-button>
             <el-button :disabled="!editable" @click="save('restart', 'text')">保存并重启</el-button>
-          </div>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'metrics'">
           <el-alert
@@ -707,18 +711,22 @@ const documentGlobal = window.document
               <el-input-number v-model="guardian.oomScore" :min="-500" :max="500" />
             </el-form-item>
           </el-form>
-          <el-button type="primary" @click="submit('guardian', guardian)">保存资源限制</el-button>
+          <DialogActions>
+            <el-button type="primary" @click="submit('guardian', guardian)">保存资源限制</el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'port'">
           <h3>端口配置</h3>
           <p>当前端口 {{ info.port }}，默认仅本机访问。云安全组需要单独配置。</p>
           <el-input-number v-model="port" :min="1" :max="65535" />
-          <el-button
-            type="primary"
-            @click="submit('port', { port, baseRevision: document.revision })"
-          >
-            修改并重启
-          </el-button>
+          <DialogActions>
+            <el-button
+              type="primary"
+              @click="submit('port', { port, baseRevision: document.revision })"
+            >
+              修改并重启
+            </el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'storage'">
           <h3>存储位置</h3>
@@ -726,17 +734,21 @@ const documentGlobal = window.document
           <p class="form-help">
             迁移前必须停止关联应用写入并完成备份。请在备份与计划中创建备份；当前目录不会通过普通配置编辑器改写。
           </p>
-          <el-button
-            @click="
-              () => {
-                $router.push('/backups')
-                visible = false
-              }
-            "
-          >
-            管理备份
-          </el-button>
-          <el-button type="primary" @click="moveStorage">迁移至新目录</el-button>
+          <DialogActions>
+            <el-button
+              @click="
+                () => {
+                  $router.push('/backups')
+                  visible = false
+                }
+              "
+            >
+              管理备份
+            </el-button>
+          </DialogActions>
+          <DialogActions>
+            <el-button type="primary" @click="moveStorage">迁移至新目录</el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'version'">
           <h3>版本迁移</h3>
@@ -756,23 +768,27 @@ const documentGlobal = window.document
                 :label="r.name + ' · ' + r.config.version"
               />
             </el-select>
-            <el-button type="primary" :disabled="!targetVersion" @click="switchVersion">
-              校验并切换入口
-            </el-button>
+            <DialogActions>
+              <el-button type="primary" :disabled="!targetVersion" @click="switchVersion">
+                校验并切换入口
+              </el-button>
+            </DialogActions>
           </template>
           <p class="form-help">
             先在软件市场安装目标版本。数据库通过数据库页面迁移至新实例并验证，源实例和数据保留。
           </p>
-          <el-button
-            @click="
-              () => {
-                $router.push(sw === 'mysql' ? '/databases' : '/software')
-                visible = false
-              }
-            "
-          >
-            {{ sw === 'mysql' ? '选择数据库迁移' : '管理已安装版本' }}
-          </el-button>
+          <DialogActions>
+            <el-button
+              @click="
+                () => {
+                  $router.push(sw === 'mysql' ? '/databases' : '/software')
+                  visible = false
+                }
+              "
+            >
+              {{ sw === 'mysql' ? '选择数据库迁移' : '管理已安装版本' }}
+            </el-button>
+          </DialogActions>
         </template>
         <template v-else-if="page === 'backup'">
           <h3>数据备份</h3>
@@ -780,18 +796,22 @@ const documentGlobal = window.document
             在备份与计划中选择当前 Redis 实例，可创建经过 RDB
             校验的加密备份，配置保留份数及定时任务；恢复进入另一个空实例。
           </p>
-          <el-button
-            type="primary"
-            @click="
-              () => {
-                $router.push('/backups')
-                visible = false
-              }
-            "
-          >
-            管理加密备份与恢复
-          </el-button>
-          <el-button type="primary" @click="submit('snapshot')">生成 Redis 后台快照</el-button>
+          <DialogActions>
+            <el-button
+              type="primary"
+              @click="
+                () => {
+                  $router.push('/backups')
+                  visible = false
+                }
+              "
+            >
+              管理加密备份与恢复
+            </el-button>
+          </DialogActions>
+          <DialogActions>
+            <el-button type="primary" @click="submit('snapshot')">生成 Redis 后台快照</el-button>
+          </DialogActions>
           <p class="form-help">
             请求后台保存后，请在负载状态中核对 rdb_last_bgsave_status。快照文件保留在实例 data
             目录。
@@ -869,11 +889,13 @@ const documentGlobal = window.document
                 : '显式保存后使用该范围独立目录或前缀。'
             }}
           </p>
-          <el-button type="primary" :disabled="loading || !editable" @click="saveSession">
-            验证连接并保存
-          </el-button>
+          <DialogActions>
+            <el-button type="primary" :disabled="loading || !editable" @click="saveSession">
+              验证连接并保存
+            </el-button>
+          </DialogActions>
           <p>超过 24 小时未更新的文件：{{ session.expiredFiles || 0 }} 个</p>
-          <el-button @click="cleanSession">清理过期会话</el-button>
+          <DialogActions><el-button @click="cleanSession">清理过期会话</el-button></DialogActions>
         </template>
         <template v-else>
           <div v-if="sw === 'mysql' && page === 'performance'" class="notice">
@@ -929,7 +951,7 @@ const documentGlobal = window.document
               </small>
             </el-form-item>
           </el-form>
-          <div v-if="fields.length" class="settings-toolbar">
+          <DialogActions v-if="fields.length">
             <el-button
               type="primary"
               :disabled="!editable"
@@ -949,7 +971,7 @@ const documentGlobal = window.document
               保存并动态应用
             </el-button>
             <el-button :disabled="!editable" @click="save('draft', 'values')">保存草稿</el-button>
-          </div>
+          </DialogActions>
           <template v-if="['error', 'slow', 'binlog'].includes(page)">
             <div class="settings-toolbar">
               <el-select
@@ -1058,8 +1080,8 @@ const documentGlobal = window.document
         </div>
       </section>
     </div>
-  </el-dialog>
-  <el-dialog v-model="diffVisible" title="确认配置变更" width="min(800px,90vw)" append-to-body>
+  </AppDialog>
+  <AppDialog v-model="diffVisible" title="确认配置变更" width="min(800px,90vw)" append-to-body>
     <p>
       实例 {{ resource?.name }} · 影响关联资源 {{ info.associated?.length || 0 }} 个 ·
       {{
@@ -1078,60 +1100,17 @@ const documentGlobal = window.document
       <el-button @click="diffVisible = false">取消</el-button>
       <el-button type="primary" @click="confirmApply">确认应用</el-button>
     </template>
-  </el-dialog>
+  </AppDialog>
 </template>
 <style scoped>
-.software-settings-layout {
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: min(720px, calc(100dvh - 180px));
-  min-height: 0;
-}
-.software-settings-layout aside {
-  background: #f5f7fa;
-  padding: 12px 0;
-  border-right: 1px solid #e8edf2;
-  min-height: 0;
-  overflow: auto;
-}
-.software-settings-layout aside button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 13px 23px;
-  border: 0;
-  background: transparent;
-  color: #475569;
-  cursor: pointer;
-  font-size: 14px;
-}
-.software-settings-layout aside button.active {
-  background: white;
-  color: #16a34a;
-  border-left: 3px solid #16a34a;
-}
-.software-settings-content {
-  padding: 0 26px 24px;
-  min-height: 0;
-  overflow: auto;
-}
 .software-context {
   display: flex;
-  gap: 16px;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
   color: #94a3b8;
   font-size: 12px;
-  margin-bottom: 20px;
-}
-.service-buttons,
-.settings-toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin: 20px 0;
-  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 .settings-toolbar .el-select {
   width: 210px;
@@ -1158,16 +1137,5 @@ pre {
   max-height: 400px;
   overflow: auto;
   font-size: 12px;
-}
-@media (max-width: 700px) {
-  .software-settings-layout {
-    grid-template-columns: 120px minmax(0, 1fr);
-  }
-  .software-settings-content {
-    padding: 0 12px;
-  }
-  .software-settings-layout aside button {
-    padding: 12px;
-  }
 }
 </style>
