@@ -511,3 +511,23 @@ SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update -
 ### rc.13 发布前检查
 
 版本号已统一为 `v0.1.3-rc.13`；本地 Go 全量 race 测试与 vet、前端类型检查/构建、7 项 Vitest 和 16 项安装器检查通过。UI 功能的 38 项 Playwright 已通过，GitHub 将对最终版本及实际 Linux 发布二进制再次执行完整页面、安装和更新回退验证。最终发布结果通过后追加。
+
+### rc.13 发布与公开安装验证完成
+
+发布提交 `c70ed3a2a85c028bd285c6d67086cb587f302165`，标签 `v0.1.3-rc.13`。[发布流水线 44450939548](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44450939548) 的 build、publish、verify-public-install 全部成功，总耗时 29 分 46 秒。
+
+- Go race/vet、前端类型检查与生产构建、7 项 Vitest、安装器及文件检查通过；真实 SSH/UFW 回退、网站部署、MySQL/PostgreSQL/Redis、日志轮转及 PHP Session 检查通过。
+- Linux amd64 的 Ubuntu 22.04/24.04、Debian 12/13 完成离线测试和 UFW/firewalld 独立客户端流量验证，覆盖继承规则、IPv4/IPv6、转发、地区过滤、管理来源保护、回退及 Fail2ban。
+- 源码服务和最终 Linux 发布二进制分别完成全部 38 项 Playwright（1.9 分钟、1.8 分钟），真实 systemd 安装、更新与故障回退通过。
+- 临时 Ubuntu 24.04 从公开固定版本附件下载、校验、安装、登录、改端口和执行 `ov update` 成功。
+- 已从公开 Release 页面确认 `install.sh`、`opsview-linux-amd64.tar.gz`、`SHA256SUMS` 三个附件存在及其发布摘要。完整附件的公开下载、摘要和安装验证以发布流水线为依据，不将本地网络失败的下载视为成功。
+
+公开 Release 页面显示的附件 SHA-256：
+
+```text
+04340a2c034f3689edc7499f798c6c1330c47f44a6be4fc8fcec65ee81151f0a  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+60119e3790d59f3d12cf8d5da7e60a94141c53a67c76d031d49ff5e23b894a1f  SHA256SUMS
+```
+
+更新：`ov backup`、`ov update --version v0.1.3-rc.13`。本版为预发布测试版，不改变正式 latest 入口；SQLite 保持 schema 4，没有新增数据库迁移。本次未自动更新用户服务器；整机重启、公网入站及云安全组仍需部署环境验收。验收记录追加不移动已公开标签、不覆盖发布附件。回退需恢复更新前配套程序、运行配置及元数据，详见 [运维说明](operations.md)。
