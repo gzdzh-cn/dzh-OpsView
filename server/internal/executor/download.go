@@ -29,6 +29,9 @@ func (e *Engine) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stored, err := e.load(op.Resource.ID)
+	if op.Name == "archive.download" && regexpArchiveID(op.Resource.ID) {
+		stored, err = e.load(op.Resource.ID)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), 404)
 		return
@@ -47,7 +50,7 @@ func (e *Engine) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var path, name string
-	if op.Name == "backup.download" && stored.Kind == "backup" {
+	if (op.Name == "backup.download" || op.Name == "archive.download") && (stored.Kind == "backup" || stored.Kind == "directory-backup") {
 		name = op.Params.String("artifact")
 		if name == "" {
 			name = stored.Config.String("artifact")
@@ -56,7 +59,30 @@ func (e *Engine) handleDownload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid artifact", 400)
 			return
 		}
-		path = filepath.Join(e.Root, "backups", stored.ID, name)
+		base, er := e.backupBase(stored)
+		if er != nil {
+			http.Error(w, "备份路径无效", 400)
+			return
+		}
+		path = filepath.Join(base, name)
+		var history []model.Config
+		raw, _ := json.Marshal(stored.Config["history"])
+		_ = json.Unmarshal(raw, &history)
+		var m model.Config
+		for _, h := range history {
+			if h.String("file") == name {
+				m = h
+				break
+			}
+		}
+		if m == nil {
+			http.Error(w, "备份不在受信任历史中", 404)
+			return
+		}
+		if er = e.ensureArchiveLocal(r.Context(), stored, m, path); er != nil {
+			http.Error(w, "备份下载失败", 502)
+			return
+		}
 	} else if op.Name == "database.export" && stored.Kind == "database" {
 		inst, err := e.load(stored.Config.String("instanceId"))
 		if err != nil {

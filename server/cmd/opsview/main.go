@@ -211,6 +211,41 @@ func main() {
 		return
 	}
 
+	if command == "panel-entry" || command == "security-status" || command == "security-recover" {
+		prefs := model.Config{}
+		rev, readErr := store.SettingRevision("panel", &prefs)
+		if readErr != nil {
+			log.Fatal(readErr)
+		}
+		if command == "security-status" {
+			out := model.Config{}
+			for _, key := range []string{"webDisabled", "basicEnabled", "clientCertificateEnabled", "apiEnabled", "userAgentAllow", "loginCountries", "unauthenticatedStatus"} {
+				out[key] = prefs[key]
+			}
+			_ = json.NewEncoder(os.Stdout).Encode(out)
+			return
+		}
+		patch := model.Config{}
+		if command == "panel-entry" {
+			var req struct {
+				Enabled bool `json:"enabled"`
+			}
+			if err = json.NewDecoder(io.LimitReader(os.Stdin, 4096)).Decode(&req); err != nil {
+				log.Fatal(err)
+			}
+			patch["webDisabled"] = !req.Enabled
+		} else {
+			patch = model.Config{"webDisabled": false, "basicEnabled": false, "clientCertificateEnabled": false, "apiEnabled": false, "userAgentAllow": "", "loginCountries": []string{}, "unauthenticatedStatus": 0}
+			_, _ = store.DB.Exec(`DELETE FROM settings WHERE key='preference-pending'`)
+			_, _ = store.DB.Exec(`DELETE FROM security_tokens`)
+			_, _ = store.DB.Exec(`DELETE FROM sessions`)
+		}
+		if _, _, err = store.PatchSetting("panel", rev, patch, "maintenance."+command, "local"); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("设置已生效，无需重启面板后台。")
+		return
+	}
 	if command == "recover-access" {
 		var panel model.Config
 		_ = store.Setting("panel", &panel)
@@ -227,12 +262,12 @@ func main() {
 		return
 	}
 	if command == "backup-config" {
-		app := &logic.App{Store: store, PanelDir: *data}
+		app := &logic.App{Store: store, PanelDir: *data, Root: *root, Executor: executor.NewClient(*socket)}
 		result, err := app.BackupPanel(context.Background())
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println(filepath.Join(*data, "backups", result.String("metadataBackup")))
+		fmt.Println(result.String("path"))
 		return
 	}
 	if command == "diagnose" {
@@ -304,14 +339,27 @@ func main() {
 				log.Fatal(err)
 			}
 		}
-		server.EnableHTTPS(certPath, certPath, &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+		baseTLS := &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 			b, err := os.ReadFile(certPath)
 			if err != nil {
 				return nil, err
 			}
 			pair, err := tls.X509KeyPair(b, b)
 			return &pair, err
-		}})
+		}}
+		baseTLS.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
+			next := baseTLS.Clone()
+			next.GetConfigForClient = nil
+			prefs := model.Config{}
+			if store.Setting("panel", &prefs) == nil && prefs.Bool("clientCertificateEnabled") {
+				next.ClientAuth = tls.RequestClientCert
+				roots := x509.NewCertPool()
+				roots.AppendCertsFromPEM([]byte(prefs.String("clientCA")))
+				next.ClientCAs = roots
+			}
+			return next, nil
+		}
+		server.EnableHTTPS(certPath, certPath, baseTLS)
 	}
 	serve := func(r *ghttp.Request) { handler.ServeHTTP(r.Response.BufferWriter.RawWriter(), r.Request) }
 	server.BindHandler("/*path", serve)

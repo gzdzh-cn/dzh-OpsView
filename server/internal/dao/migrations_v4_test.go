@@ -29,7 +29,7 @@ func TestFirewallObservationMigrationPreservesResourcesAndEncrypts(t *testing.T)
 	}
 	defer s.DB.Close()
 	var schema int
-	if err = s.DB.QueryRow("PRAGMA user_version").Scan(&schema); err != nil || schema != 4 {
+	if err = s.DB.QueryRow("PRAGMA user_version").Scan(&schema); err != nil || schema != 5 {
 		t.Fatal(schema, err)
 	}
 	var after string

@@ -3,7 +3,7 @@ import AppDialog from './AppDialog.vue'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePanel } from '../stores/panel'
-import { action, post, put, errorText, type Config, type Resource } from '../lib/api'
+import { api, action, post, put, errorText, type Config, type Resource } from '../lib/api'
 import SiteRuntimeOptions from './SiteRuntimeOptions.vue'
 const props = defineProps<{ modelValue: boolean; initial: Config; editing?: Resource }>()
 const emit = defineEmits(['update:modelValue'])
@@ -17,6 +17,8 @@ const form = ref<Config>({}),
 const certificate = ref(''),
   privateKey = ref(''),
   certificateMode = ref('none')
+const siteDirectory = ref('/www/wwwroot')
+let openSequence = 0
 const saved = ref<Resource>()
 const directoryOpen = ref(false),
   directories = ref<Config[]>([]),
@@ -32,7 +34,7 @@ async function browseDirectory() {
     const result = await post('/files', {
       scope: 'server',
       action: 'list',
-      path: '/www/wwwroot',
+      path: siteDirectory.value,
       page: directoryPage.value,
       pageSize: 100,
     })
@@ -81,7 +83,8 @@ const firstDomain = computed(
 )
 watch(
   () => props.modelValue,
-  (open) => {
+  async (open) => {
+    const seq = ++openSequence
     if (!open) {
       certificate.value = ''
       privateKey.value = ''
@@ -93,7 +96,7 @@ watch(
         props.editing?.config || {
           type: 'php',
           domains: '',
-          rootDirectory: '/www/wwwroot',
+          rootDirectory: siteDirectory.value,
           upstream: 'http://127.0.0.1:3000',
           proxyHost: '$http_host',
           note: '',
@@ -122,6 +125,12 @@ watch(
     certificateMode.value = 'none'
     if (form.value.type === 'php' && !form.value.phpInstanceId)
       form.value.phpInstanceId = php.value[0]?.id
+    try {
+      const defaults = await api('/settings')
+      if (seq !== openSequence || !props.modelValue) return
+      siteDirectory.value = defaults.siteDirectory || '/www/wwwroot'
+      if (!props.editing && !rootChanged.value) form.value.rootDirectory = siteDirectory.value + (firstDomain.value ? '/' + firstDomain.value : '')
+    } catch { /* server also applies the configured default */ }
   },
 )
 watch(firstDomain, (domain) => {
@@ -129,7 +138,7 @@ watch(firstDomain, (domain) => {
   if (!nameChanged.value) name.value = domain.slice(0, 63)
   if (!rootChanged.value)
     form.value.rootDirectory =
-      '/www/wwwroot' + (/^[a-z0-9][a-z0-9.-]*$/i.test(domain) ? '/' + domain : '')
+      siteDirectory.value + (/^[a-z0-9][a-z0-9.-]*$/i.test(domain) ? '/' + domain : '')
 })
 async function save() {
   error.value = ''
@@ -141,7 +150,7 @@ async function save() {
     if (
       form.value.type !== 'proxy' &&
       !props.editing &&
-      form.value.rootDirectory === '/www/wwwroot'
+      form.value.rootDirectory === siteDirectory.value
     )
       throw new Error('请填写域名以生成项目文件夹')
     if (certificateMode.value === 'upload' && (!certificate.value || !privateKey.value))
@@ -239,7 +248,7 @@ async function save() {
           </template>
         </el-input>
         <small v-if="!editing">
-          默认 /www/wwwroot/域名，可修改项目文件夹名称。已有非空目录需确认纳管。
+          默认 {{ siteDirectory }}/域名，可修改项目文件夹名称。已有非空目录需确认纳管。
         </small>
         <el-checkbox v-if="!editing" v-model="form.adoptDirectory">
           使用已有目录（保留文件，仅调整根目录所有者供运行用户使用）
@@ -370,7 +379,7 @@ async function save() {
   </AppDialog>
   <AppDialog
     v-model="directoryOpen"
-    title="选择 /www/wwwroot 项目目录"
+    :title="'选择 ' + siteDirectory + ' 项目目录'"
     width="min(560px,94vw)"
     append-to-body
   >

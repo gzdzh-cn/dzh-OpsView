@@ -94,6 +94,11 @@
 .app-shell .page-toolbar .el-input {
   min-width: 160px;
 }
+.app-shell .page-toolbar .el-select {
+  width: var(--ops-filter-width, 140px);
+  flex: 0 1 var(--ops-filter-width, 140px);
+  min-width: 120px;
+}
 .app-shell .data-list .el-table th.el-table__cell,
 .app-shell .data-list .el-table td.el-table__cell {
   padding: 8px 0;
@@ -387,3 +392,15 @@
 .schedule-cycle > .el-input {
   flex-basis: 100%;
 }
+
+.preference-row{display:flex;align-items:center;gap:16px;min-height:58px;padding:10px 12px;border-bottom:1px solid var(--el-border-color-lighter)}
+.preference-row>strong{width:144px;flex-shrink:0;font-size:var(--ops-font-size,14px);font-weight:500}
+.preference-value{min-width:0;flex:1;overflow-wrap:anywhere}.preference-value>small{display:block;color:var(--el-text-color-secondary);font-size:12px;margin-top:3px;line-height:1.4}
+.preference-action{flex-shrink:0;display:flex;gap:8px;align-items:center}.settings-surface{padding:0 8px}.compact-details{padding:12px}.compact-details>summary{cursor:pointer;margin-bottom:12px}.dialog-stack{display:grid;gap:12px}.dialog-stack .el-form-item{margin-bottom:14px}.full-width{width:100%}
+html.dark{color-scheme:dark;--el-bg-color:#171d27;--el-bg-color-page:#10151d;--el-bg-color-overlay:#202836;--el-text-color-primary:#e3e8ef;--el-text-color-regular:#c7d0dc;--el-text-color-secondary:#97a5b8;--el-border-color:#394555;--el-border-color-light:#303b4a;--el-border-color-lighter:#293545;--el-fill-color-blank:#171d27;--el-fill-color-light:#242d3b;--el-fill-color-lighter:#202937}
+html.dark body,html.dark .app-shell,html.dark .main-shell,html.dark .main-content{background:var(--el-bg-color-page);color:var(--el-text-color-primary)}
+html.dark .surface,html.dark .topbar,html.dark .list-panel,html.dark .login-form,html.dark .preference-row{background:var(--el-bg-color);color:var(--el-text-color-primary);border-color:var(--el-border-color-light)}
+html.dark .el-dialog,html.dark .ops-dialog-footer,html.dark .el-dialog__header{background:var(--el-bg-color-overlay);color:var(--el-text-color-primary)}
+html.dark .page-toolbar,html.dark .el-tabs__header{border-color:var(--el-border-color-light)}
+.app-shell{font-size:var(--ops-font-size,14px)}
+@media(max-width:700px){.preference-row{gap:10px;flex-wrap:wrap;padding:10px 4px}.preference-row>strong{width:112px}.preference-action .el-button{min-height:44px}.preference-value{min-width:130px}.preference-row .preference-action{margin-left:auto}}

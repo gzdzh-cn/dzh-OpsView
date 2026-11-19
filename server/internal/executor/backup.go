@@ -61,7 +61,10 @@ func (e *Engine) backupUnlocked(ctx context.Context, op model.Operation, log fun
 	if action != "backup" {
 		return nil, errors.New("备份操作无效")
 	}
-	base := filepath.Join(e.Root, "backups", r.ID)
+	base, err := e.backupBase(r)
+	if err != nil {
+		return nil, err
+	}
 	if err = os.MkdirAll(base, 0700); err != nil {
 		return nil, err
 	}
@@ -95,7 +98,7 @@ func (e *Engine) backupUnlocked(ctx context.Context, op model.Operation, log fun
 			}
 		}
 		log("文件备份采用在线文件快照，不保证应用事务一致性")
-		if err = archiveDirectory(root, plain); err != nil {
+		if err = archiveDirectoryOptions(ctx, root, plain, strings.Fields(r.Config.String("excludes"))); err != nil {
 			return nil, err
 		}
 	}
@@ -115,7 +118,7 @@ func (e *Engine) backupUnlocked(ctx context.Context, op model.Operation, log fun
 	if err != nil {
 		return nil, err
 	}
-	manifest := model.Config{"file": filepath.Base(artifact), "sha256": hash, "size": stat.Size(), "createdAt": time.Now().UTC().Format(time.RFC3339), "targetId": target.ID, "targetKind": target.Kind, "consistency": "online-file-copy"}
+	manifest := model.Config{"formatVersion": 2, "file": filepath.Base(artifact), "sha256": hash, "size": stat.Size(), "createdAt": time.Now().UTC().Format(time.RFC3339), "targetId": target.ID, "targetKind": target.Kind, "consistency": "online-file-copy"}
 	if target.Kind == "database" {
 		manifest["consistency"] = "logical-dump"
 	}
@@ -145,6 +148,10 @@ func (e *Engine) backupUnlocked(ctx context.Context, op model.Operation, log fun
 	}
 	if keep > 100 {
 		keep = 100
+	}
+	r.Config["history"] = backupHistory(base)
+	if err = e.save(r); err != nil {
+		return nil, err
 	}
 	files, _ := filepath.Glob(base + "/*.ovb")
 	for len(files) > keep {
@@ -198,6 +205,9 @@ func decryptBackup(v *security.Vault, src, dst string) error {
 	return security.DecryptFile(v, src, dst)
 }
 func archiveDirectory(root, path string) error {
+	return archiveDirectoryOptions(context.Background(), root, path, nil)
+}
+func archiveDirectoryOptions(ctx context.Context, root, path string, excludes []string) error {
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
@@ -211,11 +221,27 @@ func archiveDirectory(root, path string) error {
 		return err
 	}
 	defer scoped.Close()
+	estimated, err := preflightArchive(ctx, scoped, excludes, nil)
+	if err != nil {
+		return err
+	}
+	if err = ensureFileSpace(out, 3*estimated); err != nil {
+		return err
+	}
 	err = fs.WalkDir(scoped.FS(), ".", func(rel string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if rel == "." {
+			return nil
+		}
+		if archiveExcluded(rel, excludes) {
+			if entry.IsDir() {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		st, err := scoped.Lstat(rel)
@@ -249,7 +275,7 @@ func archiveDirectory(root, path string) error {
 			return err
 		}
 		if in != nil {
-			_, err = io.CopyN(tw, in, st.Size())
+			_, err = io.CopyN(tw, &contextReader{ctx: ctx, r: in}, st.Size())
 		}
 		return err
 	})
@@ -343,7 +369,10 @@ func (e *Engine) restore(ctx context.Context, op model.Operation, target model.R
 	if filepath.Base(name) != name || !strings.HasSuffix(name, ".ovb") {
 		return nil, errors.New("备份文件名无效")
 	}
-	base := filepath.Join(e.Root, "backups", r.ID)
+	base, err := e.backupBase(r)
+	if err != nil {
+		return nil, err
+	}
 	artifact := filepath.Join(base, name)
 
 	// Metadata in encrypted executor state is the trust anchor, never a remote sidecar.
@@ -374,6 +403,9 @@ func (e *Engine) restore(ctx context.Context, op model.Operation, target model.R
 		return nil, errors.New("备份校验失败")
 	}
 
+	if _, err = os.Stat(filepath.Join(e.Root, "backup.key")); err != nil {
+		return nil, errors.New("恢复需要原执行器 backup.key，请先恢复独立密钥")
+	}
 	v, err := security.OpenVault(filepath.Join(e.Root, "backup.key"))
 	if err != nil {
 		return nil, err

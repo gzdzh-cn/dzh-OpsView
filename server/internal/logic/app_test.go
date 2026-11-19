@@ -6,10 +6,12 @@ import (
 	"opsview/internal/dao"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
+	"opsview/internal/security"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type testExecutor struct {
@@ -115,6 +117,16 @@ func TestPanelBackupRestoreIntoNewDirectory(t *testing.T) {
 	if err = runtimeconfig.Save(configPath, cfg); err != nil {
 		t.Fatal(err)
 	}
+	schedule := model.Resource{Kind: "schedule", Name: "restored-plan", Config: model.Config{"operation": "shell", "cron": "* * * * *", "enabled": true, "rootApproval": "old"}}
+	if err = store.Create(&schedule); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.CreateToken("before-restore", "api", security.Hash("fixture-token"), model.Config{}, time.Now().Add(time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Set("panel", model.Config{"apiEnabled": true}); err != nil {
+		t.Fatal(err)
+	}
 	app := &App{Store: store, PanelDir: source, PanelConfigPath: configPath}
 	result, err := app.BackupPanel(context.Background())
 	if err != nil {
@@ -134,6 +146,19 @@ func TestPanelBackupRestoreIntoNewDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restored.DB.Close()
+	plan, er := restored.Resource(schedule.ID)
+	if er != nil || plan.Config.Bool("enabled") || plan.Config.String("rootApproval") != "" {
+		t.Fatal("restored schedule unsafe", plan, er)
+	}
+	tokens, er := restored.Tokens("api")
+	if er != nil || len(tokens) != 0 {
+		t.Fatal("restore retained tokens", tokens, er)
+	}
+	var prefs model.Config
+	_ = restored.Setting("panel", &prefs)
+	if prefs.Bool("apiEnabled") {
+		t.Fatal("restored API enabled")
+	}
 	var admin model.Config
 	if err = restored.Setting("admin", &admin); err != nil || admin.String("username") != "test-admin" {
 		t.Fatal(admin, err)

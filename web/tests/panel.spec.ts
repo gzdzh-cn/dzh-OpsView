@@ -209,7 +209,7 @@ test('panel backup persists a task, streams resumable logs and downloads encrypt
   expect(bytes.includes(Buffer.from(password))).toBe(false)
   await page.goto('/settings')
   await page.getByRole('tab', { name: '备份恢复', exact: true }).click()
-  await expect(page.getByRole('button', { name: '立即备份面板配置', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '立即备份面板', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: backups[0].name })).toBeVisible()
 })
 
@@ -364,7 +364,7 @@ test('software settings show version context and configuration conflict', async 
   await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(dialog).toBeHidden()
 })
-test('panel settings have five tabs and stage HTTPS changes', async ({ page }) => {
+test('panel settings have six tabs and stage HTTPS changes', async ({ page }) => {
   await page.route('**/api/v1/settings/runtime', async (route) => {
     if (route.request().method() === 'PUT') {
       const payload = route.request().postDataJSON()
@@ -391,14 +391,18 @@ test('panel settings have five tabs and stage HTTPS changes', async ({ page }) =
     '面板设置',
     '安全设置',
     '界面设置',
+    '告警通知',
     '备份恢复',
   ])
   await page.getByRole('tab', { name: '面板设置', exact: true }).click()
-  await page.getByText('关闭 SSL', { exact: true }).click()
+  await page.locator('.preference-row').filter({ has: page.getByText('面板访问', { exact: true }) }).getByRole('button', {name:'修改', exact:true}).click()
+  await page.getByText('HTTP（关闭 SSL）', { exact: true }).click()
   await page.getByRole('button', { name: '保存并重新连接', exact: true }).click()
   await page.getByRole('button', { name: '确认修改', exact: true }).click()
-  await expect(page.locator('.el-message-box')).toBeHidden()
-  await expect(page.getByRole('link', { name: '新面板登录地址（点击确认）' })).toHaveAttribute(
+  await page.getByRole('textbox', { name: '请输入当前管理员密码', exact: true }).fill(password)
+  await page.getByRole('button', {name:'验证',exact:true}).click()
+  await expect(page.getByRole('dialog', { name: '验证管理员身份', exact: true })).toBeHidden()
+  await expect(page.getByRole('link', { name: '打开新地址并确认（120 秒内）' })).toHaveAttribute(
     'href',
     /^http:.*#runtime-confirm=/,
   )
@@ -1240,7 +1244,7 @@ test('a failed route chunk offers recovery instead of an inert menu', async ({ p
   fail = false
   await page.getByRole('button', { name: '重新加载页面', exact: true }).click()
   await expect(page.getByRole('main', { name: '备份与计划', exact: true })).toBeVisible()
-  await expect(page.getByRole('tab', { name: '备份任务', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '备份记录', exact: true })).toBeVisible()
 })
 
 test('database tabs keep distinct compact tables and independent Redis browsing', async ({
@@ -2375,6 +2379,8 @@ test('schedule rows support paused copies, run attribution and guided cycles', a
     enabled = r.request().postDataJSON().config.enabled
     return r.fulfill({ json: schedule() })
   })
+  await page.route('**/api/v1/schedules/schedule-test', r=>r.fulfill({json:schedule()}))
+  await page.route('**/api/v1/schedules/schedule-test/runs', r=>r.fulfill({json:[{id:'scheduled-task',state:'succeeded',createdAt:'2026-11-19T01:00:00Z'}]}))
   await page.route('**/api/v1/schedules', (r) =>
     r.fulfill({
       json: {
@@ -2418,15 +2424,24 @@ test('schedule rows support paused copies, run attribution and guided cycles', a
   await page.goto('/backups')
   await page.getByRole('tab', { name: '计划任务', exact: true }).click()
   await expect(page.getByText('daily-backup', { exact: true })).toBeVisible()
+  const filters = page.locator('.page-toolbar .el-select')
+  await expect(filters).toHaveCount(3)
+  for (const filter of await filters.all()) {
+    expect((await filter.boundingBox())!.width).toBeLessThanOrEqual(160)
+  }
+  await page.screenshot({ path: '../.opsview/screenshots/rc17-schedules.png', fullPage: true })
   await page.getByRole('button', { name: '已启用', exact: true }).click()
   await expect(page.getByRole('button', { name: '已暂停', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '执行', exact: true }).click()
   await expect.poll(() => executions).toBe(1)
   await page.getByRole('button', { name: '日志', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: '计划执行日志' })).toContainText('SHA-256 校验完成')
+  await page.getByRole('button',{name:'查看日志',exact:true}).click()
+  await expect(page.getByRole('dialog', { name: '计划执行历史' })).toContainText('SHA-256 校验完成')
   await page.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '复制', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '创建计划任务', exact: true })
+  await expect(dialog).toBeVisible()
+  await page.screenshot({ path: '../.opsview/screenshots/rc17-schedule-editor.png', fullPage: true })
   await expect(dialog.getByRole('switch', { name: '启用', exact: true })).not.toBeChecked()
   await expect(dialog.getByRole('textbox', { name: 'Cron 表达式', exact: true })).toHaveValue(
     '0 3 * * *',
@@ -2438,4 +2453,102 @@ test('schedule rows support paused copies, run attribution and guided cycles', a
   await expect(dialog.getByRole('textbox', { name: 'Cron 表达式', exact: true })).toHaveValue(
     '*/15 * * * *',
   )
+})
+
+test('script templates retain revisions and create paused schedules with fixed dialog actions', async ({ page }) => {
+  await page.route('**/api/v1/schedules/capabilities', r => r.fulfill({json:{users:['opsview-task','root'],interpreters:['/usr/bin/python3']}}))
+  await page.goto('/backups')
+  await expect(page.getByRole('tab')).toHaveText(['计划任务','备份记录','脚本库'])
+  await page.getByRole('tab',{name:'脚本库',exact:true}).click()
+  await page.getByRole('button',{name:'添加脚本',exact:true}).click()
+  let dialog = page.getByRole('dialog',{name:'添加脚本模板',exact:true})
+  const geometry = await overlayGeometry(dialog)
+  await dialog.getByRole('textbox',{name:'名称',exact:true}).fill('script-lifecycle')
+  await dialog.getByRole('textbox',{name:'内容',exact:true}).fill('echo fixture\n'.repeat(120))
+  await dialog.locator('.el-dialog__body').evaluate(el=>el.scrollTop=el.scrollHeight)
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  await dialog.getByRole('button',{name:'保存',exact:true}).click()
+  const row = page.getByRole('row').filter({hasText:'script-lifecycle'})
+  await expect(row).toBeVisible()
+  await row.getByRole('button',{name:'编辑',exact:true}).click()
+  dialog = page.getByRole('dialog',{name:'编辑脚本模板',exact:true})
+  await dialog.getByRole('textbox',{name:'内容',exact:true}).fill('exit 7')
+  await dialog.getByRole('button',{name:'保存',exact:true}).click()
+  await row.getByRole('button',{name:'编辑',exact:true}).click()
+  await dialog.getByRole('combobox',{name:'历史版本',exact:true}).press('ArrowDown')
+  await expect(page.getByRole('option')).toHaveCount(2)
+  await page.keyboard.press('Escape')
+  await dialog.getByRole('button',{name:'取消',exact:true}).click()
+  await row.getByRole('button',{name:'创建计划',exact:true}).click()
+  dialog = page.getByRole('dialog',{name:'创建计划任务',exact:true})
+  await expect(dialog.getByRole('switch',{name:'启用',exact:true})).not.toBeChecked()
+  await expect(dialog.getByRole('textbox',{name:'脚本内容',exact:true})).toHaveValue('exit 7')
+  await dialog.getByRole('textbox',{name:'任务名称',exact:true}).fill('template-plan')
+  await dialog.getByRole('combobox',{name:'执行用户',exact:true}).press('ArrowDown')
+  await page.getByRole('option',{name:'root',exact:true}).click()
+  await dialog.getByRole('button',{name:'保存',exact:true}).click()
+  await expect(page.getByRole('dialog',{name:'验证管理员身份',exact:true})).toBeVisible()
+  await page.locator('.el-message-box').getByRole('button',{name:'取消',exact:true}).click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('combobox',{name:'执行用户',exact:true}).press('ArrowDown')
+  await page.getByRole('option',{name:'opsview-task',exact:true}).click()
+  await dialog.getByRole('button',{name:'保存',exact:true}).click()
+  await expect(dialog).toBeHidden()
+  await page.getByRole('tab',{name:'计划任务',exact:true}).click()
+  const planned=page.getByRole('row').filter({hasText:'template-plan'})
+  await expect(planned).toContainText('已暂停')
+  await planned.getByRole('button',{name:'删除',exact:true}).click()
+  await page.locator('.el-message-box').getByRole('button',{name:'删除',exact:true}).click()
+  await expect(planned).toHaveCount(0)
+  await page.getByRole('tab',{name:'脚本库',exact:true}).click()
+  await row.getByRole('button',{name:'删除',exact:true}).click()
+  await page.locator('.el-message-box').getByRole('button',{name:'删除',exact:true}).click()
+  await expect(row).toHaveCount(0)
+})
+
+test('settings CAS conflicts preserve editor and notification tabs load independently', async ({page})=>{
+  let rules=0,channels=0,records=0
+  await page.route('**/api/v1/notifications/*',r=>{
+    const kind = new URL(r.request().url()).pathname.split('/').at(-1)
+    if(kind==='rules')rules++;if(kind==='channels')channels++;if(kind==='records')records++
+    return r.fulfill({json:[]})
+  })
+  await page.goto('/settings')
+  const setting = page.locator('.preference-row').filter({has:page.getByText('面板名称',{exact:true})})
+  await setting.getByRole('button',{name:'修改',exact:true}).click()
+  const dialog=page.getByRole('dialog',{name:'面板名称',exact:true})
+  await dialog.getByRole('textbox',{name:'面板名称',exact:true}).fill('conflicting-name')
+  await page.route('**/api/v1/settings/groups/panel',r=>r.request().method()==='PATCH'?r.fulfill({status:409,json:{error:'设置已被修改，请重新载入'}}):r.continue())
+  await dialog.getByRole('button',{name:'保存',exact:true}).click()
+  await expect(dialog).toContainText('设置已被修改')
+  await expect(dialog.getByRole('textbox',{name:'面板名称',exact:true})).toHaveValue('conflicting-name')
+  await page.setViewportSize({width:390,height:844})
+  const before=await overlayGeometry(dialog)
+  await dialog.locator('.el-dialog__body').evaluate(el=>el.scrollTop=el.scrollHeight)
+  expectFixedOverlay(before,await overlayGeometry(dialog))
+  await dialog.getByRole('button',{name:'取消',exact:true}).click()
+  await page.getByRole('tab',{name:'告警通知',exact:true}).click()
+  await expect.poll(()=>rules).toBe(1)
+  expect(channels).toBe(0);expect(records).toBe(0)
+  await page.getByRole('tab',{name:'通知渠道',exact:true}).click()
+  await expect.poll(()=>channels).toBe(1)
+  expect(records).toBe(0)
+  await page.getByRole('tab',{name:'发送记录',exact:true}).click()
+  await expect.poll(()=>records).toBe(1)
+})
+
+test('backup integrity checks consume queued task results and expose failures',async({page})=>{
+  await page.route('**/api/v1/settings/backups',r=>r.fulfill({json:[{name:'fixture.ovp',size:123,createdAt:'2026-11-19T01:00:00Z',storage:'/www/backup',url:'/fixture.ovp'}]}))
+  await page.route('**/api/v1/backups/archives',r=>r.fulfill({json:{rows:[]}}))
+  let attempt=0,reads=0
+  await page.route('**/api/v1/backups/archives/verify',r=>{attempt++;reads=0;return r.fulfill({status:202,json:{id:'archive-verify'}})})
+  await page.route('**/api/v1/backups/tasks/archive-verify',r=>{reads++;return r.fulfill({json: reads===1?{state:'running'}:attempt===1?{state:'failed',error:'原密钥缺失'}:{state:'succeeded',result:{verified:true}}})})
+  await page.goto('/backups?tab=records')
+  const row=page.getByRole('row').filter({hasText:'fixture.ovp'})
+  await row.getByRole('button',{name:'校验',exact:true}).click()
+  await expect(row).toContainText('处理中')
+  await expect(page.getByText('原密钥缺失',{exact:true})).toBeVisible()
+  await expect(row).toContainText('待校验')
+  await row.getByRole('button',{name:'校验',exact:true}).click()
+  await expect(row).toContainText('已校验')
 })

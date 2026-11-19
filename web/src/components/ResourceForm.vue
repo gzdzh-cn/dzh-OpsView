@@ -501,6 +501,7 @@ void api
           <el-form-item label="保留份数">
             <el-input-number v-model="form.retention" :min="1" :max="100" />
           </el-form-item>
+          <el-form-item label="排除项" class="wide"><el-input v-model="form.excludes" placeholder="网站备份：空格分隔，例如 *.tmp cache" /></el-form-item>
           <template v-if="form.destination === 's3'">
             <el-form-item label="HTTPS Endpoint" class="wide">
               <el-input v-model="form.endpoint" placeholder="https://s3.example.com" />

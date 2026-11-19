@@ -10,6 +10,7 @@ import (
 	"log"
 	"opsview/internal/dao"
 	"opsview/internal/model"
+	"opsview/internal/scheduling"
 	"opsview/internal/security"
 	"opsview/internal/service"
 	"strings"
@@ -29,29 +30,33 @@ type App struct {
 	taskMu          sync.Mutex
 	taskCancels     map[string]context.CancelFunc
 	schedule        *cron.Cron
+	scheduleMu      sync.Mutex
 }
 
 func (a *App) Start() {
 	_, _ = a.Store.DB.Exec(`UPDATE tasks SET state='interrupted',error='服务重启，请检查实际状态后重试',updated_at=? WHERE state IN ('queued','running')`, dao.Now())
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		tick := time.NewTicker(500 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-tick.C:
-				a.runNext(ctx)
+	for worker := 0; worker < 4; worker++ {
+		a.wg.Add(1)
+		go func() {
+			defer a.wg.Done()
+			tick := time.NewTicker(500 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					a.runNext(ctx)
+				}
 			}
-		}
-	}()
+		}()
+	}
 	a.schedule = cron.New()
 	a.schedule.Start()
 	a.ReloadSchedules()
+	a.startMaintenance(ctx)
 	instances, _ := a.Store.Resources("instance")
 	for _, i := range instances {
 		if i.Config.String("software") == "mysql" || i.Config.String("software") == "postgresql" {
@@ -69,6 +74,8 @@ func (a *App) Stop() {
 	a.wg.Wait()
 }
 func (a *App) ReloadSchedules() {
+	a.scheduleMu.Lock()
+	defer a.scheduleMu.Unlock()
 	if a.schedule == nil {
 		return
 	}
@@ -84,10 +91,15 @@ func (a *App) ReloadSchedules() {
 		if !r.Config.Bool("enabled") {
 			continue
 		}
-		_, e = a.schedule.AddFunc(r.Config.String("cron"), func() {
+		expr := r.Config.String("cron")
+		if r.Config.String("timezone") != "" {
+			expr = "CRON_TZ=" + r.Config.String("timezone") + " " + expr
+		}
+		_, e = a.schedule.AddFunc(expr, func() {
 			_, e := a.QueueSchedule(r.ID, true)
 			if e != nil {
-				a.Store.Audit("schedule.failed:"+e.Error(), r.ID, "local")
+				a.Store.Audit("schedule.skipped", r.ID, "local")
+				_ = a.Store.RecordSkippedSchedule(r.ID, "计划冲突或不可执行，请检查关联资源与任务授权")
 			}
 		})
 		if e != nil {
@@ -163,6 +175,14 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 			if x.ID == r.ID {
 				continue
 			}
+			for _, id := range scheduling.TargetIDs(x.Config) {
+				if id == r.ID {
+					return model.Task{}, fmt.Errorf("资源仍被 %s 使用", x.Name)
+				}
+			}
+			if x.Config.String("storageId") == r.ID {
+				return model.Task{}, fmt.Errorf("存储仍被 %s 使用", x.Name)
+			}
 			for _, k := range []string{"instanceId", "targetId", "phpInstanceId", "appId", "sessionRedisInstanceId"} {
 				if x.Config.String(k) == r.ID {
 					return model.Task{}, fmt.Errorf("资源仍被 %s 使用", x.Name)
@@ -229,11 +249,44 @@ func (a *App) runNext(ctx context.Context) {
 		return
 	}
 	a.Store.Event(t.ID, "任务开始："+op.Name)
+	logBytes := 0
+	truncated := false
+	emit := func(line string) {
+		if truncated {
+			return
+		}
+		if strings.HasPrefix(line, "[OpsView 日志已截断]") {
+			_ = a.Store.Set("task-log-truncated:"+t.ID, true)
+		}
+		line = security.MaskLog(line, op)
+		logBytes += len(line)
+		if logBytes > 4<<20 {
+			truncated = true
+			a.Store.Event(t.ID, "日志达到 4 MiB 上限，后续输出已截断")
+			return
+		}
+		a.Store.Event(t.ID, line)
+	}
+	defer func() {
+		if truncated {
+			_ = a.Store.Set("task-log-truncated:"+t.ID, true)
+		}
+	}()
 	var data model.Config
-	if op.Name == "panel.backup" {
+	if op.Name == "schedule.execute" {
+		data, e = a.executeSchedule(ctx, op, emit)
+		if data != nil {
+			_ = a.Store.SaveTaskResult(t.ID, data)
+		}
+	} else if strings.HasPrefix(op.Name, "panel.archive-") {
+		data, e = a.PanelArchive(ctx, op.Params, strings.TrimPrefix(op.Name, "panel.archive-"))
+	} else if op.Name == "panel.backup" {
 		data, e = a.BackupPanel(ctx)
 	} else {
-		data, e = a.Executor.Execute(ctx, op, func(s string) { a.Store.Event(t.ID, security.MaskLog(s, op)) })
+		data, e = a.Executor.Execute(ctx, op, emit)
+	}
+	if data != nil {
+		_ = a.Store.SaveTaskResult(t.ID, data)
 	}
 	if e != nil {
 		msg := security.MaskLog(e.Error(), op)
@@ -250,6 +303,17 @@ func (a *App) runNext(ctx context.Context) {
 			r.Status = "error"
 			_ = a.Store.Update(&r)
 		}
+		return
+	}
+	if strings.HasPrefix(op.Name, "archive.") || strings.HasPrefix(op.Name, "panel.archive-") || op.Name == "system.panel-region-update" {
+		_ = a.Store.SaveTaskResult(t.ID, data)
+		_ = a.Store.Finish(t.ID, "succeeded", "")
+		a.Store.Event(t.ID, "归档恢复完成")
+		return
+	}
+	if op.Name == "schedule.execute" {
+		_ = a.Store.Finish(t.ID, "succeeded", "")
+		a.Store.Event(t.ID, "任务完成")
 		return
 	}
 	if strings.HasPrefix(op.Name, "dbadmin.") {
@@ -407,6 +471,12 @@ func (a *App) QueueSchedule(id string, automatic bool) (model.Task, error) {
 	}
 	if err = Validate(r); err != nil {
 		return model.Task{}, err
+	}
+	if (r.Config.String("operation") == "shell" || r.Config.String("operation") == "python") && r.Config.String("user") == "root" && r.Config.String("rootApproval") != scheduling.Digest(r.Config) {
+		return model.Task{}, errors.New("root 任务需要重新确认管理员身份")
+	}
+	if (r.Config.String("operation") != "backup" && r.Config.String("operation") != "renew") || len(scheduling.TargetIDs(r.Config)) > 1 || (r.Config.String("operation") == "renew" && r.Config.String("targetId") == "panel") {
+		return a.Store.Enqueue(model.Operation{Name: "schedule.execute", Resource: r, Params: model.Config{"scheduleId": r.ID}})
 	}
 	target, err := a.Store.Resource(r.Config.String("targetId"))
 	if err != nil {

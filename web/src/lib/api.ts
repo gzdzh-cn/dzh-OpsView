@@ -4,6 +4,9 @@ export type Resource = Omit<components['schemas']['Resource'], 'config'> & { con
 export type Task = components['schemas']['Task']
 export type Config = Record<string, any>
 let csrf = ''
+export function getCSRF(){return csrf}
+let activity=Math.floor(Date.now()/1000)
+if(typeof window!=='undefined')for(const event of ['pointerdown','keydown','touchstart'])window.addEventListener(event,()=>{activity=Math.floor(Date.now()/1000)},{passive:true})
 export class APIError extends Error {
   constructor(
     message: string,
@@ -21,7 +24,7 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
   const response = await fetch('/api/v1' + path, {
     ...options,
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, ...options.headers },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'X-OpsView-Activity': String(activity), ...options.headers },
   })
   const data = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
   if (!response.ok) {
@@ -55,7 +58,11 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
           ? ['/catalog', '/plugins'].includes(key)
           : false) ||
         (path.startsWith('/system') ? key.startsWith('/system') || key === '/audit' : false) ||
-        (path.startsWith('/settings') ? key === '/settings/backups' : false),
+        (path.startsWith('/settings') ? key.startsWith('/settings') : false) ||
+        (path.startsWith('/schedules') ? key.startsWith('/schedules') : false) ||
+        (path.startsWith('/scripts') ? key.startsWith('/scripts') : false) ||
+        (path.startsWith('/notifications') ? key.startsWith('/notifications') : false) ||
+        (path.startsWith('/backups') ? key.startsWith('/backups') : false),
     )
   }
   return data as T

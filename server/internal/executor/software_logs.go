@@ -398,6 +398,11 @@ func (e *Engine) manageSoftwareLog(ctx context.Context, r model.Resource, p mode
 		return nil, errors.New("系统日志由 journald 管理，不允许在此清理")
 	}
 	dir := e.logArchiveDir(r, owner, p.String("kind"))
+	return e.manageLogFile(ctx, r, p, action, log, path, unit, dir)
+}
+func (e *Engine) manageLogFile(ctx context.Context, r model.Resource, p model.Config, action string, log func(string), path, unit, dir string) (model.Config, error) {
+	var err error
+
 	if _, err := safePath(e.Root, strings.TrimPrefix(dir, e.Root+string(filepath.Separator))); err != nil {
 		return nil, err
 	}

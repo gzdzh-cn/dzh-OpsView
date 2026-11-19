@@ -74,7 +74,7 @@ func (s *Store) AddSession(expected any, hash, csrf string, expires int64) error
 	if !reflect.DeepEqual(expected, current.Elem().Interface()) {
 		return errors.New("管理员已变更，请重新登录")
 	}
-	if _, err = tx.Exec("INSERT INTO sessions VALUES(?,?,?)", hash, csrf, expires); err != nil {
+	if _, err = tx.Exec("INSERT INTO sessions(hash,csrf,expires) VALUES(?,?,?)", hash, csrf, expires); err != nil {
 		return err
 	}
 	return tx.Commit()

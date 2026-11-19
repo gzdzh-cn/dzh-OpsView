@@ -55,12 +55,15 @@ func sessionCookieName(r *http.Request) string {
 
 func (c *Controller) authStatus(w http.ResponseWriter, r *http.Request) {
 	a, e := c.currentAdmin()
-	var csrf string
-	cookie, err := r.Cookie(sessionCookieName(r))
-	if err == nil {
-		_ = c.App.Store.DB.QueryRow(`SELECT csrf FROM sessions WHERE hash=? AND expires>?`, security.Hash(cookie.Value), time.Now().Unix()).Scan(&csrf)
-	}
-	send(w, 200, map[string]any{"setupRequired": errors.Is(e, sql.ErrNoRows), "authenticated": csrf != "", "username": a.Username, "twoFactorEnabled": a.TOTP != "", "csrf": csrf, "development": c.App.Development})
+	_, csrf, _ := c.checkSession(r)
+	temporary, scopes, _ := c.temporarySession(r)
+	temporary = temporary && csrf == ""
+	send(w, 200, map[string]any{"setupRequired": errors.Is(e, sql.ErrNoRows), "authenticated": csrf != "" || temporary, "username": func() string {
+		if temporary && csrf == "" {
+			return "临时只读访问"
+		}
+		return a.Username
+	}(), "twoFactorEnabled": a.TOTP != "", "csrf": csrf, "development": c.App.Development, "temporary": temporary, "scopes": scopes["scopes"], "passwordExpired": c.passwordExpired(a)})
 }
 func (c *Controller) setup(w http.ResponseWriter, r *http.Request) {
 	c.auth.Lock()
@@ -152,20 +155,24 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = c.App.Store.DB.Exec(`DELETE FROM sessions WHERE expires<?`, now.Unix())
 	http.SetCookie(w, &http.Cookie{Name: sessionCookieName(r), Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: minutes * 60, Expires: expires})
+	_, _ = c.App.Store.DB.Exec(`INSERT OR REPLACE INTO session_activity(hash,last_seen,ip,agent) VALUES(?,?,?,?)`, security.Hash(token), now.Unix(), ip, truncateAgent(r.UserAgent()))
 	c.App.Store.Audit("auth.login", "", ip)
 	send(w, 200, map[string]any{"csrf": csrf, "username": a.Username})
 }
 func (c *Controller) authenticated(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, e := r.Cookie(sessionCookieName(r))
-		if e != nil {
-			fail(w, 401, "请先登录")
+		if c.tokenRequest(w, r, next) {
 			return
 		}
-		var csrf string
-		e = c.App.Store.DB.QueryRow(`SELECT csrf FROM sessions WHERE hash=? AND expires>?`, security.Hash(cookie.Value), time.Now().Unix()).Scan(&csrf)
+		_, csrf, e := c.checkSession(r)
 		if e != nil {
-			fail(w, 401, "登录已失效")
+			fail(w, 401, "登录已失效或无操作超时")
+			return
+		}
+
+		a, _ := c.currentAdmin()
+		if c.passwordExpired(a) && r.URL.Path != "/api/v1/auth/password" && r.URL.Path != "/api/v1/auth/logout" {
+			fail(w, 403, "管理员密码已到期，请先修改密码")
 			return
 		}
 		var settings map[string]any
@@ -292,6 +299,10 @@ func (c *Controller) password(w http.ResponseWriter, r *http.Request) {
 	a, e := c.currentAdmin()
 	if e != nil || bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(b.Current)) != nil || (a.TOTP != "" && !security.VerifyTOTP(a.TOTP, b.Code)) {
 		fail(w, 403, "身份验证失败")
+		return
+	}
+	if err := c.passwordPolicy(b.Password); err != nil {
+		fail(w, 400, err.Error())
 		return
 	}
 	if !validPassword(b.Password) {

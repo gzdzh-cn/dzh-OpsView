@@ -98,7 +98,7 @@ func MaskLog(message string, context any) string {
 		switch x := v.(type) {
 		case map[string]any:
 			for k, v := range x {
-				walk(v, secret || Sensitive(k))
+				walk(v, secret || Sensitive(k) || k == "environment" || k == "headers" || k == "body")
 			}
 		case []any:
 			for _, v := range x {

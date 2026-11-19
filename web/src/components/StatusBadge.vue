@@ -10,6 +10,7 @@ const labels: Record<string, string> = {
   failed: '失败',
   interrupted: '已中断',
   cancelled: '已取消',
+  skipped: '已跳过',
   expired: '已到期',
   stopped: '已停止',
   error: '需检查',

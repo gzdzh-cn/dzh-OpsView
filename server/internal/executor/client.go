@@ -18,7 +18,7 @@ type Client struct{ HTTP *http.Client }
 func NewClient(socket string) *Client {
 	return &Client{&http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socket)
-	}}, Timeout: 2 * time.Hour}}
+	}}, Timeout: 25 * time.Hour}}
 }
 func (c *Client) Execute(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
 	b, e := json.Marshal(op)
@@ -51,7 +51,7 @@ func (c *Client) Execute(ctx context.Context, op model.Operation, log func(strin
 			if r.Code == "revision_conflict" {
 				return nil, &model.RevisionConflict{Revision: r.Revision}
 			}
-			return nil, errors.New(r.Error)
+			return r.Data, errors.New(r.Error)
 		}
 		if r.Log != "" {
 			log(r.Log)
@@ -62,7 +62,7 @@ func (c *Client) Execute(ctx context.Context, op model.Operation, log func(strin
 		}
 	}
 	if e = scanner.Err(); e != nil {
-		return nil, e
+		return data, e
 	}
 	if !finished {
 		return nil, errors.New("执行器连接中断，未收到完成确认")

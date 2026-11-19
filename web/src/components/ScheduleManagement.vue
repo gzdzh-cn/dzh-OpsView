@@ -7,42 +7,79 @@ import { usePageState } from '../composables/pageState'
 import { api, post, put, action, errorText, date, type Resource, type Config } from '../lib/api'
 import LoadingContent from './LoadingContent.vue'
 import DataList from './DataList.vue'
-import ResourceForm from './ResourceForm.vue'
+import ScheduleEditor from './ScheduleEditor.vue'
+import { identity, saveJSON } from '../lib/identity'
 import AppDialog from './AppDialog.vue'
 import StatusBadge from './StatusBadge.vue'
+import ScheduleHistory from './ScheduleHistory.vue'
 const panel = usePanel(),
   filter = usePageState('schedule-type', 'all')
 const { data, busy: reading, error, load } = usePageQuery<Config>('/schedules', { rows: [] })
+const category = usePageState('schedule-category', 'all')
+const categoryOpen=ref(false),categoryNames=ref<string[]>([]),newCategory=ref('')
+async function manageCategories(){try{categoryNames.value=await api('/schedule-categories');categoryOpen.value=true}catch(e){ElMessage.error(errorText(e))}}
+async function categoryAction(old='',remove=false){try{let name=newCategory.value;if(old&&!remove){name=(await ElMessageBox.prompt('输入新的分类名称','修改分类',{inputValue:old,confirmButtonText:'保存',cancelButtonText:'取消'})).value};if(remove)await ElMessageBox.confirm('删除分类后，任务移入默认分类，任务内容保持。','删除分类',{confirmButtonText:'删除',cancelButtonText:'取消'});await post('/schedule-categories',{old,name,remove});newCategory.value='';categoryNames.value=await api('/schedule-categories');await reload()}catch(e){if(e!=='cancel'&&e!=='close')ElMessage.error(errorText(e))}}
+const categories = computed(() => [
+  ...new Set<string>(data.value.rows.map((r: Config) => r.resource.config.category || '默认分类')),
+])
 const rows = computed(() =>
-  data.value.rows.filter(
-    (r: Config) => filter.value === 'all' || r.resource.config.operation === filter.value,
-  ),
+  data.value.rows
+    .filter(
+      (r: Config) =>
+        (status.value === 'all' ||
+          (r.resource.config.enabled ? 'enabled' : 'paused') === status.value) &&
+        (!search.value ||
+          JSON.stringify([r.resource.name, r.resource.config.category, r.targetName])
+            .toLowerCase()
+            .includes(search.value.toLowerCase())) &&
+        (filter.value === 'all' || r.resource.config.operation === filter.value) &&
+        (category.value === 'all' || (r.resource.config.category || '默认分类') === category.value),
+    )
+    .sort(
+      (a: Config, b: Config) =>
+        Number(!!b.resource.config.pinned) - Number(!!a.resource.config.pinned),
+    ),
 )
 const editing = ref<Resource>(),
   initial = ref<Config>(),
   dialog = ref(false),
   busy = ref(false)
-const logOpen = ref(false),
-  logText = ref(''),
-  logReading = ref(false)
+const historyId = ref(''),
+  status = usePageState('schedule-status', 'all'),
+  search = usePageState('schedule-search', ''),
+  selected = ref<Config[]>([])
 const importOpen = ref(false),
   importText = ref(''),
   candidates = ref<Config[]>([]),
   importError = ref('')
 function latest(row: Config) {
-  return panel.tasks.find((t) => t.scheduleId === row.resource.id)
+  return (
+    panel.tasks.find((t) => t.scheduleId === row.resource.id) ||
+    (row.lastRun?.id ? row.lastRun : undefined)
+  )
 }
 async function reload() {
   await Promise.all([panel.refresh(['resources', 'tasks']), load(true)])
 }
-function create(row?: Config, copy = false) {
-  editing.value = copy ? undefined : row?.resource
-  initial.value = copy ? { ...row?.resource.config, enabled: false } : undefined
-  dialog.value = true
+async function create(row?: Config, copy = false) {
+  try {
+    editing.value = copy ? undefined : row?.resource
+    initial.value =
+      copy && row
+        ? { ...(await api<Resource>('/schedules/' + row.resource.id)).config, enabled: false }
+        : undefined
+    dialog.value = true
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
 }
 async function run(row: Config) {
   try {
-    await action(row.resource.id, 'run')
+    await action(
+      row.resource.id,
+      'run',
+      row.resource.config.user === 'root' ? await identity() : {},
+    )
     await reload()
     ElMessage.success('任务已提交，重复运行由资源锁阻止')
   } catch (e) {
@@ -54,10 +91,15 @@ async function toggle(row: Config) {
   busy.value = true
   try {
     const r = row.resource
-    await put('/resources/' + r.id, {
-      name: r.name,
-      revision: r.revision,
-      config: { ...r.config, enabled: !r.config.enabled },
+    const auth = r.config.user === 'root' && !r.config.enabled ? await identity() : undefined
+    await api('/resources/' + r.id, {
+      method: 'PUT',
+      headers: auth ? { 'X-OpsView-Password': auth.password, 'X-OpsView-TOTP': auth.code } : {},
+      body: JSON.stringify({
+        name: r.name,
+        revision: r.revision,
+        config: { ...r.config, enabled: !r.config.enabled },
+      }),
     })
     await reload()
   } catch (e) {
@@ -69,7 +111,7 @@ async function toggle(row: Config) {
 async function remove(row: Config) {
   try {
     await ElMessageBox.confirm(
-      `删除计划 ${row.resource.name}？已执行的备份和运行中的任务保留。`,
+      `删除计划 ${row.resource.name}？已执行的备份保留；运行中的任务请先停止。`,
       '删除计划',
       { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
     )
@@ -79,48 +121,40 @@ async function remove(row: Config) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
   }
 }
-async function logs(row: Config) {
-  logOpen.value = true
-  logText.value = ''
-  logReading.value = true
+function logs(row: Config) {
+  historyId.value = row.resource.id
+}
+async function exportSchedules() {
   try {
-    const t = latest(row)
-    if (!t) {
-      logText.value = '暂无执行记录（任务中心保留最近 200 条）'
-      return
-    }
-    const events = await api<Config[]>('/tasks/' + t.id + '/events')
-    logText.value =
-      `${t.operation} · ${t.state}\n${t.error || ''}\n` +
-      events.map((e) => `${date(e.createdAt)}  ${e.message}`).join('\n')
+    const schedules = await Promise.all(
+      rows.value.map((r: Config) => api('/schedules/' + r.resource.id + '/export')),
+    )
+    saveJSON({ format: 'opsview-schedules', version: 2, schedules }, 'opsview-schedules.json')
   } catch (e) {
-    logText.value = errorText(e)
-  } finally {
-    logReading.value = false
+    ElMessage.error(errorText(e))
   }
 }
-function exportSchedules() {
-  const content = {
-    format: 'opsview-schedules',
-    version: 1,
-    schedules: rows.value.map((r: Config) => ({
-      name: r.resource.name,
-      config: {
-        targetId: r.resource.config.targetId,
-        operation: r.resource.config.operation,
-        cron: r.resource.config.cron,
-        enabled: r.resource.config.enabled,
-      },
-    })),
+async function stop(row: Config) {
+  try {
+    await post('/schedules/' + row.resource.id + '/stop')
+    await reload()
+    ElMessage.success('已提交停止请求')
+  } catch (e) {
+    ElMessage.error(errorText(e))
   }
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' }),
-  )
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'opsview-schedules.json'
-  a.click()
-  URL.revokeObjectURL(url)
+}
+async function pin(row: Config) {
+  try {
+    const r = await api<Resource>('/schedules/' + row.resource.id)
+    await put('/resources/' + r.id, {
+      name: r.name,
+      revision: r.revision,
+      config: { ...r.config, pinned: !r.config.pinned },
+    })
+    await reload()
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
 }
 function preview() {
   candidates.value = []
@@ -129,27 +163,35 @@ function preview() {
     const value = JSON.parse(importText.value)
     if (
       value.format !== 'opsview-schedules' ||
-      value.version !== 1 ||
+      ![1, 2].includes(value.version) ||
       !Array.isArray(value.schedules) ||
       value.schedules.length > 100
     )
-      throw new Error('仅支持 OpsView v1 计划格式，每次最多 100 条')
+      throw new Error('仅支持 OpsView 计划格式，每次最多 100 条')
     candidates.value = value.schedules.map((r: Config) => {
       if (
-        Object.keys(r).some((k) => !['name', 'config'].includes(k)) ||
-        !r.config ||
-        Object.keys(r.config).some((k) => !['targetId', 'operation', 'cron', 'enabled'].includes(k))
-      )
-        throw new Error('包含不支持的字段，请核对后再导入')
-      if (
         !r.name ||
-        !['backup', 'renew'].includes(r.config.operation) ||
-        typeof r.config.cron !== 'string'
+        !r.config ||
+        typeof r.config.cron !== 'string' ||
+        ![
+          'backup',
+          'renew',
+          'shell',
+          'python',
+          'http',
+          'directory',
+          'panel',
+          'rotate',
+          'cleanup',
+          'site-state',
+          'time-sync',
+        ].includes(r.config.operation)
       )
         throw new Error('计划名称、类型或周期无效')
-      const target = panel.resources.find((x) => x.id === r.config.targetId)
-      if (!target || target.kind !== (r.config.operation === 'backup' ? 'backup' : 'site'))
-        throw new Error('目标不存在或类型不匹配：' + r.name)
+      delete r.config.rootApproval
+      delete r.config.environment
+      delete r.config.headers
+      delete r.config.body
       if (panel.kind('schedule').some((x) => x.name === r.name))
         throw new Error('名称已存在：' + r.name)
       return { name: r.name, config: { ...r.config, enabled: false } }
@@ -161,18 +203,61 @@ function preview() {
 async function applyImport() {
   busy.value = true
   try {
-    for (const row of [...candidates.value]) {
-      await post('/resources', { kind: 'schedule', ...row })
-      candidates.value.shift()
-    }
+    await post('/schedules/import', {
+      schedules: candidates.value.map((r) => ({ name: r.name, config: r.config })),
+      preview: false,
+    })
     importOpen.value = false
-    ElMessage.success('计划已导入，默认暂停；请核对后启用')
+    ElMessage.success('计划已导入，全部暂停；root 任务启用时需验证')
   } catch (e) {
-    importError.value = '部分计划未导入：' + errorText(e)
+    importError.value = errorText(e)
   } finally {
     busy.value = false
     await reload()
   }
+}
+async function batch(command: string) {
+  if (!selected.value.length) {
+    ElMessage.warning('请先勾选任务')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '对明确勾选的 ' +
+        selected.value.length +
+        ' 条计划执行' +
+        (command === 'delete' ? '删除' : '暂停') +
+        '？',
+      '批量操作',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' },
+    )
+    for (const row of selected.value) {
+      if (command === 'delete') await api('/resources/' + row.resource.id, { method: 'DELETE' })
+      else {
+        const r = await api<Resource>('/schedules/' + row.resource.id)
+        await put('/resources/' + r.id, {
+          name: r.name,
+          revision: r.revision,
+          config: { ...r.config, enabled: false },
+        })
+      }
+    }
+    selected.value = []
+    await reload()
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
+    await reload()
+  }
+}
+function more(command: string) {
+ if(command==='categories'){void manageCategories();return}
+  if (command === 'import') {
+    importOpen.value = true
+    importText.value = ''
+    candidates.value = []
+    importError.value = ''
+  } else if (command === 'export') void exportSchedules()
+  else void batch(command)
 }
 </script>
 <template>
@@ -180,24 +265,53 @@ async function applyImport() {
     <div class="page-toolbar">
       <div class="page-toolbar-left">
         <el-button type="primary" @click="create()">添加计划任务</el-button>
-        <el-button
-          @click="
-            () => {
-              importOpen = true
-              importText = ''
-              candidates = []
-              importError = ''
-            }
-          "
-        >
-          导入
-        </el-button>
-        <el-button :disabled="!rows.length" @click="exportSchedules">导出</el-button>
+        <el-dropdown @command="more">
+          <el-button>更多 ▾</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="categories">分类管理</el-dropdown-item><el-dropdown-item command="import">导入</el-dropdown-item>
+              <el-dropdown-item command="export">导出当前筛选</el-dropdown-item>
+              <el-dropdown-item command="pause">暂停勾选任务</el-dropdown-item>
+              <el-dropdown-item command="delete">删除勾选任务</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-select v-model="filter" aria-label="任务类型筛选">
           <el-option label="全部类型" value="all" />
           <el-option label="备份" value="backup" />
           <el-option label="证书续期" value="renew" />
+          <el-option
+            v-for="(label, key) in {
+              shell: 'Shell 脚本',
+              python: 'Python 脚本',
+              http: 'HTTP 请求',
+              directory: '目录备份',
+              panel: '面板备份',
+              rotate: '日志切割',
+              cleanup: '日志清理',
+              'site-state': '网站启停',
+              'time-sync': '时间同步',
+            }"
+            :key="key"
+            :label="label"
+            :value="key"
+          />
         </el-select>
+        <el-select v-model="category" aria-label="任务分类">
+          <el-option label="全部分类" value="all" />
+          <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
+        </el-select>
+        <el-select v-model="status" aria-label="任务状态筛选">
+          <el-option value="all" label="全部状态" />
+          <el-option value="enabled" label="已启用" />
+          <el-option value="paused" label="已暂停" />
+        </el-select>
+        <el-input
+          v-model="search"
+          clearable
+          placeholder="搜索任务、分类或目标"
+          aria-label="搜索任务"
+        />
       </div>
       <span class="form-help" :title="data.serverTime">
         服务器时区：{{ data.timezone || '—' }} {{ data.zone }}
@@ -207,15 +321,25 @@ async function applyImport() {
       <el-button link @click="load(true)">重试</el-button>
     </el-alert>
     <LoadingContent :busy="reading || panel.pending.resources">
-      <DataList :rows="rows" state-key="schedules" searchable>
+      <DataList :rows="rows" state-key="schedules" @selection-change="selected = $event">
+        <el-table-column type="selection" width="40" />
         <el-table-column label="任务名称" min-width="160">
-          <template #default="{ row }">{{ row.resource.name }}</template>
-        </el-table-column>
-        <el-table-column label="类型 / 目标" min-width="160">
           <template #default="{ row }">
-            {{ row.resource.config.operation === 'backup' ? '备份' : '证书续期' }}
-            <small class="cell-subtext">{{ row.targetName || '目标已移除' }}</small>
+            <button
+              class="text-action"
+              :title="row.resource.config.pinned ? '取消置顶' : '置顶'"
+              @click="pin(row)"
+            >
+              {{ row.resource.config.pinned ? '★' : '☆' }}
+            </button>
+            <span>{{ row.resource.name }}</span>
+            <small class="cell-subtext">
+              {{ row.resource.config.operation }} {{ row.targetName }}
+            </small>
           </template>
+        </el-table-column>
+        <el-table-column label="分类" min-width="100">
+          <template #default="{ row }">{{ row.resource.config.category || '默认分类' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
@@ -232,6 +356,14 @@ async function applyImport() {
         <el-table-column label="执行周期" min-width="130">
           <template #default="{ row }">
             <code>{{ row.resource.config.cron }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column label="执行用户" width="120">
+          <template #default="{ row }">{{ row.resource.config.user || '系统任务' }}</template>
+        </el-table-column>
+        <el-table-column label="保留策略" width="100">
+          <template #default="{ row }">
+            {{ row.resource.config.retentionDays || 30 }} 天日志
           </template>
         </el-table-column>
         <el-table-column label="下次执行" min-width="170">
@@ -251,7 +383,13 @@ async function applyImport() {
         <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
-              <button @click="run(row)">执行</button>
+              <button
+                v-if="!latest(row) || !['running', 'queued'].includes(latest(row)!.state)"
+                @click="run(row)"
+              >
+                执行
+              </button>
+              <button v-else @click="stop(row)">停止</button>
               <button @click="create(row)">编辑</button>
               <button @click="logs(row)">日志</button>
               <button @click="create(row, true)">复制</button>
@@ -262,25 +400,12 @@ async function applyImport() {
       </DataList>
     </LoadingContent>
   </section>
-  <ResourceForm
-    v-model="dialog"
-    kind="schedule"
-    :editing="editing"
-    :initial="initial"
-    @saved="reload"
-  />
-  <AppDialog v-model="logOpen" title="计划执行日志" width="850px">
-    <LoadingContent :busy="logReading">
-      <pre class="log-box">{{ logText }}</pre>
-    </LoadingContent>
-    <template #footer>
-      <el-button @click="logOpen = false">关闭</el-button>
-      <router-link to="/tasks"><el-button type="primary">任务中心实时日志</el-button></router-link>
-    </template>
-  </AppDialog>
+  <AppDialog v-model="categoryOpen" title="计划分类管理" width="650px" size="small"><div class="page-toolbar"><el-input v-model="newCategory" placeholder="新分类名称" maxlength="40"/><el-button type="primary" @click="categoryAction()">添加分类</el-button></div><DataList :rows="categoryNames.map(name=>({name}))"><el-table-column prop="name" label="分类"/><el-table-column label="操作"><template #default="{row}"><div v-if="row.name!=='默认分类'" class="row-actions"><button @click="categoryAction(row.name)">修改</button><button class="danger" @click="categoryAction(row.name,true)">删除</button></div></template></el-table-column></DataList><template #footer><el-button @click="categoryOpen=false">关闭</el-button></template></AppDialog>
+ <ScheduleEditor v-model="dialog" :editing="editing" :initial="initial" @saved="reload" />
+  <ScheduleHistory v-model="historyId" />
   <AppDialog v-model="importOpen" title="导入计划任务" width="760px" :close-on-click-modal="false">
     <el-alert
-      title="跨服务器导入前请核对目标 ID。导入后全部暂停，不自动执行；不导入凭据或任意 Shell。"
+      title="跨服务器导入前请核对目标 ID。导入后全部暂停，私密变量及凭据不导入；root 脚本需重新确认。"
       type="info"
       :closable="false"
     />

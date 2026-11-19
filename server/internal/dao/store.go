@@ -15,8 +15,9 @@ import (
 )
 
 type Store struct {
-	DB    *sql.DB
-	Vault *security.Vault
+	DB        *sql.DB
+	Vault     *security.Vault
+	AlertWake chan struct{}
 }
 
 func Open(dir string) (*Store, error) {
@@ -37,12 +38,12 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if schemaVersion > 4 {
+	if schemaVersion > 5 {
 		db.Close()
 		return nil, errors.New("面板数据库来自较新版本，禁止降级打开")
 	}
 
-	s := &Store{db, v}
+	s := &Store{DB: db, Vault: v, AlertWake: make(chan struct{}, 1)}
 	_, e = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS resources (id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, config TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(kind,name));
  CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, resource_id TEXT NOT NULL, operation TEXT NOT NULL, state TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -68,6 +69,10 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
+	if e = s.migrateV5(); e != nil {
+		db.Close()
+		return nil, e
+	}
 	return s, nil
 }
 func Now() string                    { return time.Now().UTC().Format(time.RFC3339) }
@@ -87,6 +92,24 @@ func (s *Store) Setting(k string, out any) error {
 	return s.decode(v, out)
 }
 func (s *Store) Set(k string, v any) error {
+	if k == "panel" {
+		tx, err := s.DB.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err = s.noPendingTx(tx); err != nil {
+			return err
+		}
+		if err = s.setTx(tx, k, v); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`INSERT INTO setting_revisions VALUES('panel',1) ON CONFLICT(key) DO UPDATE SET revision=revision+1`); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
 	_, e := s.DB.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, s.encode(v))
 	return e
 }
@@ -174,6 +197,15 @@ func (s *Store) Update(r *model.Resource) error {
 		return e
 	}
 	defer tx.Rollback()
+	if r.Kind == "schedule" {
+		var n int
+		if e = tx.QueryRow(`SELECT COUNT(*) FROM schedule_runs JOIN tasks ON tasks.id=schedule_runs.task_id WHERE schedule_id=? AND state IN ('queued','running')`, r.ID).Scan(&n); e != nil {
+			return e
+		}
+		if n > 0 {
+			return errors.New("计划正在执行，请先停止")
+		}
+	}
 	res, e := tx.Exec(`UPDATE resources SET name=?,status=?,config=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, r.Name, r.Status, s.encode(r.Config), Now(), r.ID, r.Revision)
 	if e != nil {
 		return e
@@ -204,6 +236,13 @@ func (s *Store) Delete(id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	var n int
+	if err = tx.QueryRow(`SELECT COUNT(*) FROM schedule_runs JOIN tasks ON tasks.id=schedule_runs.task_id WHERE schedule_id=? AND state IN ('queued','running')`, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return errors.New("计划正在执行，请先停止")
+	}
 	if _, err = tx.Exec(`DELETE FROM resources WHERE id=?`, id); err != nil {
 		return err
 	}
@@ -243,6 +282,11 @@ func (s *Store) Delete(id string) error {
 	return tx.Commit()
 }
 func (s *Store) Audit(action, id, ip string) {
+	defer func() {
+		if action == "auth.failed" {
+			s.WakeAlerts()
+		}
+	}()
 	_, _ = s.DB.Exec(`INSERT INTO audit(action,resource_id,ip,created_at) VALUES(?,?,?,?)`, action, id, ip, Now())
 }
 func (s *Store) Audits() ([]model.Audit, error) {
@@ -275,11 +319,28 @@ func (s *Store) Enqueue(op model.Operation) (model.Task, error) {
 	if n > 0 {
 		return t, errors.New("该资源已有待执行或运行中的任务")
 	}
+	keys := s.taskKeys(tx, op)
+	for _, key := range keys {
+		if e = tx.QueryRow(`SELECT count(*) FROM task_resource_locks JOIN tasks ON tasks.id=task_resource_locks.task_id WHERE resource_key=? AND state IN ('queued','running')`, key).Scan(&n); e != nil {
+			return t, e
+		}
+		if n > 0 {
+			return t, errors.New("关联资源已有待执行或运行中的任务")
+		}
+	}
 	_, e = tx.Exec(`INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?)`, t.ID, t.ResourceID, t.Operation, t.State, "", s.encode(op), t.CreatedAt, t.UpdatedAt)
 	if e != nil {
 		return t, e
 	}
+	for _, key := range keys {
+		if _, e = tx.Exec(`INSERT INTO task_resource_locks VALUES(?,?)`, t.ID, key); e != nil {
+			return t, e
+		}
+	}
 	if t.ScheduleID != "" {
+		if _, e = tx.Exec(`INSERT INTO schedule_runs(task_id,schedule_id,created_at) VALUES(?,?,?)`, t.ID, t.ScheduleID, t.CreatedAt); e != nil {
+			return t, e
+		}
 		if _, e = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, "schedule-task:"+t.ID, s.encode(t.ScheduleID)); e != nil {
 			return t, e
 		}
@@ -337,8 +398,45 @@ func (s *Store) Claim() (model.Task, model.Operation, error) {
 	return t, op, tx.Commit()
 }
 func (s *Store) Finish(id, state, msg string) error {
-	_, e := s.DB.Exec(`UPDATE tasks SET state=?,error=?,updated_at=? WHERE id=?`, state, msg, Now(), id)
-	return e
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var previous, operation string
+	if err = tx.QueryRow(`SELECT state,operation FROM tasks WHERE id=?`, id).Scan(&previous, &operation); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE tasks SET state=?,error=?,updated_at=? WHERE id=?`, state, msg, Now(), id); err != nil {
+		return err
+	}
+	failed := (state == "failed" || state == "interrupted") && previous != state
+	if failed {
+		if _, err = tx.Exec(`INSERT INTO audit(action,resource_id,ip,created_at) VALUES(?,?,'local-task',?)`, "task.failed:"+operation, id, Now()); err != nil {
+			return err
+		}
+		if operation == "schedule.execute" {
+			var payload string
+			var op model.Operation
+			if tx.QueryRow(`SELECT payload FROM tasks WHERE id=?`, id).Scan(&payload) == nil && s.decode(payload, &op) == nil && (op.Resource.Config.String("operation") == "panel" || op.Resource.Config.String("operation") == "directory" || op.Resource.Config.String("operation") == "backup") {
+				if _, err = tx.Exec(`INSERT INTO audit(action,resource_id,ip,created_at) VALUES('backup.failed',?,'local-task',?)`, id, Now()); err != nil {
+					return err
+				}
+			}
+		}
+
+	}
+	err = tx.Commit()
+	if err == nil && failed {
+		s.WakeAlerts()
+	}
+	return err
+}
+func (s *Store) WakeAlerts() {
+	select {
+	case s.AlertWake <- struct{}{}:
+	default:
+	}
 }
 func (s *Store) Event(id, msg string) {
 	_, _ = s.DB.Exec(`INSERT INTO events(task_id,message,created_at) VALUES(?,?,?)`, id, msg, Now())

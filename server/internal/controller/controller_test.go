@@ -111,11 +111,11 @@ func TestAccessRestrictionPreventsSelfLockout(t *testing.T) {
 	_, h := testController(t)
 	cookie, csrf := setupAndLogin(t, h)
 	w := request(h, "PUT", "/api/v1/settings", map[string]any{"name": "OpsView", "allowedCIDRs": "203.0.113.0/24"}, cookie, csrf, "")
-	if w.Code != 400 {
+	if w.Code != 409 {
 		t.Fatal("self lockout accepted", w.Code, w.Body.String())
 	}
 	w = request(h, "PUT", "/api/v1/settings", map[string]any{"name": "OpsView", "allowedCIDRs": "192.0.2.0/24"}, cookie, csrf, "")
-	if w.Code != 200 {
+	if w.Code != 409 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }

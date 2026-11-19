@@ -255,6 +255,29 @@ with tempfile.TemporaryDirectory() as stage:
     # Root CLI firewall behavior is additionally tested with deterministic command fixtures.
     # Real runner UFW stays disabled unless it was already active: no SSH/firewall assumptions.
     run(['ov','backup'])
+    archive = max(Path('/www/backup/opsview-panel').glob('*.ovp'), key=lambda path: path.stat().st_mtime_ns)
+    root_archive = stage/'root-owned.ovp'
+    shutil.copyfile(archive, root_archive)
+    root_archive.chmod(0o600)
+    run(['ov','restore','--file',root_archive])
+    restored = list(Path('/var/lib/opsview').glob('restore-verified-*/panel'))
+    assert restored and (restored[-1]/'opsview.db').exists()
+    assert (restored[-1]/'master.key').stat().st_uid == pwd.getpwnam('opsview').pw_uid
+    assert authenticated(login(username,password))
+    run(['ov','restore','--file',root_archive,'--switch','--yes'])
+    assert digest(PANEL/'panel.pem') == cert
+    assert authenticated(login(username,password))
+    run(['ov','panel','off'])
+    assert api('health')['status'] == 'ok'
+    try:
+        api('auth')
+        raise AssertionError('disabled web entry still accepted requests')
+    except urllib.error.HTTPError as error:
+        assert error.code == 503
+    run(['systemctl','is-active','--quiet','opsview-panel.service'])
+    run(['ov','panel','on'])
+    assert authenticated(login(username,password))
+    print('PASS: root-owned archive verified and restored through local CLI; web entry toggles independently of services')
     run(['ov','diagnose'])
     run(['ov','stop'])
     run(['systemctl','is-active','--quiet','opsview-executor.service'])

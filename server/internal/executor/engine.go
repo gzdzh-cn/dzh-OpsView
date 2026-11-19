@@ -123,6 +123,14 @@ func (e *Engine) Serve(ctx context.Context, socket string) error {
 	return err
 }
 func (e *Engine) handle(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/panel-s3" {
+		e.handlePanelS3Upload(w, r)
+		return
+	}
+	if r.URL.Path == "/archive-upload" {
+		e.handleArchiveUpload(w, r)
+		return
+	}
 	if r.URL.Path == "/file-transfer" {
 		e.handleFileTransfer(w, r)
 		return
@@ -153,7 +161,7 @@ func (e *Engine) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := e.Execute(r.Context(), op, emit)
 	if err != nil {
-		result := model.Result{Error: err.Error()}
+		result := model.Result{Error: err.Error(), Data: data}
 		var conflict *model.RevisionConflict
 		if errors.As(err, &conflict) {
 			result.Code = "revision_conflict"
@@ -185,7 +193,7 @@ func (e *Engine) Execute(ctx context.Context, op model.Operation, log func(strin
 		}
 		op.Resource = stored
 	}
-	if !storedDatabase && !strings.HasPrefix(op.Name, "system.") && !strings.HasPrefix(op.Name, "docker.") && !strings.HasPrefix(op.Name, "files.") && !strings.HasPrefix(op.Name, "catalog.") && !strings.HasPrefix(op.Name, "plugin.") && !strings.HasPrefix(op.Name, "dbadmin.") && !strings.HasPrefix(op.Name, "redisdata.") {
+	if !storedDatabase && !strings.HasPrefix(op.Name, "schedule.") && !strings.HasPrefix(op.Name, "archive.") && !strings.HasPrefix(op.Name, "system.") && !strings.HasPrefix(op.Name, "docker.") && !strings.HasPrefix(op.Name, "files.") && !strings.HasPrefix(op.Name, "catalog.") && !strings.HasPrefix(op.Name, "plugin.") && !strings.HasPrefix(op.Name, "dbadmin.") && !strings.HasPrefix(op.Name, "redisdata.") {
 		if err := logic.Validate(op.Resource); err != nil {
 			return nil, err
 		}
@@ -194,6 +202,10 @@ func (e *Engine) Execute(ctx context.Context, op model.Operation, log func(strin
 		return nil, err
 	}
 	switch {
+	case strings.HasPrefix(op.Name, "schedule."):
+		return e.scheduleExecute(ctx, op, log)
+	case strings.HasPrefix(op.Name, "archive."):
+		return e.archiveOperation(ctx, op, log)
 	case strings.HasPrefix(op.Name, "dbadmin."):
 		return e.databaseAdmin(ctx, op, log)
 	case strings.HasPrefix(op.Name, "redisdata."):
@@ -311,6 +323,11 @@ func (w *logWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 	n := len(p)
 	if w.total > 2<<20 {
+		return n, nil
+	}
+	if w.total+len(p) > 2<<20 {
+		w.total = 2<<20 + 1
+		w.fn("[OpsView 日志已截断] 输出超过 2 MiB；执行继续，退出状态仍会记录")
 		return n, nil
 	}
 	w.total += n

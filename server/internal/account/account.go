@@ -8,13 +8,15 @@ import (
 	"errors"
 	"golang.org/x/crypto/bcrypt"
 	"opsview/internal/dao"
+	"time"
 )
 
 type Admin struct {
-	Username     string `json:"username"`
-	PasswordHash string `json:"passwordHash"`
-	TOTP         string `json:"totp"`
-	PendingTOTP  string `json:"pendingTotp"`
+	Username          string `json:"username"`
+	PasswordHash      string `json:"passwordHash"`
+	TOTP              string `json:"totp"`
+	PendingTOTP       string `json:"pendingTotp"`
+	PasswordChangedAt int64  `json:"passwordChangedAt,omitempty"`
 }
 
 func ValidUsername(s string) bool {
@@ -48,7 +50,7 @@ func Initialize(s *dao.Store, name, password, ip string) error {
 	if err != nil {
 		return err
 	}
-	a := Admin{Username: name, PasswordHash: string(hash)}
+	a := Admin{Username: name, PasswordHash: string(hash), PasswordChangedAt: time.Now().Unix()}
 	return s.MutateSetting("admin", &a, true, "admin.setup", ip, func() error { return nil })
 }
 
@@ -85,6 +87,7 @@ func Change(s *dao.Store, name, password string, resetTOTP bool, expected *Admin
 		}
 		if password != "" {
 			a.PasswordHash = string(hash)
+			a.PasswordChangedAt = time.Now().Unix()
 		}
 		if resetTOTP {
 			a.TOTP = ""

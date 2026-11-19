@@ -62,6 +62,9 @@ jobs:
         env:
           OPSVIEW_DATABASE_INTEGRATION: '1'
         run: go test ./internal/executor -run 'TestLive(Database|Redis)' -v -timeout 12m
+      - name: Verify real script exit status and control group cancellation
+        run: sudo env PATH="$PATH" OPSVIEW_SCHEDULE_INTEGRATION=1 go test ./internal/executor -run TestLiveScheduleScripts -v -timeout 2m
+        working-directory: server
       - run: ./scripts/test-log-rotation.sh
       - run: ./scripts/test-php-session.sh
       - name: Verify UFW and firewalld with independent clients on four systems

@@ -24,11 +24,14 @@ import PageContent from './components/PageContent.vue'
 import { usePanel } from './stores/panel'
 import { api, post, errorText } from './lib/api'
 import Login from './views/Login.vue'
+import TemporaryAccess from './components/TemporaryAccess.vue'
+import PasswordRenewal from './components/PasswordRenewal.vue'
+import { appearance, applyAppearance } from './lib/appearance'
 const panel = usePanel(),
   route = useRoute(),
   collapsed = ref(false),
   fatal = ref('')
-const nav = [
+const menus = [
   { path: '/', label: '概览', icon: Monitor },
   { path: '/sites', label: '网站', icon: Connection },
   { path: '/databases', label: '数据库', icon: Coin },
@@ -39,6 +42,7 @@ const nav = [
   { path: '/system', label: '系统与安全', icon: Lock },
   { path: '/settings', label: '面板设置', icon: Setting },
 ]
+const nav = computed(() => menus.filter((m) => !(appearance.hiddenMenus || []).includes(m.path)))
 const running = computed(
   () => panel.tasks.filter((t) => ['queued', 'running'].includes(t.state)).length,
 )
@@ -51,7 +55,13 @@ const datasets = computed<Dataset[]>(() => {
 const pageErrors = computed(() => datasets.value.filter((k) => panel.errors[k]))
 const pageLoading = computed(() => datasets.value.some((k) => panel.pending[k]))
 function refresh(force = false) {
-  if (!panel.auth.authenticated || document.hidden) return
+  if (
+    !panel.auth.authenticated ||
+    panel.auth.temporary ||
+    panel.auth.passwordExpired ||
+    document.hidden
+  )
+    return
   panel.retain(datasets.value)
   void panel.refresh(
     datasets.value.filter((k) => k !== 'catalog'),
@@ -71,12 +81,23 @@ async function ready() {
     history.replaceState(null, '', location.pathname)
   }
 
+  void api('/public/preferences')
+    .then(applyAppearance)
+    .catch(() => {})
   await panel.session()
+  const preferenceToken = new URLSearchParams(location.hash.slice(1)).get('preference-confirm')
+  if (preferenceToken && panel.auth.authenticated) {
+    await post('/settings/confirm', { token: preferenceToken })
+    history.replaceState(null, '', location.pathname)
+  }
   fatal.value = ''
-  if (panel.auth.authenticated) {
+  if (panel.auth.authenticated && !panel.auth.temporary && !panel.auth.passwordExpired) {
     refresh()
     void api('/settings')
-      .then((prefs) => setRefresh(prefs.refreshSeconds || 15))
+      .then((prefs) => {
+        setRefresh(prefs.refreshSeconds || 15)
+        applyAppearance(prefs)
+      })
       .catch(() => {})
   }
 }
@@ -104,6 +125,7 @@ function visible() {
 }
 function preferences(e: Event) {
   setRefresh((e as CustomEvent).detail.refreshSeconds || 15)
+  applyAppearance((e as CustomEvent).detail)
 }
 onMounted(async () => {
   document.addEventListener('visibilitychange', visible)
@@ -130,13 +152,15 @@ onUnmounted(() => {
     <span>正在连接 OpsView…</span>
   </div>
   <Login v-else-if="!panel.auth.authenticated" :connection-error="fatal" @ready="ready" />
+  <TemporaryAccess v-else-if="panel.auth.temporary" />
+  <PasswordRenewal v-else-if="panel.auth.passwordExpired" />
   <div v-else class="app-shell" :class="{ 'nav-open': collapsed }">
     <div v-if="collapsed" class="nav-shade" @click="collapsed = false"></div>
     <aside class="sidebar">
       <a href="/" class="brand">
         <span class="brand-symbol">O</span>
         <span>
-          OpsView
+          {{ appearance.sidebarTitle || appearance.name || 'OpsView' }}
           <span class="brand-dot">.</span>
         </span>
       </a>

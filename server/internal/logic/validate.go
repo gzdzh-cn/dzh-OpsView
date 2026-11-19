@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"opsview/internal/model"
+	"opsview/internal/scheduling"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,13 +16,17 @@ import (
 var Name = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`)
 var Domain = regexp.MustCompile(`^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
 var SQLName = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,62}$`)
-var Kinds = map[string]bool{"site": true, "instance": true, "database": true, "app": true, "compose": true, "firewall": true, "backup": true, "schedule": true, "plugin": true, "repository": true}
+var Kinds = map[string]bool{"site": true, "instance": true, "database": true, "app": true, "compose": true, "firewall": true, "backup": true, "schedule": true, "plugin": true, "repository": true, "script": true, "notification-channel": true, "alert-rule": true}
 
 func Validate(r model.Resource) error {
 	if !Kinds[r.Kind] {
 		return errors.New("不支持的资源类型")
 	}
-	if !Name.MatchString(r.Name) {
+	if r.Kind == "schedule" || r.Kind == "script" || r.Kind == "notification-channel" || r.Kind == "alert-rule" {
+		if len(r.Name) == 0 || len(r.Name) > 160 {
+			return errors.New("名称须为 1–160 字节")
+		}
+	} else if !Name.MatchString(r.Name) {
 		return errors.New("名称须为 1–63 位字母、数字、点、横线或下划线")
 	}
 	c := r.Config
@@ -158,12 +163,7 @@ func Validate(r model.Resource) error {
 			}
 		}
 	case "schedule":
-		if c.String("cron") == "" || !Name.MatchString(c.String("targetId")) {
-			return errors.New("请填写 Cron 表达式和任务目标")
-		}
-		if c.String("operation") != "backup" && c.String("operation") != "renew" {
-			return errors.New("计划任务仅支持备份和证书续期")
-		}
+		return scheduling.Validate(c)
 	case "repository":
 		u, e := url.Parse(c.String("url"))
 		if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {

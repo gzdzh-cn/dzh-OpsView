@@ -350,3 +350,14 @@ SQLite 沿用 schema 4，没有新增迁移。更新失败由安装器恢复更�
 - 备份列表显示目标、保留数量、历史和实际任务结果；历史支持加密文件下载及受控新目标恢复。计划只执行备份和续期，不接收任意 Shell；自动执行使用最新配置，暂停或已删除计划不会使用旧回调配置运行。目标锁阻止重叠任务。
 - 计划显示服务器时区和下一次执行时间；可选择日、周、月、分钟周期或自定义五段 Cron。月周期预设限制 1–28 日，自定义仍支持合法 Cron。复制和导入均默认暂停，导入只接受 OpsView v1 格式，跨主机先核对目标 ID。上次执行及日志来自最近 200 条任务，完整留存请另行归档。
 - 页面标签与工具栏先显示，初始请求在内容区域等待，缓存页面后台更新。软件目录、实例和插件索引按独立请求加载。
+
+
+## rc.17 备份计划与六类设置
+
+本版 schema 5，完整操作说明见 [备份与设置手册](backups-settings.md)。升级前执行 `ov backup`，保存原 `master.key`、`backup.key` 和 `executor.key` 的独立离线副本，再执行 `ov update --version v0.1.3-rc.17`。默认新备份在 `/www/backup`，历史位置保留。
+
+成功更新后回退须使用 `/var/lib/opsview/updates/<本次升级时间>/` 中的一整套旧元数据及程序。先 `systemctl stop opsview-panel opsview-executor`，将当前 `/var/lib/opsview/panel`、`/opt/opsview/bin`、`/etc/opsview/panel.json` 和单元保存到新的 root 私有现场目录；再将同一升级前快照中的 `panel`、`bin`、`panel.json`、`units` 按原位置恢复，保留属主权限，执行 `systemctl daemon-reload` 并启动两个服务，最后检查 `ov status`、`ov info`、登录、网站和计划。不要混合不同日期的数据库与主密钥，禁止只换旧二进制。
+
+`ov panel off` 仅关闭网页和外部管理 API，后台调度继续；`ov stop` 停止整个服务。高级认证失配用 `ov security status` 核对、`ov security recover` 按提示恢复；地址与 IP 限制另用 `ov recover-access`。`.ovp` 恢复默认新目录，确认后可通过 `ov restore --file /绝对路径/文件.ovp --switch` 切换；失败自动恢复原目录。恢复后的 API/临时授权失效，计划暂停。
+
+旧 rc.16 章节的“计划仅限备份与续期”和“上次历史限最近 200 条”描述由本节取代；日志清理、脚本和认证能力以本版手册为准。元数据回退不能撤销已经执行的脚本或业务变更。

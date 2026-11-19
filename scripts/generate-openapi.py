@@ -8,7 +8,7 @@ def obj(fields, required=None):
 string = {"type": "string"}
 config = {"type": "object", "additionalProperties": True}
 resource = obj({"id": string, "kind": string, "name": string, "status": string, "config": config, "revision": {"type": "integer"}, "createdAt": string, "updatedAt": string})
-task = obj({"id": string, "resourceId": string, "scheduleId": string, "operation": string, "state": {"type": "string", "enum": ["queued", "running", "succeeded", "failed", "interrupted", "cancelled"]}, "error": string, "createdAt": string, "updatedAt": string})
+task = obj({"id": string, "resourceId": string, "scheduleId": string, "operation": string, "state": {"type": "string", "enum": ["queued", "running", "succeeded", "failed", "interrupted", "cancelled", "skipped"]}, "error": string, "createdAt": string, "updatedAt": string})
 task["required"].remove("scheduleId")
 schemas = {"Resource": resource, "Task": task, "Error": obj({"error": string,"code":string,"revision":string,"resourceId":string},["error"]), "ResourceInput": obj({"kind": string, "name": string, "config": config}, ["kind","config"]), "ResourceUpdate": obj({"name": string, "config": config, "revision": {"type": "integer"}}), "Envelope": obj({"keyId": string, "payload": string, "signature": string})}
 paths = {}
@@ -155,5 +155,64 @@ for action,body in security_bodies.items():add('/system/security/'+action,'post'
 for prefix in ['ssh','firewall']:
     add('/system/security/'+prefix+'-confirm','post','确认已经通过新设置重新登录；必须在截止时间之前',body=obj({'connected':{'type':'boolean','enum':[True]}}))
     add('/system/security/'+prefix+'-rollback','post','恢复本次变更前的设置和本次增加的规则',body=config)
+
+# rc.17: grouped settings, durable schedules, authenticated archives and notifications.
+boolean={"type":"boolean"}; integer={"type":"integer"}; strings={"type":"array","items":string}
+auth_fields={"password":string,"code":string}
+schemas['SettingPatch']=obj({'patch':config,'revision':integer,**auth_fields,'basicPassword':string},['patch','revision'])
+schemas['SettingGroup']=obj({'config':config,'revision':integer})
+schemas['ScheduleRun']=obj({'id':string,'state':task['properties']['state'],'error':string,'createdAt':string,'updatedAt':string,'result':config,'truncated':boolean},['id','state','createdAt','updatedAt'])
+schemas['ScheduleConfig']=obj({'operation':{'type':'string','enum':['backup','renew','shell','python','http','directory','panel','rotate','cleanup','site-state','time-sync']},'cron':{'type':'string','description':'五段 Cron，最短一分钟'},'timezone':string,'enabled':boolean,'category':string,'targetId':string,'targetIds':strings,'user':string,'interpreter':string,'workingDirectory':string,'script':{'type':'string','maxLength':1048576},'args':strings,'environment':{'type':'object','additionalProperties':string},'timeoutSeconds':integer,'retentionDays':integer,'path':string,'storageDirectory':string,'storageId':string,'excludes':string,'retention':integer,'method':{'type':'string','enum':['GET','POST']},'url':string,'headers':{'type':'object','additionalProperties':string},'body':string,'allowPrivate':boolean,'expectedStatus':integer},['operation','cron'])
+add('/public/preferences','get','公开登录外观；不含内部安全配置',public=True)
+add('/settings/groups/{group}','get','按分组读取设置与同一事务修订',ref('SettingGroup'))
+add('/settings/groups/{group}','patch','局部更新；安全配置重新验证；访问变更返回 120 秒确认令牌',body=ref('SettingPatch'))
+add('/settings/confirm','post','重新连接后确认访问设置',body=obj({'token':string}))
+add('/settings/regions','get','本地登录地区数据状态与当前来源匹配')
+add('/settings/regions','post','原子更新 IPv4/IPv6 地区数据；失败保留当前数据',ref('Task'),config,status='202')
+add('/schedule-categories','get','计划分类列表',strings)
+add('/schedule-categories','post','创建、重命名或删除分类；删除时归入默认分类',body=obj({'old':string,'name':string,'remove':boolean},[]))
+add('/schedules/capabilities','get','实际执行用户、Python 解释器与任务类型')
+add('/schedules/preview','post','按保存时区预览未来五次执行时间',body=obj({'cron':string,'timezone':string}))
+add('/schedules/import','post','预览或原子导入；计划默认暂停，root 不继承授权',body=config)
+add('/schedules/{id}','get','显式读取单个计划完整配置，私密变量遮盖')
+add('/schedules/{id}/runs','get','独立执行历史、实际退出码与截断状态',{'type':'array','items':ref('ScheduleRun')})
+add('/schedules/{id}/export','get','导出暂停计划；不导出私密变量、请求头和 root 授权')
+add('/schedules/{id}/stop','post','停止执行及整个 systemd 控制组',body=config)
+add('/schedules/{id}/clear-history','post','清理指定日期前的终态历史',body=obj({'before':string}))
+for path in ['/resources','/resources/{id}']:
+ method='post' if path=='/resources' else 'put'
+ paths['/api/v1'+path][method].setdefault('parameters',[]).extend([{'name':k,'in':'header','required':False,'schema':string,'description':'root 脚本新增、启用或内容变更需重新验证'} for k in ['X-OpsView-Password','X-OpsView-TOTP']])
+for path in ['/scripts','/scripts/{id}']:
+ add(path,'get','脚本库列表或按修订显式读取正文；不执行脚本')
+ add(path,'post' if path=='/scripts' else 'put','保存加密脚本与独立修订',ref('Resource'),config)
+add('/scripts/{id}','delete','删除模板；不修改已有计划')
+paths['/api/v1/scripts/{id}']['get']['parameters'] += [{'name':'revision','in':'query','schema':integer},{'name':'history','in':'query','schema':{'type':'string','enum':['1']}}]
+add('/auth/sessions','get','已登录会话及当前标识')
+add('/auth/sessions','post','重新验证后撤销单个或全部会话',body=config)
+add('/auth/tokens/{kind}','get','API 或临时凭据元数据；不返回令牌')
+add('/auth/tokens/{kind}','post','重新验证后创建或撤销；创建令牌仅返回一次',body=config)
+add('/auth/temporary','post','一次兑换十分钟只读授权，令牌不进 URL',body=obj({'token':string}),public=True)
+add('/auth/client-certificate','post','重新验证后生成客户端证书，私钥仅此次返回',body=obj(auth_fields))
+add('/auth/passkeys/list','get','Passkey 凭据及当前 RP/安全上下文可用性')
+for step in ['register-begin','register-finish','delete','login-begin','login-finish']:
+ add('/auth/passkeys/'+step,'post','WebAuthn 一次挑战、RP ID、Origin 与用户验证；登录保留 TOTP',body=config,public=step.startswith('login'))
+for kind in ['rules','channels','records']:
+ add('/notifications/'+kind,'get','告警规则、脱敏通知渠道或真实发送历史',{'type':'array','items':config})
+ if kind!='records':
+  add('/notifications/'+kind,'post','创建告警配置',ref('Resource'),config,status='201')
+  add('/notifications/'+kind+'/{id}','put','按修订更新告警配置',ref('Resource'),config)
+  add('/notifications/'+kind+'/{id}','delete','删除无依赖的告警配置')
+add('/notifications/channels/{id}/test','post','真实发送测试并记录结果；不记录秘密',body=config)
+add('/backups/archives','get','本机受信任业务归档和存储元数据')
+add('/backups/archives/{action}','post','排队校验、恢复预览、删除或恢复目录；同归档互斥',ref('Task'),config,status='202')
+add('/backups/tasks/{id}','get','归档任务状态、实际错误与结果')
+add('/backups/download','get','经认证流式下载本地或已登记 S3 的归档')
+add('/backups/upload','put','流式上传 .ovb/.ovp；2 GiB；验证原密钥与历史，拒绝同名覆盖')
+paths['/api/v1/backups/upload']['put']['requestBody']={'required':True,'content':{'application/octet-stream':{'schema':{'type':'string','format':'binary'}}}}
+for path in ['/backups/download','/backups/upload']:
+ method='get' if path.endswith('download') else 'put'
+ paths['/api/v1'+path][method].setdefault('parameters',[]).extend([{'name':'file','in':'query','required':True,'schema':string},{'name':'backupId','in':'query','schema':string}])
+paths['/api/v1/backups/download']['get']['responses']['200']['content']={'application/octet-stream':{'schema':{'type':'string','format':'binary'}}}
+
 spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session","description":"HTTPS 会话，Secure Cookie"},"httpSession":{"type":"apiKey","in":"cookie","name":"opsview_session_http","description":"HTTP 会话，与 HTTPS Cookie 分离以兼容关闭 SSL"}}}}
 (root/'server/internal/api/openapi.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n')

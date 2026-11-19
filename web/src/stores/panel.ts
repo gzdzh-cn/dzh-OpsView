@@ -12,6 +12,9 @@ export const usePanel = defineStore('panel', () => {
     username: '',
     twoFactorEnabled: false,
     development: false,
+ temporary:false,
+ passwordExpired:false,
+ scopes:[] as string[],
   })
   const resources = ref<Resource[]>([]),
     tasks = ref<Task[]>([]),

@@ -11,10 +11,12 @@ func (a *App) CancelInstall(id string) error {
 	a.taskMu.Lock()
 	defer a.taskMu.Unlock()
 	var operation, state string
+	var scheduleCount int
+	_ = a.Store.DB.QueryRow(`SELECT count(*) FROM schedule_runs WHERE task_id=?`, id).Scan(&scheduleCount)
 	if err := a.Store.DB.QueryRow("SELECT operation,state FROM tasks WHERE id=?", id).Scan(&operation, &state); err != nil {
 		return err
 	}
-	if operation != "instance.install" && !strings.HasPrefix(operation, "files.") {
+	if scheduleCount == 0 && operation != "instance.install" && operation != "schedule.execute" && !strings.HasPrefix(operation, "files.") {
 		return errors.New("此任务不支持取消")
 	}
 	if state == "queued" {

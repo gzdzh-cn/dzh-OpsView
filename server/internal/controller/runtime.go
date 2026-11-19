@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"net"
 	"net/http"
 	"opsview/internal/model"
@@ -17,9 +18,32 @@ func (c *Controller) runtimeSettings(w http.ResponseWriter, r *http.Request) {
 	op := "system.panel-status"
 	params := model.Config{}
 	if r.Method == "PUT" {
+		c.accessMu.Lock()
+		defer c.accessMu.Unlock()
+		var pending model.Config
+		_ = c.App.Store.Setting("preference-pending", &pending)
+		if pending.Int("deadline") > 0 {
+			fail(w, 409, "请先确认安全设置或等待回退")
+			return
+		}
 		if !decode(w, r, &params) {
 			return
 		}
+		if !c.verifyIdentity(r, params.String("password"), params.String("code")) {
+			fail(w, 403, "修改访问设置需重新验证管理员身份")
+			return
+		}
+		if current := c.panelPreferences(); current.Bool("clientCertificateEnabled") {
+			raw, _ := json.Marshal(params["config"])
+			var next model.Config
+			_ = json.Unmarshal(raw, &next)
+			if next.String("protocol") == "http" {
+				fail(w, 409, "请先关闭客户端证书认证并确认，再关闭 HTTPS")
+				return
+			}
+		}
+		delete(params, "password")
+		delete(params, "code")
 		op = "system.panel-apply"
 		if params.String("source") == "" {
 			params["source"] = clientIP(r)

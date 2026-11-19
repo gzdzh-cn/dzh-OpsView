@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"github.com/robfig/cron/v3"
 	"io"
 	"io/fs"
 	"net"
@@ -14,19 +13,24 @@ import (
 	"opsview/internal/catalog"
 	"opsview/internal/logic"
 	"opsview/internal/model"
+	"opsview/internal/preferences"
+	"opsview/internal/scheduling"
 	"opsview/internal/security"
 	"opsview/internal/version"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Controller struct {
-	App     *logic.App
-	DataDir string
-	Public  fs.FS
-	auth    authState
+	App      *logic.App
+	DataDir  string
+	Public   fs.FS
+	auth     authState
+	accessMu sync.Mutex
 }
 
 func New(app *logic.App, data string, public fs.FS) *Controller {
@@ -59,10 +63,24 @@ func (c *Controller) Handler() http.Handler {
 		send(w, 200, map[string]any{"status": "ok", "version": version.Current})
 	})
 	mux.HandleFunc("POST /api/v1/runtime/confirm", c.runtimeConfirm)
+	mux.HandleFunc("GET /api/v1/public/preferences", c.publicPreferences)
 	mux.HandleFunc("GET /api/v1/auth", c.authStatus)
 	mux.HandleFunc("POST /api/v1/auth/setup", c.setup)
 	mux.HandleFunc("POST /api/v1/auth/login", c.login)
+	mux.HandleFunc("POST /api/v1/auth/temporary", c.exchangeTemporary)
+	mux.HandleFunc("POST /api/v1/auth/passkeys/login-begin", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-begin"); c.passkeys(w, r) })
+	mux.HandleFunc("POST /api/v1/auth/passkeys/login-finish", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-finish"); c.passkeys(w, r) })
 	routes := map[string]http.HandlerFunc{
+		"GET /api/v1/backups/archives": c.archives, "POST /api/v1/backups/archives/{action}": c.archives, "GET /api/v1/backups/download": c.archiveDownload, "PUT /api/v1/backups/upload": c.uploadArchive,
+		"GET /api/v1/auth/passkeys/{step}": c.passkeys, "POST /api/v1/auth/passkeys/{step}": c.passkeys,
+		"GET /api/v1/notifications/{kind}": c.notificationAdmin, "POST /api/v1/notifications/{kind}": c.notificationAdmin, "PUT /api/v1/notifications/{kind}/{id}": c.notificationAdmin, "DELETE /api/v1/notifications/{kind}/{id}": c.notificationAdmin, "POST /api/v1/notifications/channels/{id}/test": c.testNotification,
+		"GET /api/v1/auth/sessions": c.sessionManagement, "POST /api/v1/auth/sessions": c.sessionManagement, "GET /api/v1/auth/tokens/{kind}": c.tokenManagement, "POST /api/v1/auth/tokens/{kind}": c.tokenManagement, "POST /api/v1/auth/client-certificate": c.clientCertificate,
+		"GET /api/v1/schedule-categories": c.scheduleCategories, "POST /api/v1/schedule-categories": c.scheduleCategories,
+		"GET /api/v1/backups/tasks/{id}": c.archiveTaskResult,
+		"GET /api/v1/settings/regions":   c.regions, "POST /api/v1/settings/regions": c.regions,
+		"GET /api/v1/settings/groups/{group}": c.preferenceGroup, "PATCH /api/v1/settings/groups/{group}": c.preferenceGroup, "POST /api/v1/settings/confirm": c.confirmPreferences,
+		"GET /api/v1/schedules/{id}": c.scheduleAdmin, "POST /api/v1/schedules/{id}": c.scheduleAdmin, "GET /api/v1/schedules/{id}/{view}": c.scheduleAdmin, "POST /api/v1/schedules/{id}/{view}": c.scheduleAdmin,
+		"GET /api/v1/scripts": c.scriptLibrary, "POST /api/v1/scripts": c.scriptLibrary, "GET /api/v1/scripts/{id}": c.scriptLibrary, "PUT /api/v1/scripts/{id}": c.scriptLibrary, "DELETE /api/v1/scripts/{id}": c.scriptLibrary,
 		"GET /api/v1/databases":                   c.databases,
 		"GET /api/v1/databases/{id}/{operation}":  c.databaseOperation,
 		"POST /api/v1/databases/{id}/{operation}": c.databaseOperation,
@@ -80,7 +98,8 @@ func (c *Controller) Handler() http.Handler {
 		"POST /api/v1/auth/logout": c.logout, "POST /api/v1/auth/two-factor": c.twoFactor, "POST /api/v1/auth/password": c.password,
 		"GET /api/v1/overview": c.overview, "GET /api/v1/resources": c.resources, "POST /api/v1/resources": c.createResource, "PUT /api/v1/resources/{id}": c.updateResource, "DELETE /api/v1/resources/{id}": c.deleteResource, "POST /api/v1/resources/{id}/actions/{action}": c.action,
 		"GET /api/v1/catalog": func(w http.ResponseWriter, r *http.Request) { send(w, 200, catalog.ForSystem(catalogSystem())) }, "GET /api/v1/plugins": c.plugins, "POST /api/v1/plugins/import": c.importPlugin, "POST /api/v1/catalog/import": c.importCatalog,
-		"GET /api/v1/schedules": c.schedules, "GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
+		"POST /api/v1/schedules/import": c.importSchedules,
+		"GET /api/v1/schedules":         c.schedules, "GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
 		"POST /api/v1/files":         c.files,
 		"GET /api/v1/files/transfer": c.fileTransfer, "PUT /api/v1/files/transfer": c.fileTransfer, "GET /api/v1/files/tasks/{id}": c.fileTaskResult, "GET /api/v1/system": c.system, "POST /api/v1/system/actions/{action}": c.systemAction,
 		"POST /api/v1/system/firewall/{action}": c.firewallAdmin,
@@ -118,7 +137,7 @@ func (c *Controller) Handler() http.Handler {
 				}
 			}
 		}
-		c.accessGate(mux).ServeHTTP(w, r)
+		c.securityGate(c.accessGate(mux)).ServeHTTP(w, r)
 	})
 }
 func (c *Controller) static(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +224,7 @@ func (c *Controller) resources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for i := range rs {
-		rs[i].Config = security.Redact(rs[i].Config)
+		rs[i].Config = publicResourceConfig(rs[i])
 	}
 	send(w, 200, rs)
 }
@@ -226,6 +245,10 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
 		return
 	}
+	if body.Kind == "script" || body.Kind == "notification-channel" || body.Kind == "alert-rule" {
+		fail(w, 400, "请使用专用管理接口")
+		return
+	}
 	res := model.Resource{Kind: body.Kind, Name: body.Name, Config: body.Config}
 	if res.Config == nil {
 		res.Config = model.Config{}
@@ -234,7 +257,17 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 		delete(res.Config, "documentRoot")
 		delete(res.Config, "runningRoot")
 		if res.Config.String("rootDirectory") == "" && res.Config.String("type") != "proxy" {
-			res.Config["rootDirectory"] = logic.DefaultSiteRoot(res.Config.String("domains"))
+			res.Config["rootDirectory"] = filepath.Join(c.panelPreferences().String("siteDirectory"), filepath.Base(logic.DefaultSiteRoot(res.Config.String("domains"))))
+		}
+	}
+	if res.Kind == "backup" {
+		if res.Config.String("storageDirectory") == "" {
+			res.Config["storageDirectory"] = c.panelPreferences().String("backupDirectory")
+		}
+	}
+	if res.Kind == "schedule" {
+		if !c.prepareSchedule(w, r, &res, model.Config{}) {
+			return
 		}
 	}
 	if e := c.validate(&res); e != nil {
@@ -255,11 +288,11 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 		res.Status = "ready"
 		_ = c.App.Store.Update(&res)
 		c.App.ReloadSchedules()
-		res.Config = security.Redact(res.Config)
+		res.Config = publicResourceConfig(res)
 		send(w, 201, res)
 		return
 	}
-	res.Config = security.Redact(res.Config)
+	res.Config = publicResourceConfig(res)
 	send(w, 201, res)
 }
 func (c *Controller) validate(res *model.Resource) error {
@@ -293,15 +326,7 @@ func (c *Controller) validate(res *model.Resource) error {
 			delete(res.Config, key)
 		}
 	}
-	if res.Kind == "schedule" {
-		target, err := c.App.Store.Resource(res.Config.String("targetId"))
-		if err != nil || (res.Config.String("operation") == "backup" && target.Kind != "backup") || (res.Config.String("operation") == "renew" && target.Kind != "site") {
-			return errors.New("计划类型与目标不匹配或目标不存在")
-		}
-		if _, e := cron.ParseStandard(res.Config.String("cron")); e != nil {
-			return errors.New("Cron 表达式无效，使用五段格式")
-		}
-	}
+
 	return logic.Validate(*res)
 }
 func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
@@ -365,6 +390,21 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if res.Kind == "backup" {
+		b.Config["storageDirectory"] = res.Config["storageDirectory"]
+	}
+	if res.Kind == "script" || res.Kind == "notification-channel" || res.Kind == "alert-rule" {
+		fail(w, 400, "请使用专用管理接口")
+		return
+	}
+	if res.Kind == "schedule" {
+		candidate := res
+		candidate.Config = b.Config
+		if !c.prepareSchedule(w, r, &candidate, res.Config) {
+			return
+		}
+		b.Config = candidate.Config
+	}
 	security.PreserveMasked(b.Config, res.Config)
 
 	res.Name = b.Name
@@ -375,7 +415,7 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 	}
 	tasks, _ := c.App.Store.Tasks()
 	for _, t := range tasks {
-		if t.ResourceID == res.ID && (t.State == "queued" || t.State == "running") {
+		if (t.ResourceID == res.ID || t.ScheduleID == res.ID) && (t.State == "queued" || t.State == "running") {
 			fail(w, 409, "资源有运行中的任务")
 			return
 		}
@@ -386,7 +426,7 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 	}
 	c.App.Store.Audit("resource.update", res.ID, clientIP(r))
 	c.App.ReloadSchedules()
-	res.Config = security.Redact(res.Config)
+	res.Config = publicResourceConfig(res)
 	send(w, 200, res)
 }
 func (c *Controller) deleteResource(w http.ResponseWriter, r *http.Request) {
@@ -399,6 +439,10 @@ func (c *Controller) deleteResource(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "回收站专属备份仅能通过数据库回收站操作")
 		return
 	}
+	if res.Kind == "script" || res.Kind == "notification-channel" || res.Kind == "alert-rule" {
+		fail(w, 400, "请使用专用管理接口")
+		return
+	}
 	if res.Kind == "app" {
 		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
 		return
@@ -409,14 +453,18 @@ func (c *Controller) deleteResource(w http.ResponseWriter, r *http.Request) {
 	}
 	all, _ := c.App.Store.Resources("")
 	for _, x := range all {
-		if x.Config.String("instanceId") == res.ID || x.Config.String("targetId") == res.ID {
+		referenced := x.Config.String("instanceId") == res.ID || x.Config.String("targetId") == res.ID || x.Config.String("storageId") == res.ID
+		for _, id := range scheduling.TargetIDs(x.Config) {
+			referenced = referenced || id == res.ID
+		}
+		if referenced {
 			fail(w, 409, "资源仍被引用")
 			return
 		}
 	}
 	tasks, _ := c.App.Store.Tasks()
 	for _, t := range tasks {
-		if t.ResourceID == res.ID && (t.State == "queued" || t.State == "running") {
+		if (t.ResourceID == res.ID || t.ScheduleID == res.ID) && (t.State == "queued" || t.State == "running") {
 			fail(w, 409, "资源正在执行任务")
 			return
 		}
@@ -449,6 +497,10 @@ func (c *Controller) action(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(p, "scheduleId") // attribution is assigned only by the scheduler
 	if res.Kind == "schedule" && r.PathValue("action") == "run" {
+		if res.Config.String("user") == "root" && !c.verifyIdentity(r, p.String("password"), p.String("code")) {
+			fail(w, 403, "执行 root 任务需验证管理员身份")
+			return
+		}
 		task, err := c.App.QueueSchedule(res.ID, false)
 		if err != nil {
 			fail(w, 409, err.Error())
@@ -553,13 +605,15 @@ func (c *Controller) audit(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, v)
 }
 func (c *Controller) settings(w http.ResponseWriter, r *http.Request) {
-	v := model.Config{}
-	_ = c.App.Store.Setting("panel", &v)
-	send(w, 200, security.Redact(v))
+	send(w, 200, preferencePublic(c.panelPreferences()))
 }
 func (c *Controller) saveSettings(w http.ResponseWriter, r *http.Request) {
 	var v model.Config
 	if !decode(w, r, &v) {
+		return
+	}
+	if _, changes := v["allowedCIDRs"]; changes && v.String("allowedCIDRs") != c.panelPreferences().String("allowedCIDRs") {
+		fail(w, 409, "IP 限制请通过面板访问设置修改并确认连接")
 		return
 	}
 	for k := range v {
@@ -568,18 +622,21 @@ func (c *Controller) saveSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if v.Int("refreshSeconds") == 0 {
-		v["refreshSeconds"] = 15
-	}
-	if v.Int("sessionMinutes") == 0 {
-		v["sessionMinutes"] = 480
-	}
-	if v.Int("backupRetention") == 0 {
-		v["backupRetention"] = 7
-	}
-	if (v.Int("refreshSeconds") != 5 && v.Int("refreshSeconds") != 15 && v.Int("refreshSeconds") != 30 && v.Int("refreshSeconds") != 60) || v.Int("sessionMinutes") < 15 || v.Int("sessionMinutes") > 10080 || v.Int("backupRetention") < 1 || v.Int("backupRetention") > 30 {
-		fail(w, 400, "刷新、会话或备份保留参数超出允许范围")
+	if _, ok := v["sessionMinutes"]; ok && v.Int("sessionMinutes") != c.panelPreferences().Int("sessionMinutes") {
+		fail(w, 409, "会话期限请通过安全设置重新验证后修改")
 		return
+	}
+	for _, group := range []string{"panel", "security", "backup"} {
+		patch := model.Config{}
+		for _, k := range preferences.Groups[group] {
+			if x, ok := v[k]; ok {
+				patch[k] = x
+			}
+		}
+		if err := preferences.Validate(group, patch); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
 	}
 	ip := net.ParseIP(clientIP(r))
 	allowed := strings.TrimSpace(v.String("allowedCIDRs")) == ""
@@ -597,7 +654,9 @@ func (c *Controller) saveSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "允许范围必须包含当前连接 IP")
 		return
 	}
-	if e := c.App.Store.Set("panel", v); e != nil {
+	var old model.Config
+	rev, _ := c.App.Store.SettingRevision("panel", &old)
+	if _, _, e := c.App.Store.PatchSetting("panel", rev, v, "settings.legacy", clientIP(r)); e != nil {
 		fail(w, 500, "设置保存失败")
 		return
 	}

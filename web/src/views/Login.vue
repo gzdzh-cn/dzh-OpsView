@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { usePanel } from '../stores/panel'
-import { post, errorText, setCSRF } from '../lib/api'
+import { api, post, errorText, setCSRF } from '../lib/api'
+import { loginPasskey } from '../lib/passkeys'
+import { appearance } from '../lib/appearance'
 defineProps<{ connectionError: string }>()
 const emit = defineEmits(['ready'])
 const panel = usePanel(),
@@ -12,6 +14,44 @@ const panel = usePanel(),
   busy = ref(false),
   error = ref('')
 const setup = computed(() => panel.auth.setupRequired)
+const temporary = ref(false),
+  temporaryToken = ref(''),
+  passkeyAvailable = ref(false)
+onMounted(() => {
+  void api('/public/preferences')
+    .then((p) => {
+      passkeyAvailable.value = !!p.passkeyAvailable && !!window.PublicKeyCredential
+    })
+    .catch(() => {})
+})
+async function usePasskey() {
+  busy.value = true
+  error.value = ''
+  try {
+    const data = await loginPasskey(code.value)
+    setCSRF(data.csrf)
+    await panel.session()
+    emit('ready')
+  } catch (e) {
+    error.value = errorText(e)
+  } finally {
+    busy.value = false
+  }
+}
+async function exchange() {
+  busy.value = true
+  error.value = ''
+  try {
+    await post('/auth/temporary', { token: temporaryToken.value })
+    temporaryToken.value = ''
+    await panel.session()
+    emit('ready')
+  } catch (e) {
+    error.value = errorText(e)
+  } finally {
+    busy.value = false
+  }
+}
 async function submit() {
   busy.value = true
   error.value = ''
@@ -43,12 +83,25 @@ async function submit() {
 }
 </script>
 <template>
-  <div class="login-page">
+  <div
+    class="login-page"
+    :style="
+      appearance.loginBackground
+        ? { backgroundImage: `url(${appearance.loginBackground})`, backgroundSize: 'cover' }
+        : {}
+    "
+  >
     <div class="login-story">
       <a class="brand" href="/">
-        <span class="brand-symbol">O</span>
+        <img
+          v-if="appearance.loginLogo"
+          :src="appearance.loginLogo"
+          class="brand-symbol"
+          alt="登录 Logo"
+        />
+        <span v-else class="brand-symbol">O</span>
         <span>
-          OpsView
+          {{ appearance.name || 'OpsView' }}
           <span class="brand-dot">.</span>
           <small>SERVER CONTROL PANEL</small>
         </span>
@@ -88,7 +141,7 @@ async function submit() {
         :closable="false"
         show-icon
       />
-      <form @submit.prevent="submit">
+      <form v-if="!temporary" @submit.prevent="submit">
         <label v-if="setup">
           初始化令牌
           <el-input
@@ -131,6 +184,29 @@ async function submit() {
           <span>→</span>
         </el-button>
       </form>
+      <el-button
+        v-if="!setup && passkeyAvailable && !temporary"
+        :loading="busy"
+        @click="usePasskey"
+      >
+        使用 Passkey 登录
+      </el-button>
+      <form v-if="temporary" @submit.prevent="exchange">
+        <label>
+          临时授权令牌
+          <el-input v-model="temporaryToken" type="password" show-password autocomplete="off" />
+        </label>
+        <el-button type="primary" native-type="submit" :loading="busy">兑换只读访问</el-button>
+      </form>
+      <el-button
+        v-if="!setup"
+        link
+        @click="
+          temporary = !temporary; temporaryToken = ''
+        "
+      >
+        {{ temporary ? '返回管理员登录' : '临时授权访问' }}
+      </el-button>
       <div class="login-help">
         忘记密码？在服务器执行
         <code>opsview reset-admin</code>
