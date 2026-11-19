@@ -696,3 +696,5 @@ rc.25 本地最终验证：类型检查、生产构建、13 项 Vitest 和完整
 - 公网 Chromium 桌面与移动端登录页正常，默认不显示验证码，无脚本/网络错误或横向溢出；保留既有深色主题，截图保存在本地 `.opsview/screenshots/rc25-production-login*.png`。未读取、重置生产管理员密码或尝试实际账号登录；密码、双因素和协议切换凭据登录以隔离环境验收为证。
 
 独立 `OpsView checks` 的 check、websites 通过，deployment 作业因新增浏览器验收缺少 Chromium 缓存而失败（第 182 行依赖检查）。正式发布流水线与 candidate 已安装浏览器并通过相同部署验收；补齐独立 deployment 作业的 Chromium 安装步骤，作为不改变发布二进制的 CI 修正单独验证。
+
+独立部署环境修正已验证：提交 `08cc61f` 的 [OpsView checks 44580240133](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44580240133) 中 deployment 作业及 Chromium 安装、真实 systemd 部署回归全部成功。该修正仅补齐 CI 依赖，已发布和线上程序仍为 rc.25。
