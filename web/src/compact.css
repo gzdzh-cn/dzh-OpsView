@@ -20,6 +20,20 @@
 .app-shell .topbar-right {
   gap: 16px;
 }
+.app-shell .repository-link {
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  border-radius: 4px;
+}
+.app-shell .repository-link:hover {
+  color: var(--el-color-primary);
+  background: var(--el-fill-color-light);
+}
+.app-shell .repository-link:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
 .app-shell .sidebar .brand {
   padding-top: 20px;
   padding-bottom: 20px;
@@ -276,6 +290,10 @@
   display: none;
 }
 @media (max-width: 700px) {
+  .app-shell .repository-link {
+    width: 44px;
+    height: 44px;
+  }
   .app-shell .main-content {
     padding: var(--ops-page-padding);
   }
