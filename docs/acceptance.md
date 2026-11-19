@@ -575,3 +575,27 @@ SQLite 保持 schema 4。更新前执行 `ov backup`，更新使用 `ov update -
 - 新增任务列表回归：即使操作 payload 不可解密，列表仍从独立短关联读取计划 ID，避免解密大文件内容；任务执行仍拒绝损坏 payload。
 
 本地检查通过不代表公开发布及生产更新完成；实际发布包、四系统矩阵、公开安装及线上替换结果完成后追加。SQLite 保持 schema 4，更新前备份；本轮用户已明确授权发布并替换现有线上面板。
+
+### rc.16 发布与线上替换完成
+
+发布提交 `4fb0f4f710f1a10b828ead57fc0ebdcbea1e47db`，标签 `v0.1.3-rc.16`。[发布流水线 44466353065](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44466353065) 的 build（24 分 1 秒）、publish 和 verify-public-install 全部成功。
+
+- Go race/vet、前端类型检查、生产构建、单元测试、安装器、文件、真实 SSH/UFW 及四系统离线检查通过。
+- 真实数据库、网站、PHP Session、日志轮转及 Ubuntu 22.04/24.04、Debian 12/13 的 UFW/firewalld 独立客户端矩阵通过。
+- 源码和最终 Linux 发布二进制的页面测试通过；systemd 安装、更新及故障回退通过。
+- 临时 Ubuntu 24.04 从公开 Release 下载、验证摘要、安装、随机账号登录、修改端口、HTTP 切换及 `ov update` 通过。
+- 从公开 Release 页面核对三个发布附件及摘要；保持预发布，不改变正式 latest。
+
+公开附件 SHA-256：
+
+```text
+3595355a05d95f905cf98297d1df80f62b8a4fc46aabbdaf33ba5b9d1f22f7cd  opsview-linux-amd64.tar.gz
+3b6d03e936c6475109f87f7caed6d5ec2af4257c708eb79f20cd851d3733fc40  install.sh
+9e5f920532760371d0e7020d347439770689bcfd01066580e3d5ba2eac650732  SHA256SUMS
+```
+
+按本轮用户授权，现有线上面板于 2026-11-19 14:04（Asia/Shanghai）通过 `ov update --version v0.1.3-rc.16` 从 rc.15 更新至 rc.16；下载、校验、备份、管理员保留和连续三次健康检查通过。升级前加密配置备份为 `/var/lib/opsview/panel/backups/20261119T053646.874990760.ovp`（0600），完整回退快照为 `/var/lib/opsview/updates/20261119T060415Z-3141036`。
+
+线上检查确认两项服务 running、重启计数 0、更新后无错误级别 journal，外网健康接口返回 rc.16；执行器只读验证 SSH 服务运行及受控能力、系统账号和结构化登录记录。升级快照与当前数据库中的资源 ID、类型和名称一致，原管理员保留。生产环境没有执行 SSH 停用或账号改密测试；相关写入测试证据来自隔离环境。线上浏览器既有会话的交互未纳入本次生产检查，页面流程以实际发布二进制的 Playwright 验证为据。
+
+线上静态检查：通过本机回环逐个完整读取 41 个 JavaScript/CSS 依赖并核对 MIME，九个侧栏路由入口均返回当前打包应用；外网 HTML、5 个入口资源响应头和健康接口检查通过。开发机从公网并发完整下载所有资源曾遇到读取超时，不将该次批量下载视为成功，也不将本地缓存导航指标当作公网下载耗时。
