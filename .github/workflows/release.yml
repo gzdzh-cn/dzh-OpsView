@@ -45,6 +45,15 @@ jobs:
           PY
       - run: npm ci
         working-directory: web
+      - name: Download verified Go modules with retry
+        working-directory: server
+        env:
+          GODEBUG: http2client=0
+        run: |
+          for attempt in 1 2 3; do
+            if go mod download; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 3))
       - run: make api check
       - run: ./scripts/test-installer.sh
       - run: ./scripts/test-files-linux.sh

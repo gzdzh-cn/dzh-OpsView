@@ -40,10 +40,10 @@ PANEL = Path('/var/lib/opsview/panel')
 PORT = 18790
 CTX = ssl._create_unverified_context()
 
-def run(args, *, ok=True, data=None, user=None):
+def run(args, *, ok=True, data=None, user=None, env=None):
     if user:
         args = ['runuser', '-u', user, '--'] + list(map(str, args))
-    result = subprocess.run(list(map(str, args)), input=data, capture_output=True, text=True, timeout=240)
+    result = subprocess.run(list(map(str, args)), input=data, capture_output=True, text=True, timeout=240, env=env)
     if (result.returncode == 0) != ok:
         # Do not include stdout/stderr: either may contain generated credentials.
         phase = re.findall(r'\[[1-8]/8 [^\]\r\n]+\]', result.stdout + result.stderr)
@@ -174,6 +174,11 @@ with tempfile.TemporaryDirectory() as stage:
     assert run(['ov','entry','off']).strip() == '安全入口已关闭'
     assert not json.loads(CONFIG.read_text()).get('entry')
     run(['ov','entry','on'])
+    browser_user = pwd.getpwnam(os.environ.get('SUDO_USER', 'root'))
+    browser_cache = Path(browser_user.pw_dir)/'.cache/ms-playwright'
+    assert browser_cache.is_dir(), 'CI Chromium cache unavailable'
+    run(['node', ROOT/'scripts/test-entry-login.cjs'], data=json.dumps(dict(username=username,password=password,port=PORT)), env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH':str(browser_cache)})
+    print('PASS: one browser retains secure entrance and login across HTTPS/HTTP/HTTPS')
     old = login(username, password)
     assert authenticated(old)
     assert 'ov <命令>' in run(['ov'])  # PIPE is noninteractive; never waits for a menu selection.

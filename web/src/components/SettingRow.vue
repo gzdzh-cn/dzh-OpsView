@@ -6,6 +6,7 @@ defineProps<{
   editing?: boolean
   busy?: boolean
   disabled?: boolean
+  readonly?: boolean
 }>()
 defineEmits<{ edit: []; save: []; cancel: [] }>()
 </script>
@@ -16,7 +17,9 @@ defineEmits<{ edit: []; save: []; cancel: [] }>()
       <div class="preference-value">
         <slot v-if="editing" name="editor" />
         <slot v-else>
+          <span v-if="readonly">{{ value ?? '—' }}</span>
           <button
+            v-else
             class="preference-value-button"
             :disabled="disabled"
             :aria-label="'修改' + label"

@@ -154,10 +154,14 @@ func (c *Controller) accessGate(next http.Handler) http.Handler {
 		if cfg.Entry != "" {
 			expected := security.Hash(cfg.Entry)
 			if r.Method == "GET" && r.URL.Path == "/"+cfg.Entry {
-				http.SetCookie(w, &http.Cookie{Name: "opsview_entry", Value: expected, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
+				http.SetCookie(w, &http.Cookie{Name: entranceCookieName(r), Value: expected, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
 				r.URL.Path = "/"
 			} else {
-				cookie, er := r.Cookie("opsview_entry")
+				cookie, er := r.Cookie(entranceCookieName(r))
+				// Preserve pre-upgrade HTTP entrance cookies until the next visit.
+				if er != nil && r.TLS == nil {
+					cookie, er = r.Cookie("opsview_entry")
+				}
 				if er != nil || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(expected)) != 1 {
 					http.NotFound(w, r)
 					return
@@ -166,4 +170,12 @@ func (c *Controller) accessGate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// HTTP must not overwrite the Secure cookie left by the HTTPS listener.
+func entranceCookieName(r *http.Request) string {
+	if r.TLS != nil {
+		return "opsview_entry"
+	}
+	return "opsview_entry_http"
 }

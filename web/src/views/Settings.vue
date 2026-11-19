@@ -779,6 +779,7 @@ onMounted(async () => {
     <SettingRow
       v-for="row in extraRows"
       :key="row.label"
+      :readonly="!!row.link"
       :label="row.label"
       :value="row.value"
       :help="row.help"
@@ -993,6 +994,7 @@ onMounted(async () => {
     </div>
     <template v-if="tab === 'backup'">
       <SettingRow
+        readonly
         label="自动面板备份"
         value="计划任务统一管理"
         help="创建每日 03:00 加密备份；请避免重复计划"
