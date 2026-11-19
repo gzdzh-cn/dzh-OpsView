@@ -2441,6 +2441,7 @@ test('schedule rows support paused copies, run attribution and guided cycles', a
   await page.getByRole('button', { name: '复制', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '创建计划任务', exact: true })
   await expect(dialog).toBeVisible()
+  await overlayGeometry(dialog)
   await page.screenshot({ path: '../.opsview/screenshots/rc17-schedule-editor.png', fullPage: true })
   await expect(dialog.getByRole('switch', { name: '启用', exact: true })).not.toBeChecked()
   await expect(dialog.getByRole('textbox', { name: 'Cron 表达式', exact: true })).toHaveValue(
