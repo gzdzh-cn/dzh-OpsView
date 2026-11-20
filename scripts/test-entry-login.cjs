@@ -51,7 +51,7 @@ async function main() {
       await page.getByRole('main', { name: '概览', exact: true }).waitFor()
     }
     await connect('https')
-    phase = 'https-create-site'
+    phase = 'https-create-check-crypto'
     if (!await page.evaluate(() => isSecureContext && typeof crypto.randomUUID === 'function')) throw Error('HTTPS crypto missing')
     let created = 0
     const nginx = { id: 'https-nginx', kind: 'instance', name: 'nginx', status: 'ready', revision: 1, config: { software: 'nginx', mode: 'native', version: '1.30.6' } }
@@ -63,12 +63,20 @@ async function main() {
       return r.fulfill({ status: 202, json: { siteId: 'https-site', taskId: 'https-site-task' } })
     })
     await page.route('**/api/v1/tasks/https-site-task', r => r.fulfill({ json: { id: 'https-site-task', state: 'succeeded' } }))
+    // Fixtures must load into a fresh page; a previous real resource read may still be cached.
+    phase = 'https-create-load-fixture'
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/v1/resources') && r.ok()), page.reload()])
+    await page.getByRole('main', { name: '概览', exact: true }).waitFor()
+    phase = 'https-create-open-site'
     await page.locator('.sidebar a[href="/sites"]').click()
     await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
+    phase = 'https-create-fill-site'
     const dialog = page.getByRole('dialog')
     await dialog.getByRole('textbox', { name: '绑定域名', exact: true }).fill('https-browser.test')
     await dialog.getByRole('button', { name: '创建', exact: true }).click()
+    phase = 'https-create-task-result'
     await dialog.waitFor({ state: 'hidden' })
+    phase = 'https-create-request-count'
     if (created !== 1) throw Error('duplicate HTTPS create')
     await page.unrouteAll({ behavior: 'wait' })
     await page.locator('.sidebar a[href="/"]').click()

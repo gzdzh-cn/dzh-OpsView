@@ -122,6 +122,11 @@ jobs:
         working-directory: web
         env:
           OPSVIEW_E2E_RELEASE: 'true'
+      - name: Load deployment browser acceptance fixture
+        run: |
+          # CI-only fixes do not move or modify the immutable product tag.
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:scripts/test-entry-login.cjs" > scripts/test-entry-login.cjs
       - name: Exercise real systemd installation and rollback
         run: sudo env GITHUB_ACTIONS=true bash scripts/test-deployment.sh
       - uses: actions/upload-artifact@v4
