@@ -78,8 +78,10 @@ async function main() {
     await dialog.waitFor({ state: 'hidden' })
     phase = 'https-create-request-count'
     if (created !== 1) throw Error('duplicate HTTPS create')
+    phase = 'https-create-release-fixtures'
     await page.unrouteAll({ behavior: 'wait' })
-    await page.locator('.sidebar a[href="/"]').click()
+    phase = 'https-create-return-overview'
+    await page.locator('.sidebar').getByRole('link', { name: '概览', exact: true }).click()
     for (const [mode, scheme] of [['off', 'http'], ['on', 'https']]) {
       phase = 'ssl-' + mode
       const output = execFileSync('ov', ['ssl', mode, '--yes'], { encoding: 'utf8', timeout: 30000 })
