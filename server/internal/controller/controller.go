@@ -71,7 +71,11 @@ func (c *Controller) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/passkeys/login-begin", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-begin"); c.passkeys(w, r) })
 	mux.HandleFunc("POST /api/v1/auth/passkeys/login-finish", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-finish"); c.passkeys(w, r) })
 	routes := map[string]http.HandlerFunc{
-		"POST /api/v1/sites": c.createSite, "POST /api/v1/sites/{id}/settings": c.saveSiteSettings, "POST /api/v1/sites/{id}/provision": c.retrySite, "GET /api/v1/site-categories": c.siteCategories, "POST /api/v1/site-categories": c.siteCategories,
+		"GET /api/v1/sites/provisions/{requestId}": c.siteProvisionStatus,
+		"POST /api/v1/sites/delete-preview":        c.siteDeletePreview,
+		"POST /api/v1/sites/delete":                c.submitSiteDelete,
+		"GET /api/v1/sites/delete-tasks/{id}":      c.siteDeleteResult,
+		"POST /api/v1/sites":                       c.createSite, "POST /api/v1/sites/{id}/settings": c.saveSiteSettings, "POST /api/v1/sites/{id}/provision": c.retrySite, "GET /api/v1/site-categories": c.siteCategories, "POST /api/v1/site-categories": c.siteCategories,
 		"GET /api/v1/backups/archives": c.archives, "POST /api/v1/backups/archives/{action}": c.archives, "GET /api/v1/backups/download": c.archiveDownload, "PUT /api/v1/backups/upload": c.uploadArchive,
 		"GET /api/v1/auth/passkeys/{step}": c.passkeys, "POST /api/v1/auth/passkeys/{step}": c.passkeys,
 		"GET /api/v1/notifications/{kind}": c.notificationAdmin, "POST /api/v1/notifications/{kind}": c.notificationAdmin, "PUT /api/v1/notifications/{kind}/{id}": c.notificationAdmin, "DELETE /api/v1/notifications/{kind}/{id}": c.notificationAdmin, "POST /api/v1/notifications/channels/{id}/test": c.testNotification,
@@ -454,6 +458,14 @@ func (c *Controller) deleteResource(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "资源不存在")
 		return
 	}
+	if res.Kind == "site" {
+		var p model.Config
+		if !decode(w, r, &p) {
+			return
+		}
+		c.legacySiteDelete(w, r, res.ID, p)
+		return
+	}
 	if res.Kind == "backup" && res.Config.Bool("recycleOnly") {
 		fail(w, 409, "回收站专属备份仅能通过数据库回收站操作")
 		return
@@ -526,6 +538,10 @@ func (c *Controller) action(w http.ResponseWriter, r *http.Request) {
 	}
 	var p model.Config
 	if !decode(w, r, &p) {
+		return
+	}
+	if res.Kind == "site" && r.PathValue("action") == "delete" {
+		c.legacySiteDelete(w, r, res.ID, p)
 		return
 	}
 	delete(p, "scheduleId") // attribution is assigned only by the scheduler

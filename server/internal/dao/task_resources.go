@@ -2,6 +2,7 @@ package dao
 
 import (
 	"database/sql"
+	"encoding/json"
 	"opsview/internal/model"
 	"opsview/internal/scheduling"
 	"opsview/internal/security"
@@ -36,6 +37,15 @@ func (s *Store) taskKeys(tx *sql.Tx, op model.Operation) []string {
 			if tx.QueryRow(`SELECT id,kind,config FROM resources WHERE id=?`, id).Scan(&other.ID, &other.Kind, &cfg) == nil && s.decode(cfg, &other.Config) == nil {
 				visit(other, depth+1)
 			}
+		}
+	}
+	if op.Name == "sites.delete" {
+		add("nginx-entry")
+		raw, _ := json.Marshal(op.Params["lockIds"])
+		var ids []string
+		_ = json.Unmarshal(raw, &ids)
+		for _, id := range ids {
+			add(id)
 		}
 	}
 	add(op.Params.String("scheduleId"))

@@ -51,9 +51,10 @@ type Operation struct {
 	Params   Config   `json:"params,omitempty"`
 }
 type Result struct {
+	Done     bool   `json:"done,omitempty"`
 	Code     string `json:"code,omitempty"`
 	Revision string `json:"revision,omitempty"`
-	Data     Config `json:"data,omitempty"`
+	Data     Config `json:"data"`
 	Error    string `json:"error,omitempty"`
 	Log      string `json:"log,omitempty"`
 }

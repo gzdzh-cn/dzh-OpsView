@@ -114,11 +114,11 @@ test('invalid site never becomes a deployed resource', async ({ page }) => {
   await page
     .getByRole('textbox', { name: '绑定域名', exact: true })
     .fill('example.com;include /etc/passwd')
-  await page.getByRole('button', { name: '创建并部署' }).click()
+  await page.getByRole('button', { name: '创建', exact: true }).click()
   await expect(page.locator('.el-dialog .el-alert')).toBeVisible()
   await expect(page.locator('.el-dialog')).toBeVisible()
   expectFixedOverlay(geometry, await overlayGeometry(dialog))
-  await expect(dialog.getByRole('button', { name: '创建并部署' })).toBeInViewport()
+  await expect(dialog.getByRole('button', { name: '创建', exact: true })).toBeInViewport()
 })
 test('queued installation reports executor unavailable instead of success', async ({ page }) => {
   // This scenario exercises task failure, independently of native host qualification.
@@ -232,10 +232,25 @@ test('websites require Nginx and expose exact tab columns', async ({ page }) => 
   for (const [tab, headers] of [
     [
       'PHP 项目',
-      ['网站名', '状态', 'PHP', '备份', '根目录', '日流量', '到期时间', '备注', 'SSL证书', '操作'],
+      [
+        '',
+        '网站名',
+        '状态',
+        '备份',
+        '根目录',
+        '日流量',
+        '到期时间',
+        '备注',
+        'PHP',
+        'SSL证书',
+        '操作',
+      ],
     ],
-    ['反向代理', ['域名', '状态', '代理地址', '日流量', '备注', 'SSL证书', '操作']],
-    ['其他项目', ['项目名称', '状态', '运行端口', '根目录', '到期时间', '备注', 'SSL证书', '操作']],
+    ['反向代理', ['', '域名', '状态', '代理地址', '日流量', '备注', 'SSL证书', '操作']],
+    [
+      '其他项目',
+      ['', '项目名称', '状态', '运行端口', '根目录', '到期时间', '备注', 'SSL证书', '操作'],
+    ],
   ] as const) {
     await page.getByRole('tab', { name: tab, exact: true }).click()
     await expect(page.locator('.site-table .el-table__header th .cell')).toHaveText([...headers])
@@ -1441,6 +1456,9 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
     })
   })
   await page.route('**/api/v1/files', (route) => route.fulfill({ json: { items: [], total: 0 } }))
+  await page.route('**/api/v1/tasks/site-task', (route) =>
+    route.fulfill({ json: { id: 'site-task', state: 'succeeded' } }),
+  )
   await page.goto('/sites')
   await page.getByRole('tab', { name: 'PHP 项目', exact: true }).click()
   await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
@@ -1479,7 +1497,7 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(dialog.getByRole('button', { name: '创建并部署', exact: true })).toBeInViewport()
+  await expect(dialog.getByRole('button', { name: '创建', exact: true })).toBeInViewport()
   const geometry = await overlayGeometry(dialog)
   await expect(dialog.getByRole('button', { name: '高级设置', exact: true })).toHaveCount(0)
   const body = dialog.locator('.el-dialog__body')
@@ -1494,7 +1512,7 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
   await expect(directory).toBeVisible()
   await directory.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(directory).toBeHidden()
-  await expect(dialog.getByRole('button', { name: '创建并部署', exact: true })).toBeInViewport()
+  await expect(dialog.getByRole('button', { name: '创建', exact: true })).toBeInViewport()
   expectFixedOverlay(geometry, await overlayGeometry(dialog))
   expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
   await page.screenshot({
@@ -1502,7 +1520,7 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
     animations: 'disabled',
     fullPage: true,
   })
-  await dialog.getByRole('button', { name: '创建并部署', exact: true }).click()
+  await dialog.getByRole('button', { name: '创建', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   expect(submitted.config.type).toBe('managed')
   expect(submitted.config.user).toBe('isolated')
@@ -3086,6 +3104,9 @@ test('static site creation needs no PHP, binds a database and hides advanced con
       json: { siteId: 'static-new', databaseId: 'db-new', taskId: 'create-task' },
     })
   })
+  await page.route('**/api/v1/tasks/create-task', (route) =>
+    route.fulfill({ json: { id: 'create-task', state: 'succeeded' } }),
+  )
   await page.goto('/sites')
   await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
   const dialog = page.getByRole('dialog')
@@ -3114,7 +3135,7 @@ test('static site creation needs no PHP, binds a database and hides advanced con
     .filter({ has: page.locator('.el-form-item__label').filter({ hasText: /^数据库密码$/ }) })
     .locator('input')
     .fill('new-only-db-password')
-  await dialog.getByRole('button', { name: '创建并部署', exact: true }).click()
+  await dialog.getByRole('button', { name: '创建', exact: true }).click()
   await expect(dialog).toBeHidden()
   expect(submitted.config.type).toBe('static')
   expect(submitted.config.phpInstanceId).toBeUndefined()
@@ -3208,4 +3229,174 @@ test('file context menu preserves batch selection and permission edits change on
   await page.getByRole('button', { name: 'first.txt', exact: true }).click({ button: 'right' })
   await page.keyboard.press('Escape')
   await expect(page.getByRole('menu')).toHaveCount(0)
+})
+
+test('website creation waits for a real outcome and resumes without duplicate creation', async ({
+  page,
+}) => {
+  let creates = 0,
+    resumes = 0,
+    state = 'running'
+  const site = {
+    id: 'draft-site',
+    kind: 'site',
+    name: 'draft.test',
+    revision: 2,
+    status: 'error',
+    config: {
+      type: 'static',
+      domains: 'draft.test',
+      instanceId: nginxFixture.id,
+      rootDirectory: '/www/wwwroot/draft.test',
+    },
+  }
+  await page.route('**/api/v1/resources', (route) =>
+    route.fulfill({ json: creates ? [nginxFixture, site] : [nginxFixture] }),
+  )
+  await page.route('**/api/v1/sites/provisions/*', (route) =>
+    creates
+      ? route.fulfill({
+          json: { siteId: site.id, taskId: 'creation-observer', state, revision: 2 },
+        })
+      : route.fulfill({ status: 404, json: { error: 'not registered' } }),
+  )
+  await page.route('**/api/v1/sites', (route) => {
+    creates++
+    return route.fulfill({ status: 202, json: { siteId: site.id, taskId: 'creation-observer' } })
+  })
+  await page.route('**/api/v1/sites/draft-site/provision', (route) => {
+    resumes++
+    state = 'succeeded'
+    return route.fulfill({ status: 202, json: { siteId: site.id, taskId: 'creation-observer' } })
+  })
+  await page.route('**/api/v1/tasks/creation-observer', (route) =>
+    route.fulfill({
+      json: {
+        id: 'creation-observer',
+        state,
+        error: state === 'failed' ? 'Nginx 配置校验失败，原服务保留' : '',
+      },
+    }),
+  )
+  await page.goto('/sites')
+  await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('textbox', { name: '绑定域名', exact: true }).fill('draft.test')
+  await dialog.getByRole('button', { name: '创建', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: '创建中', exact: true })).toBeDisabled()
+  await expect(dialog).toBeVisible()
+  state = 'failed'
+  await expect(dialog).toContainText('Nginx 配置校验失败')
+  await expect(dialog.getByRole('button', { name: /重试|等待/ })).toHaveCount(0)
+  await dialog.getByRole('button', { name: '创建', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(creates).toBe(1)
+  expect(resumes).toBe(1)
+})
+
+test('website selection, refresh and safe batch deletion use one fixed dialog', async ({
+  page,
+}) => {
+  let reads = 0,
+    previewCount = 0,
+    options: any[] = [],
+    submitted = false
+  const sites = ['first.test', 'second.test'].map((name, index) => ({
+    id: `batch-${index}`,
+    name,
+    kind: 'site',
+    status: 'ready',
+    revision: 1,
+    config: {
+      type: 'static',
+      domains: name,
+      documentRoot: `/www/wwwroot/${name}`,
+      instanceId: nginxFixture.id,
+    },
+  }))
+  await page.route('**/api/v1/resources', (route) => {
+    reads++
+    return route.fulfill({ json: [nginxFixture, ...sites] })
+  })
+  await page.route('**/api/v1/sites/delete-preview', (route) => {
+    previewCount++
+    options = route.request().postDataJSON().items
+    return route.fulfill({
+      json: {
+        previewId: 'batch-preview',
+        confirmAfterSeconds: 5,
+        items: options.map((o) => ({
+          ...o,
+          name: sites.find((s) => s.id === o.id)?.name,
+          directory: '/www/wwwroot/example',
+          databaseReason: '未关联受管数据库',
+          services: [],
+          schedules: [],
+          inspection: { phase: '未执行' },
+        })),
+      },
+    })
+  })
+  await page.route('**/api/v1/sites/delete', (route) => {
+    submitted = true
+    return route.fulfill({ status: 202, json: { taskId: 'batch-delete' } })
+  })
+  await page.route('**/api/v1/tasks/batch-delete', (route) =>
+    route.fulfill({ json: { id: 'batch-delete', state: 'failed' } }),
+  )
+  await page.route('**/api/v1/sites/delete-tasks/batch-delete', (route) =>
+    route.fulfill({
+      json: {
+        state: 'failed',
+        error: '1 个站点删除未完成',
+        result: {
+          items: [
+            { id: 'batch-0', name: 'first.test', state: 'succeeded' },
+            {
+              id: 'batch-1',
+              name: 'second.test',
+              state: 'failed',
+              error: '回收站不可用，数据保留',
+            },
+          ],
+        },
+      },
+    }),
+  )
+  await page.goto('/sites')
+  await expect(page.getByRole('button', { name: '批量删除', exact: true })).toBeDisabled()
+  await page.locator('.site-table .el-table__body tr').first().locator('.el-checkbox').click()
+  await page.getByPlaceholder('搜索名称、域名或备注').fill('second')
+  await expect(page.getByRole('button', { name: '批量删除', exact: true })).toBeDisabled()
+  const priorReads = reads
+  await page.getByRole('button', { name: '刷新网站列表', exact: true }).click()
+  await expect.poll(() => reads).toBeGreaterThan(priorReads)
+  await expect(page.getByPlaceholder('搜索名称、域名或备注')).toHaveValue('second')
+  await page.getByPlaceholder('搜索名称、域名或备注').clear()
+  await page.locator('.site-table .el-table__header .el-checkbox').click()
+  await page.getByRole('button', { name: /批量删除\s*（2）/ }).click()
+  const dialog = page.getByRole('dialog', { name: '删除网站', exact: true })
+  await expect(
+    dialog.getByRole('checkbox', { name: '项目目录', exact: true }).first(),
+  ).not.toBeChecked()
+  expect(options.every((o) => !o.deleteDatabase && !o.deleteDirectory && !o.deleteLogs)).toBe(true)
+  await dialog.locator('.el-checkbox').filter({ hasText: '已了解删除影响' }).click()
+  await expect(dialog.getByRole('button', { name: /确认删除/ })).toBeDisabled()
+  await dialog.locator('.el-checkbox').filter({ hasText: '项目目录' }).first().click()
+  await expect.poll(() => previewCount).toBeGreaterThan(1)
+  await expect(dialog.getByRole('checkbox', { name: '已了解删除影响' })).not.toBeChecked()
+  await dialog.locator('.el-checkbox').filter({ hasText: '已了解删除影响' }).click()
+  await expect(dialog.getByRole('button', { name: '确认删除', exact: true })).toBeEnabled({
+    timeout: 10000,
+  })
+  await dialog.getByRole('button', { name: '确认删除', exact: true }).click()
+  await expect(dialog).toContainText('回收站不可用，数据保留')
+  expect(submitted).toBe(true)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const geometry = await overlayGeometry(dialog)
+  await dialog.locator('.el-dialog__body').evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeInViewport()
 })

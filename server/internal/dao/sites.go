@@ -1,6 +1,8 @@
 package dao
 
 import (
+	"database/sql"
+	"errors"
 	"opsview/internal/model"
 	"opsview/internal/security"
 )
@@ -17,6 +19,22 @@ func (s *Store) CreateSiteProvision(site *model.Resource, db *model.Resource, re
 		return model.Task{}, err
 	}
 	defer tx.Rollback()
+	requestID := provisionRequest(request).String("requestId")
+	if requestID != "" {
+		var enc string
+		if er := tx.QueryRow(`SELECT value FROM settings WHERE key=?`, "site-request:"+requestID).Scan(&enc); er == nil {
+			var previous model.Config
+			if er = s.decode(enc, &previous); er != nil {
+				return model.Task{}, er
+			}
+			var t model.Task
+			er = tx.QueryRow(`SELECT id,resource_id,operation,state,error,created_at,updated_at FROM tasks WHERE id=?`, previous.String("taskId")).Scan(&t.ID, &t.ResourceID, &t.Operation, &t.State, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+			site.ID = previous.String("siteId")
+			return t, er
+		} else if !errors.Is(er, sql.ErrNoRows) {
+			return model.Task{}, er
+		}
+	}
 	insert := func(r *model.Resource) error {
 		r.ID = security.ID()
 		r.Revision = 1
@@ -45,6 +63,11 @@ func (s *Store) CreateSiteProvision(site *model.Resource, db *model.Resource, re
 	if err != nil {
 		return t, err
 	}
+	if requestID != "" {
+		if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, "site-request:"+requestID, s.encode(model.Config{"siteId": site.ID, "taskId": t.ID})); err != nil {
+			return t, err
+		}
+	}
 	return t, tx.Commit()
 }
 
@@ -62,4 +85,68 @@ func (s *Store) SiteProvisionRequest(id string) (model.Config, error) {
 		err = s.decode(enc, &v)
 	}
 	return v, err
+}
+
+// Only identifiers and task state are returned; provision credentials stay encrypted.
+func (s *Store) SiteProvisionByRequest(id string) (model.Config, error) {
+	var result model.Config
+	if err := s.Setting("site-request:"+id, &result); err != nil {
+		return nil, err
+	}
+	site, err := s.Resource(result.String("siteId"))
+	if err != nil {
+		return nil, err
+	}
+	task, err := s.Task(result.String("taskId"))
+	if err != nil {
+		return nil, err
+	}
+	// A resumed attempt updates the pointer without changing the original identity.
+	result["state"] = task.State
+	result["revision"] = site.Revision
+	result["databaseReady"] = false
+	if db, er := s.Resource(site.Config.String("databaseId")); er == nil {
+		result["databaseReady"] = db.Status == "ready"
+	}
+	return result, nil
+}
+func (s *Store) ResumeSiteProvision(site model.Resource, update bool, params model.Config) (model.Task, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return model.Task{}, err
+	}
+	defer tx.Rollback()
+	if update {
+		result, er := tx.Exec(`UPDATE resources SET name=?,config=?,status='pending',revision=revision+1,updated_at=? WHERE id=? AND revision=? AND status IN ('pending','error')`, site.Name, s.encode(site.Config), Now(), site.ID, site.Revision)
+		if er != nil {
+			return model.Task{}, er
+		}
+		n, _ := result.RowsAffected()
+		if n != 1 {
+			return model.Task{}, ErrRevision
+		}
+		site.Revision++
+	}
+	if !update {
+		result, er := tx.Exec(`UPDATE resources SET status='pending',revision=revision+1,updated_at=? WHERE id=? AND revision=? AND status IN ('pending','error')`, Now(), site.ID, site.Revision)
+		if er != nil {
+			return model.Task{}, er
+		}
+		n, _ := result.RowsAffected()
+		if n != 1 {
+			return model.Task{}, ErrRevision
+		}
+		site.Revision++
+	}
+	site.Status = "pending"
+	task, err := s.enqueueTx(tx, model.Operation{Name: "site.provision", Resource: site, Params: params})
+	if err != nil {
+		return task, err
+	}
+	if id := params.String("requestId"); id != "" {
+		if err = s.setTx(tx, "site-request:"+id, model.Config{"siteId": site.ID, "taskId": task.ID}); err != nil {
+			return task, err
+		}
+	}
+	return task, tx.Commit()
 }

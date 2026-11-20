@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import AppDialog from './AppDialog.vue'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { usePageState } from '../composables/pageState'
+import { observeSiteTask } from '../lib/siteTask'
+import { isAbort } from '../lib/query'
 import { ElMessage } from 'element-plus'
 import { usePanel } from '../stores/panel'
 import { api, post, errorText, type Config, type Resource } from '../lib/api'
@@ -41,6 +44,59 @@ const certificate = ref(''),
 const siteDirectory = ref('/www/wwwroot')
 let openSequence = 0
 const saved = ref<Resource>()
+const requestId = usePageState('siteCreationRequest', '')
+const databaseReady = ref(false)
+let observer: AbortController | undefined
+onBeforeUnmount(() => observer?.abort())
+async function finishCreation(taskId: string) {
+  observer?.abort()
+  observer = new AbortController()
+  const task = await observeSiteTask(taskId, observer.signal)
+  await panel.refresh(['resources', 'tasks'])
+  if (saved.value)
+    saved.value = panel.resources.find((r) => r.id === saved.value?.id) || saved.value
+  if (task.state !== 'succeeded') {
+    const result = requestId.value
+      ? await api('/sites/provisions/' + requestId.value).catch(() => null)
+      : null
+    databaseReady.value = !!result?.databaseReady
+    throw new Error(task.error || '创建未完成，请检查错误后重新提交')
+  }
+  requestId.value = ''
+  ElMessage.success('项目创建成功')
+  visible.value = false
+}
+async function recoverCreation() {
+  if (!requestId.value) return
+  const progress = await api('/sites/provisions/' + requestId.value).catch(() => null)
+  if (!progress) return
+  if (progress.state === 'succeeded') {
+    requestId.value = ''
+    return
+  }
+  const existing = panel.resources.find((r) => r.id === progress.siteId)
+  if (existing) {
+    saved.value = existing
+    form.value = JSON.parse(JSON.stringify(existing.config))
+    if (form.value.type === 'static') {
+      form.value.type = 'php'
+      form.value.phpInstanceId = 'static'
+    }
+    name.value = existing.name
+    rootChanged.value = true
+    databaseReady.value = !!progress.databaseReady
+  }
+  if (['queued', 'running'].includes(progress.state)) {
+    busy.value = true
+    try {
+      await finishCreation(progress.taskId)
+    } catch (e) {
+      if (!isAbort(e)) error.value = errorText(e)
+    } finally {
+      busy.value = false
+    }
+  } else error.value = '上次创建未完成，可修正尚未生效的配置后提交。'
+}
 const directoryOpen = ref(false),
   directories = ref<Config[]>([]),
   directoryError = ref(''),
@@ -107,6 +163,7 @@ watch(
   async (open) => {
     const seq = ++openSequence
     if (!open) {
+      observer?.abort()
       certificate.value = ''
       privateKey.value = ''
       form.value.environment = ''
@@ -141,6 +198,7 @@ watch(
     nameChanged.value = !!props.editing
     rootChanged.value = !!props.editing
     saved.value = undefined
+    databaseReady.value = false
     error.value = ''
     busy.value = false
     database.value = {
@@ -167,6 +225,7 @@ watch(
     } catch {
       /* server also applies the configured default */
     }
+    if (seq === openSequence && props.modelValue) await recoverCreation()
   },
 )
 watch(firstDomain, (domain) => {
@@ -184,6 +243,7 @@ watch(firstDomain, (domain) => {
       siteDirectory.value + (/^[a-z0-9][a-z0-9.-]*$/i.test(domain) ? '/' + domain : '')
 })
 async function save() {
+  if (busy.value) return
   error.value = ''
   busy.value = true
   try {
@@ -212,23 +272,40 @@ async function save() {
       delete config.phpInstanceId
       config.rewriteTemplate = 'none'
     }
-    if (saved.value) await post('/sites/' + saved.value.id + '/provision')
-    else {
-      const result = await post('/sites', {
+    let result: Config
+    if (saved.value) {
+      const current = panel.resources.find((r) => r.id === saved.value?.id) || saved.value
+      result = await post('/sites/' + saved.value.id + '/provision', {
         name: name.value,
         config,
-        ...(database.value.instanceId ? { database: database.value } : {}),
-        ...(certificateMode.value === 'upload'
-          ? { certificate: certificate.value, privateKey: privateKey.value }
-          : {}),
+        revision: current.revision,
       })
-      saved.value = { id: result.siteId } as Resource
+    } else {
+      requestId.value ||= crypto.randomUUID()
+      const existing = await api('/sites/provisions/' + requestId.value).catch(() => null)
+      if (existing) result = existing
+      else {
+        try {
+          result = await post('/sites', {
+            requestId: requestId.value,
+            name: name.value,
+            config,
+            ...(database.value.instanceId ? { database: database.value } : {}),
+            ...(certificateMode.value === 'upload'
+              ? { certificate: certificate.value, privateKey: privateKey.value }
+              : {}),
+          })
+        } catch (e) {
+          const found = await api('/sites/provisions/' + requestId.value).catch(() => null)
+          if (!found) throw e
+          result = found
+        }
+      }
+      saved.value = { id: result.siteId, revision: result.revision || 1 } as Resource
     }
-    ElMessage.success('部署任务已提交，可在任务中心查看日志')
-    await panel.refresh()
-    visible.value = false
+    await finishCreation(result.taskId)
   } catch (e) {
-    error.value = errorText(e) + (saved.value ? '；配置已保存，重试仅提交部署任务。' : '')
+    if (!isAbort(e)) error.value = errorText(e)
   } finally {
     busy.value = false
   }
@@ -241,15 +318,18 @@ async function save() {
     width="min(760px,96vw)"
     :close-on-click-modal="false"
     destroy-on-close
+    :close-on-press-escape="!busy"
+    :show-close="!busy"
     class="site-create-dialog"
   >
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-form
-      label-width="112px"
-      class="site-create-form"
-      @submit.prevent="save"
-      :disabled="busy || !!saved"
-    >
+    <el-alert
+      v-if="saved?.id && databaseReady"
+      title="关联数据库已创建，将继续使用该数据库。"
+      type="info"
+      :closable="false"
+    />
+    <el-form label-width="104px" class="site-create-form" @submit.prevent="save" :disabled="busy">
       <el-form-item v-if="['static', 'managed', 'app'].includes(form.type)" label="项目类型">
         <el-radio-group v-model="form.type" :disabled="!!editing">
           <el-radio-button value="managed">托管应用</el-radio-button>
@@ -366,7 +446,7 @@ async function save() {
           <el-input v-model="privateKey" type="textarea" :rows="3" />
         </el-form-item>
       </template>
-      <el-form-item label="数据库">
+      <el-form-item v-if="!saved" label="数据库">
         <el-select
           v-model="database.instanceId"
           placeholder="不创建"
@@ -395,7 +475,7 @@ async function save() {
           />
         </el-select>
       </el-form-item>
-      <template v-if="database.instanceId">
+      <template v-if="database.instanceId && !saved">
         <el-form-item label="数据库名" required>
           <el-input v-model="database.name" autocomplete="off" />
         </el-form-item>
@@ -436,7 +516,7 @@ async function save() {
     <template #footer>
       <el-button :disabled="busy" @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="busy" @click="save">
-        {{ saved ? '重试部署' : editing ? '保存并部署' : '创建并部署' }}
+        {{ busy ? '创建中' : editing ? '保存' : '创建' }}
       </el-button>
     </template>
   </AppDialog>
@@ -484,8 +564,10 @@ async function save() {
 <style scoped>
 .site-create-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  column-gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  padding: 4px;
+  box-sizing: border-box;
 }
 .site-form-wide {
   grid-column: 1/-1;

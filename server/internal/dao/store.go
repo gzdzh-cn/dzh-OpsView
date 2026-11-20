@@ -342,6 +342,22 @@ func (s *Store) enqueueTx(tx *sql.Tx, op model.Operation) (model.Task, error) {
 	t := model.Task{ScheduleID: op.Params.String("scheduleId"), ID: security.ID(), ResourceID: op.Resource.ID, Operation: op.Name, State: "queued", CreatedAt: Now(), UpdatedAt: Now()}
 	var e error
 	var n int
+	if op.Name == "sites.delete" {
+		raw, _ := json.Marshal(op.Params["items"])
+		var items []model.SiteDeleteItem
+		if json.Unmarshal(raw, &items) != nil || len(items) == 0 {
+			return t, errors.New("删除范围无效")
+		}
+		for _, item := range items {
+			var rev int
+			if e = tx.QueryRow(`SELECT revision FROM resources WHERE id=? AND kind='site'`, item.ID).Scan(&rev); e != nil {
+				return t, e
+			}
+			if rev != item.Revision {
+				return t, ErrRevision
+			}
+		}
+	}
 	if op.Name == "site.apply" {
 		var rev int
 		if e = tx.QueryRow(`SELECT revision FROM resources WHERE id=?`, op.Resource.ID).Scan(&rev); e != nil {

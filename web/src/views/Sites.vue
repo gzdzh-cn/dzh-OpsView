@@ -11,6 +11,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePanel } from '../stores/panel'
 import { action, api, post, errorText, size, date, type Resource, type Config } from '../lib/api'
 import SiteCreate from '../components/SiteCreate.vue'
+import SiteDelete from '../components/SiteDelete.vue'
+import { Refresh } from '@element-plus/icons-vue'
 import SiteTools from '../components/SiteTools.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import SiteRuntimeOptions from '../components/SiteRuntimeOptions.vue'
@@ -65,6 +67,35 @@ const rows = computed(() =>
           .includes(filter.value.toLowerCase()),
     ),
 )
+const checked = ref<Resource[]>([]),
+  deleteOpen = ref(false),
+  deleteRows = ref<Resource[]>([]),
+  refreshing = ref(false),
+  list = ref<any>()
+watch([tab, filter, category], () => {
+  checked.value = []
+  list.value?.clearSelection?.()
+})
+async function refreshSites() {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    await panel.refresh(['resources', 'tasks'])
+    await Promise.all(rows.value.map(loadTraffic))
+    if (panel.errors.resources) error.value = panel.errors.resources
+  } finally {
+    refreshing.value = false
+  }
+}
+function removeSites(items: Resource[]) {
+  deleteRows.value = items
+  deleteOpen.value = true
+}
+async function deleted() {
+  checked.value = []
+  list.value?.clearSelection?.()
+  await panel.refresh(['resources', 'tasks'])
+}
 const initial = computed(() => ({
   type: tab.value === 'other' ? 'managed' : tab.value,
   instanceId: nginx.value.find((r) => r.status === 'ready')?.id || nginx.value[0]?.id,
@@ -214,9 +245,9 @@ function status(row: Resource) {
   return row.status === 'ready'
     ? '运行中'
     : row.status === 'pending'
-      ? '待部署'
+      ? '创建中'
       : row.status === 'error'
-        ? '异常'
+        ? '创建失败'
         : row.status
 }
 function appPort(row: Resource) {
@@ -251,19 +282,10 @@ async function save() {
     saving.value = false
   }
 }
-async function retry(row: Resource) {
-  try {
-    await post('/sites/' + row.id + '/provision')
-    await panel.refresh(['tasks'])
-    ElMessage.success('重试任务已提交')
-  } catch (e) {
-    error.value = errorText(e)
-  }
-}
 async function run(row: Resource, op: string, params: Config = {}) {
   try {
     await ElMessageBox.confirm(
-      `确认对 ${row.name} 执行${op === 'delete' ? '删除配置并保留文件' : op === 'stop' ? '停止访问' : op === 'resume' ? '恢复访问' : op === 'renew' ? '申请 / 续期证书' : '操作'}？`,
+      `确认对 ${row.name} 执行${op === 'stop' ? '停止访问' : op === 'resume' ? '恢复访问' : op === 'renew' ? '申请 / 续期证书' : '操作'}？`,
       '网站管理',
       { confirmButtonText: '确认', cancelButtonText: '取消' },
     )
@@ -311,6 +333,17 @@ async function loadLogs() {
         <el-button type="primary" @click="openCreate">
           添加{{ tab === 'php' ? 'PHP 项目' : tab === 'proxy' ? '反向代理' : '项目' }}
         </el-button>
+        <el-button :disabled="!checked.length" type="danger" plain @click="removeSites(checked)">
+          批量删除
+          <span v-if="checked.length">（{{ checked.length }}）</span>
+        </el-button>
+        <el-button
+          :icon="Refresh"
+          :loading="refreshing"
+          aria-label="刷新网站列表"
+          title="刷新网站列表"
+          @click="refreshSites"
+        />
         <SiteTools
           :nginx="nginx"
           @settings="
@@ -333,9 +366,12 @@ async function loadLogs() {
           :key="'Sites-1' + ':' + tab"
           :state-key="'Sites-1' + ':' + tab"
           :rows="rows"
+          ref="list"
+          @selection-change="(items: Resource[]) => (checked = items)"
           row-key="id"
           @row-dblclick="open"
         >
+          <el-table-column type="selection" width="44" reserve-selection />
           <el-table-column
             :label="tab === 'php' ? '网站名' : tab === 'proxy' ? '域名' : '项目名称'"
             min-width="150"
@@ -354,21 +390,6 @@ async function loadLogs() {
               >
                 {{ status(row) }}
               </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column v-if="tab === 'php'" label="PHP" width="100">
-            <template #default="{ row }">
-              <el-button
-                link
-                @click="
-                  () => {
-                    open(row)
-                    page = 'runtime'
-                  }
-                "
-              >
-                {{ phpLabel(row) }}
-              </el-button>
             </template>
           </el-table-column>
           <el-table-column v-if="tab === 'php'" label="备份" width="120">
@@ -460,6 +481,21 @@ async function loadLogs() {
             </template>
           </el-table-column>
 
+          <el-table-column v-if="tab === 'php'" label="PHP" width="100">
+            <template #default="{ row }">
+              <el-button
+                link
+                @click="
+                  () => {
+                    open(row)
+                    page = 'runtime'
+                  }
+                "
+              >
+                {{ phpLabel(row) }}
+              </el-button>
+            </template>
+          </el-table-column>
           <el-table-column label="SSL证书" width="150">
             <template #default="{ row }">
               <el-button
@@ -479,10 +515,7 @@ async function loadLogs() {
           <el-table-column label="操作" width="170" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="open(row)">设置</el-button>
-              <el-button v-if="['error', 'pending'].includes(row.status)" link @click="retry(row)">
-                重试
-              </el-button>
-              <el-button link type="danger" @click="run(row, 'delete')">删除</el-button>
+              <el-button link type="danger" @click="removeSites([row])">删除</el-button>
             </template>
           </el-table-column>
         </DataList>
@@ -490,11 +523,13 @@ async function loadLogs() {
     </template>
   </LoadingContent>
   <SiteCreate v-model="createOpen" :initial="initial" />
+  <SiteDelete v-model="deleteOpen" :rows="deleteRows" @completed="deleted" />
   <AppDialog
     v-model="settingsOpen"
     :before-close="closeSettings"
     :title="selected?.name + ' · 网站设置'"
     split
+    class="site-settings-dialog"
     width="min(1000px,95vw)"
     :close-on-click-modal="false"
   >
@@ -530,7 +565,7 @@ async function loadLogs() {
       <section class="ops-settings-content">
         <el-alert v-if="error" :title="error" type="error" :closable="false" />
         <template v-if="page === 'general'">
-          <el-form label-width="110px">
+          <el-form label-width="104px">
             <el-form-item label="项目名称">
               <el-input v-model="draftName" maxlength="63" />
             </el-form-item>
@@ -553,7 +588,7 @@ async function loadLogs() {
           </el-form>
         </template>
         <template v-else-if="page === 'directory'">
-          <el-form label-width="110px">
+          <el-form label-width="104px">
             <el-form-item label="根目录">
               <el-input :model-value="draft.documentRoot || draft.rootDirectory" readonly />
             </el-form-item>
@@ -566,10 +601,10 @@ async function loadLogs() {
           </el-form>
         </template>
         <template v-else-if="page === 'routing'">
-          <el-form label-width="150px"><SiteRuntimeOptions v-model="draft" /></el-form>
+          <el-form label-width="104px"><SiteRuntimeOptions v-model="draft" /></el-form>
         </template>
         <template v-else-if="page === 'runtime'">
-          <el-form label-width="110px">
+          <el-form label-width="104px">
             <el-form-item v-if="localSite" label="PHP 版本">
               <el-select v-model="runtime">
                 <el-option label="静态" value="static" />
@@ -628,14 +663,14 @@ async function loadLogs() {
           </el-form>
         </template>
         <template v-else-if="page === 'security'">
-          <el-form label-width="150px">
+          <el-form label-width="104px">
             <el-form-item label="安全响应头">
               <el-switch v-model="draft.securityHeaders" />
             </el-form-item>
             <el-form-item label="禁止嵌入框架">
               <el-switch v-model="draft.denyFrames" />
             </el-form-item>
-            <el-form-item label="禁止上传目录执行 PHP">
+            <el-form-item label="上传目录禁用 PHP">
               <el-switch v-model="draft.denyUploadPHP" />
             </el-form-item>
           </el-form>

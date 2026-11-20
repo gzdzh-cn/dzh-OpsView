@@ -364,57 +364,77 @@ func (e *Engine) recycleDatabase(ctx context.Context, i, r model.Resource, p mod
 	if r.Kind != "database" || r.Status == "recycled" || !p.Bool("maintenanceConfirmed") || !p.Bool("confirmDataDeletion") {
 		return nil, errors.New("请确认已停止业务写入，并确认删除数据库")
 	}
+	prepared, b, err := e.prepareDatabaseRecycle(ctx, i, r, log)
+	if err != nil {
+		return nil, err
+	}
+	return e.finishDatabaseRecycle(ctx, i, prepared, b, log)
+}
+func (e *Engine) prepareDatabaseRecycle(ctx context.Context, i, r model.Resource, log func(string)) (model.Resource, model.Resource, error) {
 	// The encrypted prepared record is durable before the first destructive statement.
 	b := model.Resource{ID: "recycle-" + r.ID, Kind: "backup", Name: "recycle-" + r.ID, Config: model.Config{"targetId": r.ID, "destination": "local", "retention": 1, "recycleOnly": true}}
 	if r.Config.String("recyclePhase") == "prepared" {
-		return nil, errors.New("上次回收中断；请检查实际数据库状态，禁止重复执行删除")
+		return r, b, errors.New("上次回收中断；请检查实际数据库状态，禁止重复执行删除")
 	}
 	log("1/3 创建回收站专属加密备份")
 	counts, err := e.databaseRowCounts(ctx, i, r)
 	if err != nil {
-		return nil, err
+		return r, b, err
 	}
 	b.Config["expectedCounts"] = counts
 	if i.Config.String("software") == "postgresql" {
 		grants, er := dbJSONRows(e, ctx, i, r.Name, `SELECT row_to_json(x) FROM (SELECT grantee,table_schema,table_name,privilege_type FROM information_schema.role_table_grants WHERE table_schema NOT IN ('pg_catalog','information_schema')) x;`)
 		if er != nil {
-			return nil, er
+			return r, b, er
 		}
 		r.Config["recycledGrants"] = grants
 	} else {
 		var grants strings.Builder
 		er := e.sql(ctx, i, "", strings.NewReader("SHOW GRANTS FOR "+sqlLiteral(r.Config.String("username"))+"@"+sqlLiteral(mysqlAccountHost(r.Config.String("source")))+";"), func(line string) { grants.WriteString(line + "\n") })
 		if er != nil {
-			return nil, errors.New("保存原授权失败，未执行删除")
+			return r, b, errors.New("保存原授权失败，未执行删除")
 		}
 		r.Config["recycledGrants"] = grants.String()
 	}
 	result, err := e.backupUnlocked(ctx, model.Operation{Name: "backup.backup", Resource: b, Params: model.Config{}}, log)
 	if err != nil {
-		return nil, err
+		return r, b, err
 	}
 	_ = result
 	b, err = e.load(b.ID)
 	if err != nil {
-		return nil, err
+		return r, b, err
 	}
 	artifact := filepath.Join(e.Root, "backups", b.ID, b.Config.String("artifact"))
 	sum, err := hashFile(artifact)
 	if err != nil || sum != b.Config.String("sha256") {
-		return nil, errors.New("回收备份校验失败")
+		return r, b, errors.New("回收备份校验失败")
 	}
 	r.Config["recycleBackupId"] = b.ID
 	r.Config["recyclePhase"] = "prepared"
 	r.Config["expiresAt"] = time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)
 	if err = e.save(r); err != nil {
+		return r, b, err
+	}
+	return r, b, nil
+}
+func (e *Engine) finishDatabaseRecycle(ctx context.Context, i, r, b model.Resource, log func(string)) (model.Config, error) {
+	// Query the live inventory before finishing a durable preparation. A previous
+	// DROP may have succeeded even if the process died before the state write.
+	rows, err := e.databaseInventory(ctx, i)
+	if err != nil {
 		return nil, err
 	}
-	log("2/3 删除已备份数据库，保留共享账号")
-	if err = e.dbRun(ctx, i, "", "DROP DATABASE "+dbQuote(r.Name, i.Config.String("software") == "postgresql")+";"); err != nil {
-		return nil, err
+	present := false
+	for _, row := range rows {
+		present = present || row.String("name") == r.Name
 	}
-	// Retaining accounts is safer than guessing external role dependencies. Dedicated
-	// accounts remain for explicit review; no DROP USER is issued during recycling.
+	if present {
+		log("2/3 删除已备份数据库，保留共享账号")
+		if err = e.dbRun(ctx, i, "", "DROP DATABASE "+dbQuote(r.Name, i.Config.String("software") == "postgresql")+";"); err != nil {
+			return nil, err
+		}
+	}
 	r.Status = "recycled"
 	r.Config["recyclePhase"] = "deleted"
 	if err = e.save(r); err != nil {

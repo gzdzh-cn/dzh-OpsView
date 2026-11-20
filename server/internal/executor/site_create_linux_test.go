@@ -257,6 +257,55 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 	if _, er := os.Stat(e.nginxRecovery(inst.ID) + "/runtime/sbin/nginx"); er != nil {
 		t.Fatal("fallback not retained", er)
 	}
+
+	// Deletion uses real Nginx validation/reload and removes only owned units.
+	backup := model.Resource{ID: security.ID(), Kind: "backup", Name: "preserved-site", Config: model.Config{"targetId": static.ID, "destination": "local", "retention": 7}}
+	if _, err = e.Execute(ctx, model.Operation{Name: "backup.backup", Resource: backup}, log); err != nil {
+		t.Fatal("prepare retained site backup", err)
+	}
+	if _, err = e.Execute(ctx, model.Operation{Name: "site.delete", Resource: static, Params: model.Config{"deleteDirectory": true, "deleteLogs": true}}, log); err != nil {
+		t.Fatal("real site recycle", err)
+	}
+	if code, _, _ := request(static.Name, "/"); code != 404 {
+		t.Fatal("deleted site still served", code)
+	}
+	index, err := e.trashIndex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredDirectory := false
+	for id, item := range index {
+		if item.Original == doc {
+			if _, err = e.fileTrash(model.Config{"action": "restore", "id": id}); err != nil {
+				t.Fatal(err)
+			}
+			restoredDirectory = true
+		}
+	}
+	if !restoredDirectory {
+		t.Fatal("missing directory recycle record")
+	}
+	if b, err := os.ReadFile(doc + "/index.html"); err != nil || string(b) != "new-root-content" {
+		t.Fatal("recycle restoration", err)
+	}
+	if _, err = e.Execute(ctx, model.Operation{Name: "backup.restore", Resource: backup}, log); err != nil {
+		t.Fatal("backup unusable after site removal", err)
+	}
+	if _, err = e.Execute(ctx, model.Operation{Name: "site.delete", Resource: phpsite}, log); err != nil {
+		t.Fatal("PHP site cleanup", err)
+	}
+	if active, _ := output(ctx, "systemctl", "is-active", phpSiteUnit(phpsite)); strings.TrimSpace(active) == "active" {
+		t.Fatal("deleted FPM still active")
+	}
+	if _, err = os.Stat(pdir + "/index.php"); err != nil {
+		t.Fatal("default PHP deletion lost files", err)
+	}
+	if _, err = e.Execute(ctx, model.Operation{Name: "site.delete", Resource: app}, log); err != nil {
+		t.Fatal("managed site cleanup", err)
+	}
+	if active, _ := output(ctx, "systemctl", "is-active", unit); strings.TrimSpace(active) == "active" {
+		t.Fatal("deleted managed process still active")
+	}
 	t.Log("PASS real Nginx/PHP/systemd: /www/wwwroot, protection, isolated process, rollback and expiry")
 }
 func cleanupSiteUnit(t *testing.T, unit string) {

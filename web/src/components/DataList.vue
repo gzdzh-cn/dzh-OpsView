@@ -12,6 +12,8 @@ const props = withDefaults(
   }>(),
   { pageSize: 20, emptyText: '暂无数据' },
 )
+const table = ref<any>()
+defineExpose({ clearSelection: () => table.value?.clearSelection() })
 const host = ref<HTMLElement>(),
   toolbar = shallowRef<Element | null>(null)
 onMounted(() => {
@@ -53,7 +55,7 @@ watch(
         <el-input v-model="query" clearable placeholder="搜索列表" aria-label="搜索列表" />
       </div>
     </Teleport>
-    <el-table v-bind="attrs" :data="visible" :empty-text="emptyText"><slot /></el-table>
+    <el-table ref="table" v-bind="attrs" :data="visible" :empty-text="emptyText"><slot /></el-table>
     <div class="list-pagination">
       <el-pagination
         v-model:current-page="page"

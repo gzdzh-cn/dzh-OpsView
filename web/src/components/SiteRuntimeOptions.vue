@@ -29,8 +29,9 @@ function addRoute() {
 </script>
 <template>
   <div v-if="['php', 'static'].includes(config.type)" class="site-runtime-options">
-    <el-form-item label="运行目录（相对网站根目录）">
+    <el-form-item label="运行目录">
       <el-input v-model="config.runningDirectory" placeholder="留空为根目录；例如 public" />
+      <small class="form-help">相对于网站根目录。</small>
     </el-form-item>
     <el-form-item label="默认文档">
       <el-input

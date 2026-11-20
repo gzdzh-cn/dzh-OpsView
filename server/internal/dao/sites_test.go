@@ -101,3 +101,66 @@ func TestSiteCandidateRevisionAndCategories(t *testing.T) {
 		t.Fatal("stale candidate accepted")
 	}
 }
+
+func TestSiteProvisionConcurrentRequestAndRetryRollback(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.DB.Close()
+	var wg sync.WaitGroup
+	tasks := make(chan model.Task, 2)
+	failures := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			site := model.Resource{Kind: "site", Name: "same.test", Config: model.Config{"instanceId": "nginx", "type": "static"}}
+			task, er := s.CreateSiteProvision(&site, nil, model.Config{"requestId": "same-request"})
+			tasks <- task
+			failures <- er
+		}()
+	}
+	wg.Wait()
+	close(tasks)
+	close(failures)
+	for er := range failures {
+		if er != nil {
+			t.Fatal(er)
+		}
+	}
+	var first model.Task
+	for task := range tasks {
+		if first.ID == "" {
+			first = task
+		}
+		if first.ID != task.ID {
+			t.Fatal("duplicate task", task)
+		}
+	}
+	sites, _ := s.Resources("site")
+	if len(sites) != 1 {
+		t.Fatal("duplicate resource", len(sites))
+	}
+	before := sites[0]
+	candidate := before
+	candidate.Name = "corrected.test"
+	if _, err = s.ResumeSiteProvision(candidate, true, model.Config{"requestId": "same-request"}); err == nil {
+		t.Fatal("running retry accepted")
+	}
+	unchanged, _ := s.Resource(before.ID)
+	if unchanged.Revision != before.Revision || unchanged.Name != before.Name {
+		t.Fatal("failed enqueue changed draft", unchanged)
+	}
+	if err = s.Finish(first.ID, "failed", "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := s.ResumeSiteProvision(candidate, true, model.Config{"requestId": "same-request"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pointer, err := s.SiteProvisionByRequest("same-request")
+	if err != nil || pointer.String("taskId") != resumed.ID || pointer.Int("revision") != before.Revision+1 {
+		t.Fatal(pointer, err)
+	}
+}

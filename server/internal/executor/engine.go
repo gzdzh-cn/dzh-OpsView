@@ -164,7 +164,7 @@ func (e *Engine) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := e.Execute(r.Context(), op, emit)
 	if err != nil {
-		result := model.Result{Error: err.Error(), Data: data}
+		result := model.Result{Done: true, Error: err.Error(), Data: data}
 		var conflict *model.RevisionConflict
 		if errors.As(err, &conflict) {
 			result.Code = "revision_conflict"
@@ -176,7 +176,7 @@ func (e *Engine) handle(w http.ResponseWriter, r *http.Request) {
 	if data == nil {
 		data = model.Config{}
 	}
-	_ = enc.Encode(model.Result{Data: data})
+	_ = enc.Encode(model.Result{Done: true, Data: data})
 }
 func (e *Engine) Execute(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
 	if op.Params == nil {

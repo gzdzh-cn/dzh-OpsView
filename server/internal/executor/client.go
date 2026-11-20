@@ -60,6 +60,13 @@ func (c *Client) Execute(ctx context.Context, op model.Operation, log func(strin
 			data = r.Data
 			finished = true
 		}
+		if r.Done {
+			finished = true
+			if data == nil {
+				data = model.Config{}
+			}
+			break
+		}
 	}
 	if e = scanner.Err(); e != nil {
 		return data, e

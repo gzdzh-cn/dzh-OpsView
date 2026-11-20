@@ -322,3 +322,65 @@ func TestLiveRedisLargeValuesAndTTLConflict(t *testing.T) {
 		t.Fatal("TTL change failed to invalidate revision")
 	}
 }
+
+func TestLiveDatabaseSiteDeletion(t *testing.T) {
+	for _, tc := range []struct{ sw, image string }{{"mysql", "mysql:8.4"}, {"postgresql", "postgres:18"}} {
+		t.Run(tc.sw, func(t *testing.T) {
+			e, i := liveDatabase(t, tc.sw, tc.image)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			db := model.Resource{ID: security.ID(), Kind: "database", Name: "site_deletion", Config: model.Config{"instanceId": i.ID, "username": "site_delete_user", "password": "site-delete-only-test-password", "source": "127.0.0.1"}}
+			if _, err := e.database(ctx, model.Operation{Name: "database.create", Resource: db}, func(string) {}); err != nil {
+				t.Fatal(err)
+			}
+			db, _ = e.load(db.ID)
+			if err := e.dbRun(ctx, i, db.Name, "CREATE TABLE preserved(id integer); INSERT INTO preserved VALUES(7);"); err != nil {
+				t.Fatal(err)
+			}
+			nginx := model.Resource{ID: security.ID(), Kind: "instance", Name: "site-delete-nginx", Config: model.Config{"software": "nginx"}}
+			e.save(nginx)
+			doc := filepath.Join(t.TempDir(), "project")
+			os.MkdirAll(doc, 0755)
+			os.WriteFile(doc+"/index.html", []byte("survives failed backup"), 0644)
+			site := model.Resource{ID: security.ID(), Kind: "site", Name: "database-site.test", Config: model.Config{"type": "static", "domains": "database-site.test", "instanceId": nginx.ID, "databaseId": db.ID, "documentRoot": doc, "rootDirectory": doc, "siteBaseDirectory": filepath.Dir(doc)}}
+			e.save(site)
+			bin := "mysqldump"
+			if tc.sw == "postgresql" {
+				bin = "pg_dump"
+			}
+			path := filepath.Join(e.Root, "instances", i.ID, "runtime/bin", bin)
+			os.Rename(path, path+".disabled")
+			params := model.Config{"deleteDirectory": true, "deleteDatabase": true}
+			if _, err := e.Execute(ctx, model.Operation{Name: "site.delete", Resource: site, Params: params}, func(string) {}); err == nil {
+				t.Fatal("backup failure allowed site deletion")
+			}
+			if _, err := e.load(site.ID); err != nil {
+				t.Fatal("site removed before backup")
+			}
+			if _, err := os.Stat(doc); err != nil {
+				t.Fatal("directory removed before backup")
+			}
+			os.Rename(path+".disabled", path)
+			if _, err := e.Execute(ctx, model.Operation{Name: "site.delete", Resource: site, Params: params}, func(string) {}); err != nil {
+				t.Fatal(err)
+			}
+			db, _ = e.load(db.ID)
+			if db.Status != "recycled" {
+				t.Fatal("database not recycled")
+			}
+			restored, err := e.databaseAdmin(ctx, model.Operation{Name: "dbadmin.restore", Resource: db, Params: model.Config{"databaseName": "site_recovered"}}, func(string) {})
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := json.Marshal(restored["resources"])
+			var resources []model.Resource
+			_ = json.Unmarshal(raw, &resources)
+			if len(resources) != 1 {
+				t.Fatal("missing restored DB")
+			}
+			if n, err := e.scalar(ctx, i, resources[0].Name, "SELECT count(*) FROM preserved;"); err != nil || n != 1 {
+				t.Fatal("restored data", n, err)
+			}
+		})
+	}
+}

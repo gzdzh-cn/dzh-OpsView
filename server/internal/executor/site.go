@@ -62,6 +62,12 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	e.siteMu.Lock()
 	defer e.siteMu.Unlock()
 	r := op.Resource
+	if op.Name == "site.delete-preview" {
+		return e.inspectSiteDeletion(op.Resource)
+	}
+	if op.Name == "site.delete" {
+		return e.deleteSite(ctx, op, log)
+	}
 	inst, err := e.load(r.Config.String("instanceId"))
 	if err != nil {
 		return nil, err
@@ -140,50 +146,6 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if action == "logs" {
 		text, err := tail(filepath.Join(e.Root, "sites", r.ID, "logs", "access.json"), 200)
 		return model.Config{"content": text}, err
-	}
-	if action == "delete" {
-		stored, err := e.load(r.ID)
-		if err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				return nil, err
-			}
-			// Failed first deployments may own a directory reservation but no running site.
-			for _, p := range []string{confpath, filepath.Join("/etc/systemd/system", serviceName(managedSiteProcess(r))), filepath.Join("/etc/systemd/system", phpSiteUnit(r))} {
-				if _, er := os.Lstat(p); !os.IsNotExist(er) {
-					return nil, errors.New("存在尚未登记的站点配置或服务，请先检查任务现场")
-				}
-			}
-			if er := os.Remove(filepath.Join(e.Root, "state", r.ID+".document-root")); er != nil && !os.IsNotExist(er) {
-				return nil, er
-			}
-			log("已清理失败部署的目录占用，项目文件保留")
-			return model.Config{}, nil
-		}
-		old, err := os.ReadFile(confpath)
-		if err != nil {
-			return nil, err
-		}
-		if err = os.Remove(confpath); err != nil {
-			return nil, err
-		}
-		if err = e.nginx(ctx, inst, log, "-t"); err == nil {
-			err = e.nginx(ctx, inst, log, "-s", "reload")
-		}
-		if err != nil {
-			_ = security.WriteAtomic(confpath, old, 0644)
-			_ = e.nginx(ctx, inst, log, "-s", "reload")
-			return nil, err
-		}
-		e.stopSiteProcesses(ctx, stored)
-		if stored.Config.String("type") == "managed" {
-			proc := managedSiteProcess(stored)
-			if _, err = e.app(ctx, model.Operation{Name: "app.delete", Resource: proc, Params: model.Config{}}, log); err != nil {
-				return nil, err
-			}
-		}
-		_ = os.Remove(filepath.Join(e.Root, "state", r.ID+".document-root"))
-		log("站点配置已移除，站点文件仍保留")
-		return model.Config{}, e.forget(r.ID)
 	}
 	if action != "apply" && action != "renew" && action != "certificate" {
 		return nil, errors.New("网站操作无效")

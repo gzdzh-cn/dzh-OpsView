@@ -37,6 +37,7 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
     !path.startsWith('/auth') &&
     !path.startsWith('/files') &&
     !path.startsWith('/redis') &&
+    path !== '/sites/delete-preview' &&
     !path.endsWith('/credential')
   ) {
     queries.invalidate(

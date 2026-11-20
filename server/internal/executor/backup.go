@@ -50,7 +50,14 @@ func (e *Engine) backupUnlocked(ctx context.Context, op model.Operation, log fun
 	}
 	target, err := e.load(r.Config.String("targetId"))
 	if err != nil {
-		return nil, err
+		rec, ok := e.deletionRecord(r.Config.String("targetId"))
+		if action != "restore" || !ok || !rec.Config.Bool("completed") {
+			return nil, err
+		}
+		target = e.deletionSite(model.Resource{ID: r.Config.String("targetId"), Config: model.Config{}})
+		if target.Kind != "site" {
+			return nil, errors.New("删除站点恢复记录无效")
+		}
 	}
 	if target.Status == "recycled" {
 		return nil, errors.New("已回收数据库仅能通过回收站恢复")

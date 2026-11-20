@@ -77,6 +77,7 @@ func (c *Controller) bindSite(r *model.Resource) error {
 }
 func (c *Controller) createSite(w http.ResponseWriter, r *http.Request) {
 	var p struct {
+		RequestID   string       `json:"requestId"`
 		Name        string       `json:"name"`
 		Certificate string       `json:"certificate"`
 		PrivateKey  string       `json:"privateKey"`
@@ -92,6 +93,16 @@ func (c *Controller) createSite(w http.ResponseWriter, r *http.Request) {
 	}
 	if !decode(w, r, &p) {
 		return
+	}
+	if p.RequestID != "" {
+		if !logic.Name.MatchString(p.RequestID) {
+			fail(w, 400, "创建请求标识无效")
+			return
+		}
+		if existing, er := c.App.Store.SiteProvisionByRequest(p.RequestID); er == nil {
+			send(w, 202, existing)
+			return
+		}
 	}
 	if p.Config == nil {
 		p.Config = model.Config{}
@@ -126,7 +137,7 @@ func (c *Controller) createSite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	task, err := c.App.Store.CreateSiteProvision(&site, db, model.Config{"certificate": p.Certificate, "privateKey": p.PrivateKey})
+	task, err := c.App.Store.CreateSiteProvision(&site, db, model.Config{"certificate": p.Certificate, "privateKey": p.PrivateKey, "requestId": p.RequestID})
 	if err != nil {
 		fail(w, 409, "创建未提交："+err.Error())
 		return
@@ -140,13 +151,42 @@ func (c *Controller) retrySite(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "站点不存在")
 		return
 	}
+	var candidate struct {
+		Name     string       `json:"name"`
+		Config   model.Config `json:"config"`
+		Revision int          `json:"revision"`
+	}
+	if !decode(w, r, &candidate) {
+		return
+	}
+	if site.Status != "error" && site.Status != "pending" {
+		fail(w, 409, "站点已完成创建，请通过设置修改")
+		return
+	}
+	if candidate.Config != nil {
+		if candidate.Revision != site.Revision {
+			fail(w, 409, "站点已变化，请重新载入")
+			return
+		}
+		for _, key := range []string{"documentRoot", "runningRoot", "rootDirectory", "databaseId", "siteBaseDirectory", "instanceId", "category"} {
+			candidate.Config[key] = site.Config[key]
+		}
+		security.PreserveMasked(candidate.Config, site.Config)
+		site.Name = candidate.Name
+		site.Config = candidate.Config
+		if err = c.validate(&site); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		// Updating and enqueueing the retry is atomic and cannot race a running task.
+	}
 	// The relation is read from persisted resources, never from browser supplied credentials.
 	params, requestErr := c.App.Store.SiteProvisionRequest(site.ID)
 	if requestErr != nil {
 		fail(w, 409, "站点没有可重试的创建记录")
 		return
 	}
-	task, err := c.App.Store.Enqueue(model.Operation{Name: "site.provision", Resource: site, Params: params})
+	task, err := c.App.Store.ResumeSiteProvision(site, candidate.Config != nil, params)
 	if err != nil {
 		fail(w, 409, err.Error())
 		return
@@ -211,4 +251,14 @@ func (c *Controller) taskStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	send(w, 200, t)
+}
+
+func (c *Controller) siteProvisionStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	v, err := c.App.Store.SiteProvisionByRequest(r.PathValue("requestId"))
+	if err != nil {
+		fail(w, 404, "创建请求尚未登记")
+		return
+	}
+	send(w, 200, v)
 }

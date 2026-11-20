@@ -159,6 +159,10 @@ func (a *App) ReloadSchedules() {
 	})
 }
 func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task, error) {
+	if r.Kind == "site" && action == "delete" {
+		return a.QueueSiteDeletion(context.Background(), []model.SiteDeleteItem{{ID: r.ID, Revision: r.Revision}}, "")
+	}
+
 	if r.Kind == "app" {
 		return model.Task{}, errors.New("应用进程功能已下线，已有服务与数据保留")
 	}
@@ -242,7 +246,9 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 		}
 		target, e := a.Store.Resource(r.Config.String("targetId"))
 		if e != nil {
-			return model.Task{}, errors.New("备份目标不存在")
+			if action != "restore" || a.Store.Setting("deleted-site:"+r.Config.String("targetId"), &target) != nil || target.Kind != "site" {
+				return model.Task{}, errors.New("备份目标不存在")
+			}
 		}
 		if target.Status == "recycled" {
 			return model.Task{}, errors.New("备份目标已回收，请使用回收站恢复")
@@ -306,7 +312,10 @@ func (a *App) runNext(ctx context.Context) {
 		}
 	}()
 	var data model.Config
-	if op.Name == "site.provision" {
+	if op.Name == "sites.delete" {
+		op.Params["resultKey"] = t.ID
+		data, e = a.deleteSites(ctx, op, emit)
+	} else if op.Name == "site.provision" {
 		data, e = a.provisionSite(ctx, op, emit)
 	} else if op.Name == "schedule.execute" {
 		data, e = a.executeSchedule(ctx, op, emit)
@@ -321,7 +330,9 @@ func (a *App) runNext(ctx context.Context) {
 		data, e = a.Executor.Execute(ctx, op, emit)
 	}
 	if data != nil {
-		_ = a.Store.SaveTaskResult(t.ID, data)
+		if saveErr := a.Store.SaveTaskResult(t.ID, data); saveErr != nil && op.Name == "sites.delete" {
+			e = fmt.Errorf("删除结果保存失败，请核对现场：%w", saveErr)
+		}
 	}
 	if e != nil {
 		msg := security.MaskLog(e.Error(), op)
@@ -340,6 +351,11 @@ func (a *App) runNext(ctx context.Context) {
 				_ = a.Store.Update(&r)
 			}
 		}
+		return
+	}
+	if op.Name == "sites.delete" {
+		_ = a.Store.Finish(t.ID, "succeeded", "")
+		a.Store.Event(t.ID, "网站删除任务完成")
 		return
 	}
 	if strings.HasPrefix(op.Name, "archive.") || strings.HasPrefix(op.Name, "panel.archive-") || op.Name == "system.panel-region-update" {
