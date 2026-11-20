@@ -238,6 +238,7 @@ async function remove() {
       <el-button :disabled="busy" @click="visible = false">取消</el-button>
       <el-button
         type="danger"
+        class="ops-confirm-button"
         :loading="busy"
         :disabled="
           previewBusy ||

@@ -78,7 +78,63 @@ func (e *Engine) inspectSiteDeletion(r model.Resource) (model.Config, error) {
 	if confHash == "" && phase == "未执行" {
 		phase = "站点配置不存在，需核对并清理残留记录"
 	}
-	return model.Config{"directory": root, "directoryReason": reason, "identity": identity, "configHash": confHash, "phase": phase, "recoveryOptions": recoveryOptions}, nil
+	legacyUnits := model.Config{}
+	if _, err := e.load(r.ID); err != nil {
+		if _, recovering := e.deletionRecord(r.ID); !recovering {
+			legacyUnits, err = e.inspectUnregisteredSite(r, conf, "/etc/systemd/system")
+			if err != nil {
+				return nil, err
+			}
+			if len(legacyUnits) > 0 {
+				phase = "站点配置已不存在；已核验归属的独立 PHP-FPM 残留服务将清理"
+			}
+		}
+	}
+	return model.Config{"directory": root, "directoryReason": reason, "identity": identity, "configHash": confHash, "legacyUnits": legacyUnits, "phase": phase, "recoveryOptions": recoveryOptions}, nil
+}
+
+// Only an exact unit generated for this site and its registered PHP instance can
+// be recovered without executor site state. A filename or Description alone is
+// not ownership evidence. Unknown vhosts/processes, links and overrides stay put.
+func (e *Engine) inspectUnregisteredSite(r model.Resource, conf, unitDir string) (model.Config, error) {
+	units := model.Config{}
+	if _, err := os.Lstat(conf); !os.IsNotExist(err) {
+		return nil, fmt.Errorf("站点配置尚未登记：%s，请核对后恢复站点记录", conf)
+	}
+	for _, unit := range []string{phpSiteUnit(r), serviceName(managedSiteProcess(r))} {
+		path := filepath.Join(unitDir, unit)
+		st, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("无法读取站点残留服务 %s：%w", unit, err)
+		}
+		if !st.Mode().IsRegular() || unit != phpSiteUnit(r) {
+			return nil, fmt.Errorf("无法确认残留服务归属：%s，请核对服务后恢复站点记录", path)
+		}
+		php, err := e.load(r.Config.String("phpInstanceId"))
+		if err != nil || php.Kind != "instance" || php.Config.String("software") != "php" || php.Config.String("mode") != "native" {
+			return nil, fmt.Errorf("残留服务 %s 的 PHP 实例关联失效，请先核对实例", unit)
+		}
+		service := r
+		service.Kind = "site-php"
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != serviceUnitContent(service, e.sitePHPUnitBody(r, php.ID)) {
+			return nil, fmt.Errorf("残留服务内容与站点不匹配：%s，请核对后恢复站点记录", path)
+		}
+		// Drop-ins may alter ExecStart or add other services even when the main
+		// file matches. Do not automatically clean up such customized units.
+		for _, dir := range []string{unitDir, "/run/systemd/system", "/usr/local/lib/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system"} {
+			for _, name := range []string{unit + ".d", "opsview-site-php-.service.d", "opsview-site-.service.d", "opsview-.service.d", "service.d"} {
+				if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+					return nil, fmt.Errorf("残留服务 %s 存在自定义覆盖 %s，请先核对", unit, filepath.Join(dir, name))
+				}
+			}
+		}
+		units[unit] = security.Hash(string(data))
+	}
+	return units, nil
 }
 func (e *Engine) validateDeletionPath(path string) error {
 	f, err := e.filePath(path, false)
@@ -120,17 +176,8 @@ func (e *Engine) deleteSite(ctx context.Context, op model.Operation, log func(st
 		return nil, errors.New(inspection.String("directoryReason"))
 	}
 	rec, exists := e.deletionRecord(r.ID)
-	if _, er := e.load(r.ID); er != nil && !exists {
-		conf := filepath.Join(e.Root, "instances", r.Config.String("instanceId"), "conf", "sites", r.ID+".conf")
-		for _, path := range []string{conf, filepath.Join("/etc/systemd/system", phpSiteUnit(r)), filepath.Join("/etc/systemd/system", serviceName(managedSiteProcess(r)))} {
-			if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
-				return nil, errors.New("存在尚未登记的站点配置或服务，请先核对任务现场")
-			}
-		}
-	}
-
 	if !exists {
-		rec = model.Resource{ID: "delete-" + r.ID, Kind: "site-deletion", Name: r.Name, Config: model.Config{"site": r, "phase": "prepared", "deleteDirectory": p.Bool("deleteDirectory"), "deleteDatabase": p.Bool("deleteDatabase"), "deleteLogs": p.Bool("deleteLogs"), "startedAt": time.Now().UTC().Format(time.RFC3339Nano)}}
+		rec = model.Resource{ID: "delete-" + r.ID, Kind: "site-deletion", Name: r.Name, Config: model.Config{"site": r, "phase": "prepared", "legacyUnits": inspection["legacyUnits"], "deleteDirectory": p.Bool("deleteDirectory"), "deleteDatabase": p.Bool("deleteDatabase"), "deleteLogs": p.Bool("deleteLogs"), "startedAt": time.Now().UTC().Format(time.RFC3339Nano)}}
 	}
 	for _, key := range []string{"deleteDirectory", "deleteDatabase", "deleteLogs"} {
 		if rec.Config.Bool(key) != p.Bool(key) {
@@ -261,6 +308,20 @@ func (e *Engine) deleteSite(ctx context.Context, op model.Operation, log func(st
 	}
 	// Once the public entry is removed, only this site's owned service units stop.
 	if !rec.Config.Bool("servicesRemoved") {
+		var legacyUnits map[string]string
+		raw, _ := json.Marshal(rec.Config["legacyUnits"])
+		_ = json.Unmarshal(raw, &legacyUnits)
+		if len(legacyUnits) > 0 {
+			current, er := e.inspectUnregisteredSite(r, conf, "/etc/systemd/system")
+			if er != nil {
+				return result, er
+			}
+			for unit, hash := range current {
+				if legacyUnits[unit] != hash {
+					return result, fmt.Errorf("残留服务 %s 在确认后发生变化，请核对", unit)
+				}
+			}
+		}
 		units := []string{phpSiteUnit(r)}
 		changedUnits := false
 		if r.Config.String("type") == "managed" {

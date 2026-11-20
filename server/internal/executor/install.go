@@ -465,12 +465,15 @@ func ensureUser(ctx context.Context, user, home string, log func(string)) error 
 	}
 	return run(ctx, log, "", nil, nil, "useradd", "--system", "--home-dir", home, "--shell", "/usr/sbin/nologin", user)
 }
-func installUnit(ctx context.Context, r model.Resource, body string, log func(string)) error {
+func serviceUnitContent(r model.Resource, body string) string {
 	limits := ""
 	if r.Kind == "site-process" {
 		limits = "StartLimitIntervalSec=60\nStartLimitBurst=5\n"
 	}
-	unit := "[Unit]\n" + limits + "Description=OpsView " + r.Kind + " " + r.ID + "\nAfter=network.target\n[Service]\n" + body + "Restart=on-failure\nRestartSec=3\nTimeoutStartSec=180\nUMask=0027\n[Install]\nWantedBy=multi-user.target\n"
+	return "[Unit]\n" + limits + "Description=OpsView " + r.Kind + " " + r.ID + "\nAfter=network.target\n[Service]\n" + body + "Restart=on-failure\nRestartSec=3\nTimeoutStartSec=180\nUMask=0027\n[Install]\nWantedBy=multi-user.target\n"
+}
+func installUnit(ctx context.Context, r model.Resource, body string, log func(string)) error {
+	unit := serviceUnitContent(r, body)
 	if err := security.WriteAtomic(filepath.Join("/etc/systemd/system", serviceName(r)), []byte(unit), 0644); err != nil {
 		return err
 	}

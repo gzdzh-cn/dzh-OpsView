@@ -106,3 +106,78 @@ func TestSiteDeletePreservesSharedAndSubstitutedDirectories(t *testing.T) {
 		t.Fatal("substituted link accepted")
 	}
 }
+
+func TestUnregisteredSiteResidueOwnership(t *testing.T) {
+	for _, name := range []string{"owned-php", "modified-command", "description-only", "linked-unit", "drop-in", "unknown-process", "unregistered-vhost", "wrong-php-instance"} {
+		t.Run(name, func(t *testing.T) {
+			e, site, doc := siteDeletionFixture(t)
+			php := model.Resource{ID: security.ID(), Kind: "instance", Config: model.Config{"software": "php", "mode": "native"}}
+			if err := e.save(php); err != nil {
+				t.Fatal(err)
+			}
+			site.Config["type"] = "php"
+			site.Config["phpInstanceId"] = php.ID
+			if err := e.forget(site.ID); err != nil {
+				t.Fatal(err)
+			}
+			unitDir := t.TempDir()
+			conf := filepath.Join(e.Root, "instances", site.Config.String("instanceId"), "conf", "sites", site.ID+".conf")
+			service := site
+			service.Kind = "site-php"
+			content := serviceUnitContent(service, e.sitePHPUnitBody(site, php.ID))
+			path := filepath.Join(unitDir, phpSiteUnit(site))
+			switch name {
+			case "modified-command":
+				content += "\n[Service]\nExecStartPost=/bin/false\n"
+			case "description-only":
+				content = "[Unit]\nDescription=OpsView site-php " + site.ID + "\n[Service]\nExecStart=/bin/false\n"
+			case "wrong-php-instance":
+				site.Config["phpInstanceId"] = security.ID()
+			}
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			switch name {
+			case "linked-unit":
+				if err := os.Rename(path, path+".real"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(path+".real", path); err != nil {
+					t.Fatal(err)
+				}
+			case "drop-in":
+				if err := os.Mkdir(path+".d", 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path+".d/override.conf", []byte("[Service]\nExecStartPost=/bin/false\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			case "unknown-process":
+				if err := os.WriteFile(filepath.Join(unitDir, serviceName(managedSiteProcess(site))), []byte("unrelated process"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			case "unregistered-vhost":
+				if err := os.MkdirAll(filepath.Dir(conf), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(conf, []byte("server { listen 80; }"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			units, err := e.inspectUnregisteredSite(site, conf, unitDir)
+			if name == "owned-php" {
+				if err != nil || units.String(phpSiteUnit(site)) != security.Hash(content) {
+					t.Fatal(units, err)
+				}
+			} else if err == nil {
+				t.Fatal("unverified residual service/configuration accepted", name)
+			}
+			if b, err := os.ReadFile(path); err != nil || string(b) != content {
+				t.Fatal("inspection changed unit", err)
+			}
+			if b, err := os.ReadFile(doc + "/index.html"); err != nil || string(b) != "preserved business data" {
+				t.Fatal("inspection changed data", err)
+			}
+		})
+	}
+}

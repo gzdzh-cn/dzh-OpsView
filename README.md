@@ -6,7 +6,7 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.3-rc.27 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.3-rc.28 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
 本轮增加概览右上角主题下拉（跟随系统、亮色、黑色），亮色侧栏采用浅灰蓝背景。设置点击当前值行内保存，复杂认证就地展开，隐藏面板名称、侧栏标题及界面设置标签；修正告警子标签布局。登录仅在密码验证后按需显示验证码。新安装生成随机安全入口；`ov` 使用双列菜单，支持入口开关、轮换及脱敏登录信息。
 
@@ -50,9 +50,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.27/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.27/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.27
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.28/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.28/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.28
 # 已安装面板：
-ov update --version v0.1.3-rc.27
+ov update --version v0.1.3-rc.28
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
@@ -168,4 +168,4 @@ rc.8 的 Nginx 新增 48 组合引用独立软件 Release `software-44268894751`
 
 删除先预览域名、目录、关联数据库、专属服务与受影响计划，确认等待 5 秒。目录、数据库、日志默认保留；选中的目录和日志进文件回收站，数据库先加密备份校验后进数据库回收站，保留 30 天。数据库删除前须停止业务写入；共享/交叠资源拒绝随站点删除。计划暂停、已有备份保留，外部应用和共享服务继续运行。部分失败以逐站结果为准，重新核对现场后继续，不能将已回收业务数据视作自动回退。
 
-本版保持 SQLite schema 6。升级前执行 `ov backup` 并独立保管密钥，再执行 `ov update --version v0.1.3-rc.27`。回退须停服并恢复同次更新快照中的程序、元数据、运行配置和单元；元数据恢复不会自动还原已删除或回收的业务数据。详见运维手册及发布说明。
+本版保持 SQLite schema 6。升级前执行 `ov backup` 并独立保管密钥，再执行 `ov update --version v0.1.3-rc.28`。回退须停服并恢复同次更新快照中的程序、元数据、运行配置和单元；元数据恢复不会自动还原已删除或回收的业务数据。详见运维手册及发布说明。

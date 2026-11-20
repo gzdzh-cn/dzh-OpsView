@@ -3400,3 +3400,68 @@ test('website selection, refresh and safe batch deletion use one fixed dialog', 
   expectFixedOverlay(geometry, await overlayGeometry(dialog))
   await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeInViewport()
 })
+
+for (const mode of ['light', 'dark']) {
+  test(`${mode} site deletion countdown stays legible and disabled until confirmed`, async ({
+    page,
+  }) => {
+    await mockTheme(page, mode)
+    const site = {
+      id: 'countdown-site',
+      kind: 'site',
+      name: 'countdown.test',
+      status: 'ready',
+      revision: 1,
+      config: { type: 'static', domains: 'countdown.test', instanceId: nginxFixture.id },
+    }
+    await page.route('**/api/v1/resources', (route) =>
+      route.fulfill({ json: [nginxFixture, site] }),
+    )
+    await page.route('**/api/v1/sites/delete-preview', (route) =>
+      route.fulfill({
+        json: {
+          previewId: 'countdown-preview',
+          confirmAfterSeconds: 5,
+          items: [
+            {
+              id: site.id,
+              name: site.name,
+              directoryReason: '目录保留',
+              databaseReason: '未关联受管数据库',
+              inspection: { phase: '站点配置已不存在；已核验归属的独立 PHP-FPM 残留服务将清理' },
+            },
+          ],
+        },
+      }),
+    )
+    await page.goto('/sites')
+    await page
+      .locator('.site-table .el-table__body tr')
+      .first()
+      .getByRole('button', { name: '删除', exact: true })
+      .click()
+    const dialog = page.getByRole('dialog', { name: '删除网站', exact: true })
+    const button = dialog.getByRole('button', { name: /确认删除/ })
+    await expect(button).toContainText('秒')
+    await expect(button).toBeDisabled()
+    await overlayGeometry(dialog)
+    const style = await themeStyle(button)
+    expect(contrast(style.color, style.background)).toBeGreaterThanOrEqual(4.5)
+    expect(await button.evaluate((el) => getComputedStyle(el).opacity)).toBe('1')
+    await page.screenshot({
+      path: `../.opsview/screenshots/site-delete-countdown-${mode}.png`,
+      fullPage: true,
+    })
+    await expect(button).toHaveText('确认删除', { timeout: 10000 })
+    await expect(button).toBeDisabled()
+    await dialog.locator('.el-checkbox').filter({ hasText: '已了解删除影响' }).click()
+    await expect(button).toBeEnabled()
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(button).toBeInViewport()
+    await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeInViewport()
+    await page.screenshot({
+      path: `../.opsview/screenshots/site-delete-countdown-${mode}-mobile.png`,
+      fullPage: true,
+    })
+  })
+}

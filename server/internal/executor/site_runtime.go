@@ -122,7 +122,12 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 	service.Kind = "site-php"
 	service.Config = cloneConfig(r.Config)
 	service.Config["deferStart"] = siteUnavailable(r) || r.Config.Bool("phpPaused") || php.Config.Bool("servicesPaused")
-	return installUnit(ctx, service, fmt.Sprintf("Environment=PHP_INI_SCAN_DIR=%s/conf/php.d\nExecStart=%s/sbin/php-fpm --nodaemonize -y %s/conf/php-fpm.conf -c %s/conf/php.ini\nExecReload=/bin/kill -USR2 $MAINPID\n", filepath.Join(e.Root, "instances", php.ID), runtime, base, base), log)
+	return installUnit(ctx, service, e.sitePHPUnitBody(r, php.ID), log)
+}
+func (e *Engine) sitePHPUnitBody(r model.Resource, phpID string) string {
+	base := filepath.Join(e.Root, "sites", r.ID)
+	instance := filepath.Join(e.Root, "instances", phpID)
+	return fmt.Sprintf("Environment=PHP_INI_SCAN_DIR=%s/conf/php.d\nExecStart=%s/runtime/sbin/php-fpm --nodaemonize -y %s/conf/php-fpm.conf -c %s/conf/php.ini\nExecReload=/bin/kill -USR2 $MAINPID\n", instance, instance, base, base)
 }
 func phpSiteUnit(r model.Resource) string { r.Kind = "site-php"; return serviceName(r) }
 func (e *Engine) watchSites(ctx context.Context) {

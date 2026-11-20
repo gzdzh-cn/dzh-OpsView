@@ -291,8 +291,27 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 	if _, err = e.Execute(ctx, model.Operation{Name: "backup.restore", Resource: backup}, log); err != nil {
 		t.Fatal("backup unusable after site removal", err)
 	}
-	if _, err = e.Execute(ctx, model.Operation{Name: "site.delete", Resource: phpsite}, log); err != nil {
-		t.Fatal("PHP site cleanup", err)
+	// Legacy interrupted deletion: the vhost and executor state are gone, but
+	// the site's generated FPM unit remains. Recover only this verified unit.
+	phpStored, _ = e.load(phpsite.ID)
+	if err = os.Remove(filepath.Join(base, "conf", "sites", phpsite.ID+".conf")); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.nginx(ctx, inst, log, "-s", "reload"); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.forget(phpsite.ID); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := e.inspectSiteDeletion(phpStored)
+	if err != nil || !strings.Contains(preview.String("phase"), "已核验归属") {
+		t.Fatal("legacy FPM preview", preview, err)
+	}
+	if _, err = e.Execute(ctx, model.Operation{Name: "site.delete", Resource: phpStored}, log); err != nil {
+		t.Fatal("legacy PHP site cleanup", err)
+	}
+	if _, err = os.Lstat(filepath.Join("/etc/systemd/system", phpSiteUnit(phpsite))); !os.IsNotExist(err) {
+		t.Fatal("legacy FPM unit not removed", err)
 	}
 	if active, _ := output(ctx, "systemctl", "is-active", phpSiteUnit(phpsite)); strings.TrimSpace(active) == "active" {
 		t.Fatal("deleted FPM still active")
