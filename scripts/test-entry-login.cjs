@@ -51,6 +51,27 @@ async function main() {
       await page.getByRole('main', { name: '概览', exact: true }).waitFor()
     }
     await connect('https')
+    phase = 'https-create-site'
+    if (!await page.evaluate(() => isSecureContext && typeof crypto.randomUUID === 'function')) throw Error('HTTPS crypto missing')
+    let created = 0
+    const nginx = { id: 'https-nginx', kind: 'instance', name: 'nginx', status: 'ready', revision: 1, config: { software: 'nginx', mode: 'native', version: '1.30.6' } }
+    await page.route('**/api/v1/resources', r => r.fulfill({ json: [nginx] }))
+    await page.route('**/api/v1/sites/provisions/*', r => r.fulfill({ status: 404, json: { error: 'not found' } }))
+    await page.route('**/api/v1/sites', r => {
+      if (!/^[a-f0-9-]{36}$/.test(r.request().postDataJSON().requestId)) throw Error('invalid request ID')
+      created++
+      return r.fulfill({ status: 202, json: { siteId: 'https-site', taskId: 'https-site-task' } })
+    })
+    await page.route('**/api/v1/tasks/https-site-task', r => r.fulfill({ json: { id: 'https-site-task', state: 'succeeded' } }))
+    await page.locator('.sidebar a[href="/sites"]').click()
+    await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox', { name: '绑定域名', exact: true }).fill('https-browser.test')
+    await dialog.getByRole('button', { name: '创建', exact: true }).click()
+    await dialog.waitFor({ state: 'hidden' })
+    if (created !== 1) throw Error('duplicate HTTPS create')
+    await page.unrouteAll({ behavior: 'wait' })
+    await page.locator('.sidebar a[href="/"]').click()
     for (const [mode, scheme] of [['off', 'http'], ['on', 'https']]) {
       phase = 'ssl-' + mode
       const output = execFileSync('ov', ['ssl', mode, '--yes'], { encoding: 'utf8', timeout: 30000 })

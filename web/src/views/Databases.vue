@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { copyOrSelect } from '../lib/clipboard'
 import LoadingContent from '../components/LoadingContent.vue'
 import DialogActions from '../components/DialogActions.vue'
 import AppDialog from '../components/AppDialog.vue'
@@ -202,14 +203,7 @@ async function reveal() {
     secretTimer = setTimeout(clearSecret, 30000)
   })
 }
-async function copy(value: string) {
-  try {
-    await navigator.clipboard.writeText(value)
-    ElMessage.success('已复制')
-  } catch {
-    ElMessage.warning('当前浏览器无法访问剪贴板，请手动复制')
-  }
-}
+const copy = copyOrSelect
 async function saveNote(r: Resource) {
   await perform(async () => {
     const v = await ElMessageBox.prompt('修改备注', '备注', { inputValue: r.config.note || '' })

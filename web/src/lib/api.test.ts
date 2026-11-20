@@ -11,3 +11,25 @@ describe('file transport and display', () => {
     expect(size(1073741824)).toBe('1.0 GB')
   })
 })
+
+it('discards a late response belonging to a previous authenticated session', async () => {
+  const { api, setCSRF } = await import('./api')
+  const { vi } = await import('vitest')
+  let complete!: (response: Response) => void
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          complete = resolve
+        }),
+    ),
+  )
+  setCSRF('old-session')
+  const result = api('/resources')
+  setCSRF('new-session')
+  complete(new Response(JSON.stringify({ error: 'expired' }), { status: 401 }))
+  await expect(result).rejects.toMatchObject({ name: 'AbortError' })
+  setCSRF('')
+  vi.unstubAllGlobals()
+})

@@ -48,18 +48,26 @@ async function open(task: Task) {
       const after = events.value.at(-1)?.sequence || 0
       stream = new EventSource(`/api/v1/tasks/${task.id}/events?stream=true&after=${after}`)
       stream.onopen = () => {
+        if (id !== sequence) return
         error.value = ''
       }
       stream.onmessage = (e) => {
-        const event = JSON.parse(e.data)
-        if (!events.value.some((v) => v.sequence === event.sequence)) events.value.push(event)
+        if (id !== sequence) return
+        try {
+          const event = JSON.parse(e.data)
+          if (!events.value.some((v) => v.sequence === event.sequence)) events.value.push(event)
+        } catch {
+          error.value = '日志数据格式异常，请重新打开任务核对'
+        }
       }
       stream.addEventListener('done', () => {
+        if (id !== sequence) return
         stream?.close()
         void panel.refresh()
       })
       stream.onerror = () => {
-        error.value = '日志连接暂时中断，正在自动重连…'
+        if (id !== sequence) return
+        if (!error.value) error.value = '日志连接暂时中断，正在自动重连…'
       }
     }
   } catch (e) {

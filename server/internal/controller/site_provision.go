@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"opsview/internal/logic"
@@ -101,6 +102,9 @@ func (c *Controller) createSite(w http.ResponseWriter, r *http.Request) {
 		}
 		if existing, er := c.App.Store.SiteProvisionByRequest(p.RequestID); er == nil {
 			send(w, 202, existing)
+			return
+		} else if !errors.Is(er, sql.ErrNoRows) {
+			fail(w, 500, "创建请求查询失败，请核对原请求后重试")
 			return
 		}
 	}
@@ -257,6 +261,10 @@ func (c *Controller) siteProvisionStatus(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Cache-Control", "no-store")
 	v, err := c.App.Store.SiteProvisionByRequest(r.PathValue("requestId"))
 	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			fail(w, 500, "创建请求查询失败，请核对任务现场后重试")
+			return
+		}
 		fail(w, 404, "创建请求尚未登记")
 		return
 	}

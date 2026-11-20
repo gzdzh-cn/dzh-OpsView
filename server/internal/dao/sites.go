@@ -3,6 +3,7 @@ package dao
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"opsview/internal/model"
 	"opsview/internal/security"
 )
@@ -95,11 +96,11 @@ func (s *Store) SiteProvisionByRequest(id string) (model.Config, error) {
 	}
 	site, err := s.Resource(result.String("siteId"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("创建记录关联站点不可用: %v", err)
 	}
 	task, err := s.Task(result.String("taskId"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("创建记录关联任务不可用: %v", err)
 	}
 	// A resumed attempt updates the pointer without changing the original identity.
 	result["state"] = task.State

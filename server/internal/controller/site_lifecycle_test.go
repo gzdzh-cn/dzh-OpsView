@@ -134,3 +134,32 @@ func TestSiteDeleteSessionAndDatabaseMaintenanceRequired(t *testing.T) {
 		t.Fatal("unsafe task queued")
 	}
 }
+
+func TestSiteCreationLookupDoesNotHideBrokenRecords(t *testing.T) {
+	c, h := testController(t)
+	cookie, csrf := setupAndLogin(t, h)
+	if err := c.App.Store.Set("site-request:broken-reference", model.Config{"siteId": "missing-site", "taskId": "missing-task"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.App.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('site-request:broken-payload','not-encrypted-data')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"broken-reference", "broken-payload"} {
+		w := request(h, "GET", "/api/v1/sites/provisions/"+id, nil, cookie, csrf, "")
+		if w.Code != 500 {
+			t.Fatal("broken lookup disguised as absence", w.Code, w.Body.String())
+		}
+		w = request(h, "POST", "/api/v1/sites", model.Config{"requestId": id, "name": "must-not-create"}, cookie, csrf, "")
+		if w.Code != 500 {
+			t.Fatal("creation proceeded after a failed lookup", w.Code, w.Body.String())
+		}
+	}
+	w := request(h, "GET", "/api/v1/sites/provisions/unknown-request", nil, cookie, csrf, "")
+	if w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	sites, err := c.App.Store.Resources("site")
+	if err != nil || len(sites) != 0 {
+		t.Fatal("unexpected site", sites, err)
+	}
+}

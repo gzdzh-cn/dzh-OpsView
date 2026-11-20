@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue'
 import { api, setCSRF, errorText, type Resource, type Task } from '../lib/api'
 import { queries, isAbort } from '../lib/query'
 import { clearPageState } from '../composables/pageState'
+import { setSiteCreationRequest } from '../lib/siteCreation'
 import { cachedDirectorySizes } from '../lib/fileSizes'
 export type Dataset = 'resources' | 'tasks' | 'catalog' | 'overview'
 export const usePanel = defineStore('panel', () => {
@@ -12,9 +13,9 @@ export const usePanel = defineStore('panel', () => {
     username: '',
     twoFactorEnabled: false,
     development: false,
- temporary:false,
- passwordExpired:false,
- scopes:[] as string[],
+    temporary: false,
+    passwordExpired: false,
+    scopes: [] as string[],
   })
   const resources = ref<Resource[]>([]),
     tasks = ref<Task[]>([]),
@@ -41,8 +42,10 @@ export const usePanel = defineStore('panel', () => {
     epoch++
     queries.clear()
     clearPageState()
+    setSiteCreationRequest('')
     cachedDirectorySizes.clear()
     setCSRF('')
+    window.dispatchEvent(new Event('opsview:session-cleared'))
     resources.value = []
     tasks.value = []
     catalog.value = []

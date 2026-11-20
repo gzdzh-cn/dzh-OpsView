@@ -3,15 +3,18 @@ import { ref, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, post, errorText, type Config } from '../lib/api'
 import { identity } from '../lib/identity'
+import { copyOrSelect } from '../lib/clipboard'
+import { passkeyUnavailableReason } from '../lib/browser'
 import { registerPasskey } from '../lib/passkeys'
 import InlinePanel from './InlinePanel.vue'
 import AppDialog from './AppDialog.vue'
 import DataList from './DataList.vue'
 import LoadingContent from './LoadingContent.vue'
 defineProps<{ inline?: boolean }>()
-const supportsPasskeys = !!window.PublicKeyCredential
+const passkeyReason = passkeyUnavailableReason()
+const supportsPasskeys = !passkeyReason
 function copyToken() {
-  void navigator.clipboard.writeText(token.value)
+  void copyOrSelect(token.value)
 }
 const mode = defineModel<string>({ default: '' }),
   rows = ref<Config[]>([]),
@@ -27,7 +30,8 @@ const mode = defineModel<string>({ default: '' }),
   scopes = ref(['overview:read', 'resources:read']),
   ca = ref('')
 import { watch } from 'vue'
-let sequence = 0
+let sequence = 0,
+  epoch = 0
 async function load() {
   const seq = ++sequence
   busy.value = true
@@ -53,6 +57,8 @@ watch(
   mode,
   (v) => {
     sequence++
+    epoch++
+    busy.value = false
     createOpen.value = false
     scopes.value = ['overview:read', 'resources:read']
     token.value = ''
@@ -65,6 +71,7 @@ watch(
 )
 onBeforeUnmount(() => {
   sequence++
+  epoch++
   token.value = ''
   cert.value = undefined
 })
@@ -107,33 +114,45 @@ function openCreate() {
   token.value = ''
 }
 async function create() {
+  if (busy.value) return
+  const current = epoch,
+    target = mode.value
   busy.value = true
   try {
-    const data = await post('/auth/tokens/' + mode.value, {
-      ...(await identity()),
+    const auth = await identity()
+    if (current !== epoch) return
+    const data = await post('/auth/tokens/' + target, {
+      ...auth,
       name: name.value,
       days: days.value,
       sources: sources.value,
       scopes: scopes.value,
     })
+    if (current !== epoch) return
     token.value = data.token
     createOpen.value = false
     await load()
   } catch (e) {
-    if (e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
+    if (current === epoch && e !== 'cancel' && e !== 'close') ElMessage.error(errorText(e))
   } finally {
-    busy.value = false
+    if (current === epoch) busy.value = false
   }
 }
 async function generate() {
+  if (busy.value) return
+  const current = epoch
   busy.value = true
   try {
-    cert.value = await post('/auth/client-certificate', await identity())
-    ca.value = cert.value?.ca || ''
+    const auth = await identity()
+    if (current !== epoch) return
+    const result = await post('/auth/client-certificate', auth)
+    if (current !== epoch) return
+    cert.value = result
+    ca.value = result.ca || ''
   } catch (e) {
-    if (e !== 'cancel' && e !== 'close') error.value = errorText(e)
+    if (current === epoch && e !== 'cancel' && e !== 'close') error.value = errorText(e)
   } finally {
-    busy.value = false
+    if (current === epoch) busy.value = false
   }
 }
 function download(value: string, filename: string) {
@@ -199,7 +218,12 @@ function download(value: string, filename: string) {
             创建{{ mode === 'api' ? '凭据' : '临时授权' }}
           </el-button>
         </div>
-        <el-alert v-if="reason" :title="reason" type="info" :closable="false" />
+        <el-alert
+          v-if="reason || (mode === 'passkeys' && passkeyReason)"
+          :title="reason || passkeyReason"
+          type="info"
+          :closable="false"
+        />
         <div v-if="token" class="notice warn">
           <p>
             仅显示一次，请立即复制。{{

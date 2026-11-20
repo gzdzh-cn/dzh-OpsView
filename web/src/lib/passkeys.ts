@@ -1,3 +1,4 @@
+import { passkeyUnavailableReason } from './browser'
 import { api, post } from './api'
 function decode(s: string) {
   return Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
@@ -23,6 +24,8 @@ function serialize(credential: PublicKeyCredential) {
   }
 }
 export async function registerPasskey(identity: { password: string; code: string }) {
+  const reason = passkeyUnavailableReason()
+  if (reason) throw new Error(reason)
   const options = await post('/auth/passkeys/register-begin', identity)
   const key = options.publicKey
   key.challenge = decode(key.challenge)
@@ -33,6 +36,8 @@ export async function registerPasskey(identity: { password: string; code: string
   return post('/auth/passkeys/register-finish', serialize(credential))
 }
 export async function loginPasskey(code: string) {
+  const reason = passkeyUnavailableReason()
+  if (reason) throw new Error(reason)
   const options = await post('/auth/passkeys/login-begin')
   const key = options.publicKey
   key.challenge = decode(key.challenge)

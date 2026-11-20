@@ -3,6 +3,7 @@ import { ElMessageBox } from 'element-plus'
 import { computed, ref, onMounted } from 'vue'
 import { usePanel } from '../stores/panel'
 import { api, post, errorText, setCSRF, APIError } from '../lib/api'
+import { passkeyUnavailableReason } from '../lib/browser'
 import { loginPasskey } from '../lib/passkeys'
 import { appearance } from '../lib/appearance'
 defineProps<{ connectionError: string }>()
@@ -22,7 +23,7 @@ const temporary = ref(false),
 onMounted(() => {
   void api('/public/preferences')
     .then((p) => {
-      passkeyAvailable.value = !!p.passkeyAvailable && !!window.PublicKeyCredential
+      passkeyAvailable.value = !!p.passkeyAvailable && !passkeyUnavailableReason()
     })
     .catch(() => {})
 })

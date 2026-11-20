@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import AppDialog from './AppDialog.vue'
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
-import { usePageState } from '../composables/pageState'
+import { randomID, randomBytes } from '../lib/browser'
+import {
+  siteCreationRequest as requestId,
+  setSiteCreationRequest,
+  lookupSiteCreation,
+} from '../lib/siteCreation'
 import { observeSiteTask } from '../lib/siteTask'
 import { isAbort } from '../lib/query'
 import { ElMessage } from 'element-plus'
@@ -17,9 +22,13 @@ const form = ref<Config>({}),
   error = ref(''),
   categories = ref<string[]>(['默认分类'])
 function generatePassword() {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  database.value.password = Array.from(bytes, (v) => v.toString(16).padStart(2, '0')).join('')
+  try {
+    database.value.password = Array.from(randomBytes(16), (v) =>
+      v.toString(16).padStart(2, '0'),
+    ).join('')
+  } catch (e) {
+    error.value = errorText(e)
+  }
 }
 const database = ref<Config>({
   instanceId: '',
@@ -44,37 +53,45 @@ const certificate = ref(''),
 const siteDirectory = ref('/www/wwwroot')
 let openSequence = 0
 const saved = ref<Resource>()
-const requestId = usePageState('siteCreationRequest', '')
 const databaseReady = ref(false)
 let observer: AbortController | undefined
-onBeforeUnmount(() => observer?.abort())
-async function finishCreation(taskId: string) {
+onBeforeUnmount(() => {
+  openSequence++
   observer?.abort()
-  observer = new AbortController()
-  const task = await observeSiteTask(taskId, observer.signal)
+  database.value.password = ''
+  privateKey.value = ''
+  form.value.environment = ''
+})
+async function finishCreation(taskId: string, signal: AbortSignal) {
+  const task = await observeSiteTask(taskId, signal)
+  signal.throwIfAborted()
   await panel.refresh(['resources', 'tasks'])
+  signal.throwIfAborted()
   if (saved.value)
     saved.value = panel.resources.find((r) => r.id === saved.value?.id) || saved.value
   if (task.state !== 'succeeded') {
-    const result = requestId.value
-      ? await api('/sites/provisions/' + requestId.value).catch(() => null)
-      : null
+    const result = requestId.value ? await lookupSiteCreation(requestId.value, signal) : null
     databaseReady.value = !!result?.databaseReady
     throw new Error(task.error || '创建未完成，请检查错误后重新提交')
   }
-  requestId.value = ''
+  setSiteCreationRequest('')
   ElMessage.success('项目创建成功')
   visible.value = false
 }
-async function recoverCreation() {
+async function recoverCreation(signal: AbortSignal) {
   if (!requestId.value) return
-  const progress = await api('/sites/provisions/' + requestId.value).catch(() => null)
+  const progress = await lookupSiteCreation(requestId.value, signal)
+  signal.throwIfAborted()
   if (!progress) return
   if (progress.state === 'succeeded') {
-    requestId.value = ''
+    setSiteCreationRequest('')
     return
   }
+  if (!panel.resources.some((r) => r.id === progress.siteId)) await panel.refresh(['resources'])
+  signal.throwIfAborted()
   const existing = panel.resources.find((r) => r.id === progress.siteId)
+  if (!existing)
+    throw new Error('创建记录存在，但站点信息暂时无法载入，请重新打开后核对，勿重复创建')
   if (existing) {
     saved.value = existing
     form.value = JSON.parse(JSON.stringify(existing.config))
@@ -89,11 +106,9 @@ async function recoverCreation() {
   if (['queued', 'running'].includes(progress.state)) {
     busy.value = true
     try {
-      await finishCreation(progress.taskId)
+      await finishCreation(progress.taskId, signal)
     } catch (e) {
       if (!isAbort(e)) error.value = errorText(e)
-    } finally {
-      busy.value = false
     }
   } else error.value = '上次创建未完成，可修正尚未生效的配置后提交。'
 }
@@ -170,6 +185,9 @@ watch(
       database.value.password = ''
       return
     }
+    observer?.abort()
+    observer = new AbortController()
+    const signal = observer.signal
     form.value = JSON.parse(
       JSON.stringify(
         props.editing?.config || {
@@ -200,7 +218,7 @@ watch(
     saved.value = undefined
     databaseReady.value = false
     error.value = ''
-    busy.value = false
+    busy.value = true
     database.value = {
       instanceId: '',
       name: '',
@@ -215,7 +233,10 @@ watch(
     if (form.value.type === 'php' && !form.value.phpInstanceId)
       form.value.phpInstanceId = php.value[0]?.id || 'static'
     try {
-      const [defaults, groups] = await Promise.all([api('/settings'), api('/site-categories')])
+      const [defaults, groups] = await Promise.all([
+        api('/settings', { signal }),
+        api('/site-categories', { signal }),
+      ])
       if (seq !== openSequence || !props.modelValue) return
       categories.value = groups.rows
       siteDirectory.value = defaults.siteDirectory || '/www/wwwroot'
@@ -225,7 +246,13 @@ watch(
     } catch {
       /* server also applies the configured default */
     }
-    if (seq === openSequence && props.modelValue) await recoverCreation()
+    try {
+      if (seq === openSequence && props.modelValue) await recoverCreation(signal)
+    } catch (e) {
+      if (seq === openSequence && !isAbort(e)) error.value = errorText(e)
+    } finally {
+      if (seq === openSequence) busy.value = false
+    }
   },
 )
 watch(firstDomain, (domain) => {
@@ -246,6 +273,7 @@ async function save() {
   if (busy.value) return
   error.value = ''
   busy.value = true
+  const signal = observer!.signal
   try {
     if (!name.value || !form.value.domains.trim()) throw new Error('请填写域名及项目名称')
     if (instances.value.length !== 1) throw new Error('请先安装唯一受管 Nginx，或清理历史多实例')
@@ -275,14 +303,19 @@ async function save() {
     let result: Config
     if (saved.value) {
       const current = panel.resources.find((r) => r.id === saved.value?.id) || saved.value
-      result = await post('/sites/' + saved.value.id + '/provision', {
-        name: name.value,
-        config,
-        revision: current.revision,
-      })
+      const progress = requestId.value ? await lookupSiteCreation(requestId.value, signal) : null
+      signal.throwIfAborted()
+      if (progress && ['queued', 'running', 'succeeded'].includes(progress.state)) result = progress
+      else
+        result = await post('/sites/' + saved.value.id + '/provision', {
+          name: name.value,
+          config,
+          revision: current.revision,
+        })
     } else {
-      requestId.value ||= crypto.randomUUID()
-      const existing = await api('/sites/provisions/' + requestId.value).catch(() => null)
+      if (!requestId.value) setSiteCreationRequest(randomID())
+      const existing = await lookupSiteCreation(requestId.value, signal)
+      signal.throwIfAborted()
       if (existing) result = existing
       else {
         try {
@@ -296,18 +329,21 @@ async function save() {
               : {}),
           })
         } catch (e) {
-          const found = await api('/sites/provisions/' + requestId.value).catch(() => null)
+          signal.throwIfAborted()
+          const found = await lookupSiteCreation(requestId.value, signal)
           if (!found) throw e
           result = found
         }
       }
+      signal.throwIfAborted()
       saved.value = { id: result.siteId, revision: result.revision || 1 } as Resource
     }
-    await finishCreation(result.taskId)
+    signal.throwIfAborted()
+    await finishCreation(result.taskId, signal)
   } catch (e) {
     if (!isAbort(e)) error.value = errorText(e)
   } finally {
-    busy.value = false
+    if (!signal.aborted) busy.value = false
   }
 }
 </script>
