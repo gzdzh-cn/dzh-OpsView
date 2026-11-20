@@ -3,8 +3,7 @@ import AppDialog from './AppDialog.vue'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePanel } from '../stores/panel'
-import { api, action, post, put, errorText, type Config, type Resource } from '../lib/api'
-import SiteRuntimeOptions from './SiteRuntimeOptions.vue'
+import { api, post, errorText, type Config, type Resource } from '../lib/api'
 const props = defineProps<{ modelValue: boolean; initial: Config; editing?: Resource }>()
 const emit = defineEmits(['update:modelValue'])
 const panel = usePanel()
@@ -13,7 +12,29 @@ const form = ref<Config>({}),
   name = ref(''),
   busy = ref(false),
   error = ref(''),
-  advanced = ref<string[]>([])
+  categories = ref<string[]>(['默认分类'])
+function generatePassword() {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  database.value.password = Array.from(bytes, (v) => v.toString(16).padStart(2, '0')).join('')
+}
+const database = ref<Config>({
+  instanceId: '',
+  name: '',
+  username: '',
+  password: '',
+  encoding: '',
+  collation: '',
+})
+const databaseInstances = computed(() =>
+  panel
+    .kind('instance')
+    .filter(
+      (r) =>
+        ['mysql', 'postgresql'].includes(r.config.software) &&
+        ['ready', 'running'].includes(r.status),
+    ),
+)
 const certificate = ref(''),
   privateKey = ref(''),
   certificateMode = ref('none')
@@ -89,6 +110,7 @@ watch(
       certificate.value = ''
       privateKey.value = ''
       form.value.environment = ''
+      database.value.password = ''
       return
     }
     form.value = JSON.parse(
@@ -121,21 +143,42 @@ watch(
     saved.value = undefined
     error.value = ''
     busy.value = false
-    advanced.value = []
+    database.value = {
+      instanceId: '',
+      name: '',
+      username: '',
+      password: '',
+      encoding: '',
+      collation: '',
+    }
+    form.value.category ||= '默认分类'
+    categories.value = ['默认分类']
     certificateMode.value = 'none'
     if (form.value.type === 'php' && !form.value.phpInstanceId)
-      form.value.phpInstanceId = php.value[0]?.id
+      form.value.phpInstanceId = php.value[0]?.id || 'static'
     try {
-      const defaults = await api('/settings')
+      const [defaults, groups] = await Promise.all([api('/settings'), api('/site-categories')])
       if (seq !== openSequence || !props.modelValue) return
+      categories.value = groups.rows
       siteDirectory.value = defaults.siteDirectory || '/www/wwwroot'
-      if (!props.editing && !rootChanged.value) form.value.rootDirectory = siteDirectory.value + (firstDomain.value ? '/' + firstDomain.value : '')
-    } catch { /* server also applies the configured default */ }
+      if (!props.editing && !rootChanged.value)
+        form.value.rootDirectory =
+          siteDirectory.value + (firstDomain.value ? '/' + firstDomain.value : '')
+    } catch {
+      /* server also applies the configured default */
+    }
   },
 )
 watch(firstDomain, (domain) => {
   if (props.editing || saved.value) return
   if (!nameChanged.value) name.value = domain.slice(0, 63)
+  if (!database.value.name) {
+    const n = 'site_' + domain.replace(/[^a-z0-9]/g, '_').slice(0, 40)
+    if (domain) {
+      database.value.name = n
+      database.value.username = n.slice(0, 30)
+    }
+  }
   if (!rootChanged.value)
     form.value.rootDirectory =
       siteDirectory.value + (/^[a-z0-9][a-z0-9.-]*$/i.test(domain) ? '/' + domain : '')
@@ -145,8 +188,7 @@ async function save() {
   busy.value = true
   try {
     if (!name.value || !form.value.domains.trim()) throw new Error('请填写域名及项目名称')
-    if (form.value.type === 'php' && !form.value.phpInstanceId)
-      throw new Error('请先安装并选择 PHP 版本')
+    if (instances.value.length !== 1) throw new Error('请先安装唯一受管 Nginx，或清理历史多实例')
     if (
       form.value.type !== 'proxy' &&
       !props.editing &&
@@ -157,29 +199,31 @@ async function save() {
       throw new Error('请填写证书链与私钥')
     const config: Config = {
       ...form.value,
+      type:
+        form.value.type === 'php' && form.value.phpInstanceId === 'static'
+          ? 'static'
+          : form.value.type,
       domains: form.value.domains.trim().split(/\s+/).join(' '),
     }
     // Deployed paths are executor-owned. rootDirectory is only a new-site request.
     if (props.editing) config.rootDirectory = props.editing.config.rootDirectory
     if (config.type === 'proxy') delete config.rootDirectory
-    let resource = saved.value
-    if (!resource) {
-      resource = props.editing
-        ? await put('/resources/' + props.editing.id, {
-            name: name.value,
-            config,
-            revision: props.editing.revision,
-          })
-        : await post('/resources', { kind: 'site', name: name.value, config })
-      saved.value = resource
+    if (config.type === 'static') {
+      delete config.phpInstanceId
+      config.rewriteTemplate = 'none'
     }
-    await action(
-      resource!.id,
-      certificateMode.value === 'upload' ? 'certificate' : 'apply',
-      certificateMode.value === 'upload'
-        ? { certificate: certificate.value, privateKey: privateKey.value }
-        : {},
-    )
+    if (saved.value) await post('/sites/' + saved.value.id + '/provision')
+    else {
+      const result = await post('/sites', {
+        name: name.value,
+        config,
+        ...(database.value.instanceId ? { database: database.value } : {}),
+        ...(certificateMode.value === 'upload'
+          ? { certificate: certificate.value, privateKey: privateKey.value }
+          : {}),
+      })
+      saved.value = { id: result.siteId } as Resource
+    }
     ElMessage.success('部署任务已提交，可在任务中心查看日志')
     await panel.refresh()
     visible.value = false
@@ -213,7 +257,7 @@ async function save() {
           <el-radio-button v-if="form.type === 'app'" value="app">外部应用</el-radio-button>
         </el-radio-group>
       </el-form-item>
-      <el-form-item label="域名" required>
+      <el-form-item label="域名" required class="site-form-wide">
         <el-input
           v-model="form.domains"
           type="textarea"
@@ -221,7 +265,7 @@ async function save() {
           placeholder="每行一个域名，例如 example.com&#10;www.example.com"
           aria-label="绑定域名"
         />
-        <small>多个域名绑定同一个项目；入口端口使用所选 Nginx 配置。</small>
+        <small>多个域名绑定同一个项目；入口自动使用当前 Nginx。</small>
       </el-form-item>
       <el-form-item label="项目名称" required>
         <el-input
@@ -234,7 +278,7 @@ async function save() {
       <el-form-item label="备注">
         <el-input v-model="form.note" maxlength="1000" placeholder="可为空" />
       </el-form-item>
-      <el-form-item v-if="form.type !== 'proxy'" label="根目录" required>
+      <el-form-item v-if="form.type !== 'proxy'" label="根目录" required class="site-form-wide">
         <el-input
           v-model="form.rootDirectory"
           @input="rootChanged = true"
@@ -283,7 +327,8 @@ async function save() {
         <el-form-item label="开机启动"><el-switch v-model="form.autoStart" /></el-form-item>
       </template>
       <el-form-item v-if="form.type === 'php'" label="PHP 版本" required>
-        <el-select v-model="form.phpInstanceId" placeholder="请选择已安装 PHP">
+        <el-select v-model="form.phpInstanceId" placeholder="请选择运行环境">
+          <el-option label="静态" value="static" />
           <el-option
             v-for="r in php"
             :key="r.id"
@@ -304,16 +349,6 @@ async function save() {
           前往安装 PHP
         </el-link>
       </el-form-item>
-      <el-form-item label="Nginx 入口">
-        <el-select v-model="form.instanceId">
-          <el-option
-            v-for="r in instances"
-            :key="r.id"
-            :label="r.name + ' · :' + r.config.port"
-            :value="r.id"
-          />
-        </el-select>
-      </el-form-item>
       <el-form-item label="SSL 证书">
         <el-select v-model="certificateMode">
           <el-option
@@ -331,44 +366,72 @@ async function save() {
           <el-input v-model="privateKey" type="textarea" :rows="3" />
         </el-form-item>
       </template>
-      <el-collapse v-model="advanced">
-        <el-collapse-item title="高级设置" name="advanced">
-          <el-form-item label="到期时间">
-            <el-date-picker
-              v-model="form.expiresAt"
-              type="datetime"
-              value-format="YYYY-MM-DDTHH:mm:ssZ"
-              placeholder="永久有效"
-              clearable
+      <el-form-item label="数据库">
+        <el-select
+          v-model="database.instanceId"
+          placeholder="不创建"
+          @change="
+            () => {
+              database.encoding =
+                databaseInstances.find((r) => r.id === database.instanceId)?.config.software ===
+                'mysql'
+                  ? 'utf8mb4'
+                  : 'UTF8'
+            }
+          "
+        >
+          <el-option label="不创建" value="" />
+          <el-option
+            v-for="r in databaseInstances"
+            :key="r.id"
+            :value="r.id"
+            :label="
+              (r.config.software === 'mysql' ? 'MySQL' : 'PostgreSQL') +
+              ' ' +
+              r.config.version +
+              ' · ' +
+              r.name
+            "
+          />
+        </el-select>
+      </el-form-item>
+      <template v-if="database.instanceId">
+        <el-form-item label="数据库名" required>
+          <el-input v-model="database.name" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="专用账号" required>
+          <el-input v-model="database.username" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="数据库密码" required>
+          <el-input
+            v-model="database.password"
+            type="password"
+            show-password
+            autocomplete="new-password"
+            placeholder="至少 12 位，仅本机访问"
+          >
+            <template #append><el-button @click="generatePassword()">生成</el-button></template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="字符集/编码">
+          <el-select v-model="database.encoding">
+            <el-option
+              v-for="v in databaseInstances.find((r) => r.id === database.instanceId)?.config
+                .software === 'mysql'
+                ? ['utf8mb4', 'utf8', 'latin1']
+                : ['UTF8', 'LATIN1']"
+              :key="v"
+              :value="v"
+              :label="v"
             />
-          </el-form-item>
-          <template v-if="form.type === 'managed'">
-            <el-form-item label="环境变量">
-              <el-input
-                v-model="form.environment"
-                type="textarea"
-                :rows="3"
-                placeholder='JSON 对象，例如 {"NODE_ENV":"production"}'
-              />
-            </el-form-item>
-            <el-form-item label="健康检查">
-              <el-input
-                v-model="form.healthURL"
-                :placeholder="'http://127.0.0.1:' + form.port + '/health'"
-              />
-            </el-form-item>
-          </template>
-          <SiteRuntimeOptions v-model="form" />
-          <el-form-item label="Nginx 参数">
-            <el-input
-              v-model="form.advanced"
-              type="textarea"
-              :rows="3"
-              placeholder="client_max_body_size 32m;"
-            />
-          </el-form-item>
-        </el-collapse-item>
-      </el-collapse>
+          </el-select>
+        </el-form-item>
+      </template>
+      <el-form-item label="网站分类">
+        <el-select v-model="form.category">
+          <el-option v-for="v in categories" :key="v" :value="v" :label="v" />
+        </el-select>
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button :disabled="busy" @click="visible = false">取消</el-button>
@@ -419,6 +482,20 @@ async function save() {
   </AppDialog>
 </template>
 <style scoped>
+.site-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 16px;
+}
+.site-form-wide {
+  grid-column: 1/-1;
+}
+@media (max-width: 700px) {
+  .site-create-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .site-create-form :deep(.el-checkbox) {
   height: auto;
   white-space: normal;

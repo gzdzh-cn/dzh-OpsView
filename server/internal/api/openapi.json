@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpsView API",
-    "version": "0.1.3-rc.25"
+    "version": "0.1.3-rc.26"
   },
   "paths": {
     "/api/v1/health": {
@@ -814,6 +814,58 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/tasks/{id}": {
+      "get": {
+        "operationId": "get_tasks_id",
+        "summary": "读取单项任务状态；不返回任务参数和凭据",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/api/v1/tasks": {
@@ -3100,6 +3152,347 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ConfigurationChange"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sites": {
+      "post": {
+        "operationId": "post_sites",
+        "summary": "唯一 Nginx 绑定，原子预留站点、可选专用数据库和编排任务；凭据加密",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteProvision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sites/{id}/provision": {
+      "post": {
+        "operationId": "post_sites_id_provision",
+        "summary": "重试原创建任务；复用已完成数据库，不自动删除成功资源",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteProvision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sites/{id}/settings": {
+      "post": {
+        "operationId": "post_sites_id_settings",
+        "summary": "提交配置候选；revision 冲突返回409，实际应用成功后更新元数据",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "taskId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/site-categories": {
+      "get": {
+        "operationId": "get_site_categories",
+        "summary": "网站共享分类",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "rows"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_site_categories",
+        "summary": "新增、改名、删除网站分类；删除后归默认分类",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "old": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "remove": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "old",
+                  "name",
+                  "remove"
+                ]
               }
             }
           }
@@ -12010,6 +12403,7 @@
           "action": {
             "type": "string",
             "enum": [
+              "identities",
               "list",
               "stat",
               "read",
@@ -12064,6 +12458,22 @@
               }
             ],
             "description": "旧接口为 Base64；服务器 search 操作为布尔内容搜索开关"
+          },
+          "permissionMask": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 511
+          },
+          "permissionValue": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 511
+          },
+          "revisions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "mode": {
             "type": "string"
@@ -12691,6 +13101,79 @@
         "required": [
           "operation",
           "confirmed"
+        ]
+      },
+      "SiteCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "certificate": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "privateKey": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "instanceId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string",
+                "writeOnly": true
+              },
+              "encoding": {
+                "type": "string"
+              },
+              "collation": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "instanceId",
+              "name",
+              "username",
+              "password"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ]
+      },
+      "SiteProvision": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string"
+          },
+          "databaseId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "siteId",
+          "databaseId",
+          "taskId"
         ]
       },
       "DatabaseList": {

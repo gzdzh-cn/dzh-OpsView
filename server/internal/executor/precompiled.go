@@ -111,5 +111,8 @@ func (e *Engine) installPrecompiled(ctx context.Context, r model.Resource, entry
 	if err = run(ctx, log, "", nil, nil, filepath.Join(runtimePath, executable), args...); err != nil {
 		return errors.New("预编译包不能在当前系统运行，已保留诊断现场")
 	}
+	if r.Config.Bool("stageRuntime") && entry.Software == "nginx" {
+		return prepareRuntimePermissions(base + "/runtime")
+	}
 	return e.configureNative(ctx, r, base, log)
 }

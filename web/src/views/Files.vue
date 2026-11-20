@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import AppDialog from '../components/AppDialog.vue'
+import FilePermissionFields from '../components/FilePermissionFields.vue'
 import { usePageState } from '../composables/pageState'
 import { isAbort } from '../lib/query'
 import { cachedDirectorySizes } from '../lib/fileSizes'
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type InputInstance } from 'element-plus'
 import { Folder, Document, ArrowLeft, RefreshRight, Loading } from '@element-plus/icons-vue'
@@ -260,7 +261,7 @@ async function batch(action: string, rows = selection.value, extra: Config = {})
   const selected = rows.filter((r) => !r.protected && !r.special)
   if (!selected.length) {
     ElMessage.warning('请选择可操作的文件')
-    return
+    return false
   }
   try {
     if (action === 'delete')
@@ -277,8 +278,10 @@ async function batch(action: string, rows = selection.value, extra: Config = {})
       ElMessage.success('操作完成')
       await load()
     }
+    return true
   } catch (e) {
     showError(e)
+    return false
   }
 }
 async function rename(row: Config) {
@@ -312,16 +315,23 @@ async function conflict() {
 async function paste() {
   if (!clipboard.value) return
   try {
+    const current = clipboard.value
     const policy = await conflict()
-    const data = await op(clipboard.value.action, {
-      paths: clipboard.value.paths,
+    const data = await op(current.action, {
+      paths: current.paths,
       target: path.value,
       conflict: policy,
     })
     const changed = [...clipboard.value.paths, path.value]
     invalidateSizes(changed)
-    await awaitTask(data.id, '粘贴结果', changed)
-    clipboard.value = undefined
+    const result = await awaitTask(data.id, '粘贴结果', changed)
+    if (current.action === 'move') {
+      const done = new Set(
+        (result?.items || []).filter((r: Config) => !r.skipped).map((r: Config) => r.path),
+      )
+      const remaining = current.paths.filter((p) => !done.has(p))
+      clipboard.value = remaining.length ? { paths: remaining, action: 'move' } : undefined
+    }
   } catch (e) {
     showError(e)
   }
@@ -495,45 +505,77 @@ async function cancelSize(p: string) {
     showError(e)
   }
 }
-async function archive(action: 'compress' | 'extract', row?: Config) {
+const archiveOpen = ref(false),
+  archiveBusy = ref(false),
+  archiveForm = ref<Config>({})
+function archive(action: 'compress' | 'extract', row?: Config) {
+  const rows = row ? [row] : [...selection.value]
+  if (!rows.length) {
+    ElMessage.warning('先选择文件或目录')
+    return
+  }
+  archiveForm.value = {
+    action,
+    paths: rows.map((r) => r.path),
+    path: row?.path,
+    target: action === 'compress' ? join(path.value, 'archive.zip') : path.value,
+    format: 'zip',
+    conflict: 'skip',
+  }
+  archiveOpen.value = true
+}
+async function submitArchive() {
+  archiveBusy.value = true
   try {
-    if (action === 'compress' && !selection.value.length) {
-      ElMessage.warning('先选择文件或目录')
-      return
-    }
-    const initial = action === 'compress' ? join(path.value, 'archive.zip') : path.value
-    const answer = await ElMessageBox.prompt(
-      action === 'compress'
-        ? '输入压缩包完整路径，支持 .zip 或 .tar.gz'
-        : '输入已存在的解压目标目录',
-      '压缩 / 解压',
-      { inputValue: initial, confirmButtonText: '继续', cancelButtonText: '取消' },
-    )
-    const policy = await conflict()
-    const data = await op(action, {
-      paths: selection.value.map((r) => r.path),
-      path: row?.path,
-      target: answer.value,
-      conflict: policy,
-    })
-    invalidateSizes([answer.value])
-    await awaitTask(data.id, action === 'compress' ? '压缩结果' : '解压结果', [answer.value])
+    const v = { ...archiveForm.value }
+    if (v.action === 'compress' && !v.target.endsWith(v.format === 'zip' ? '.zip' : '.tar.gz'))
+      throw new Error('压缩包扩展名应与所选格式一致')
+    const data = await op(v.action, v)
+    archiveOpen.value = false
+    await awaitTask(data.id, '归档结果', [v.target])
   } catch (e) {
     showError(e)
+  } finally {
+    archiveBusy.value = false
   }
 }
 const permissionOpen = ref(false),
   permissionRows = ref<Config[]>([]),
-  permission = ref({ mode: '0644', owner: '', group: '', recursive: false }),
+  permission = ref<Config>({
+    mode: '',
+    owner: '',
+    group: '',
+    recursive: false,
+    permissionMask: 0,
+    permissionValue: 0,
+  }),
+  identities = ref<Config>({}),
   permissionCount = ref('')
+watch(
+  () => [
+    permission.value.recursive,
+    permission.value.permissionMask,
+    permission.value.permissionValue,
+    permission.value.owner,
+    permission.value.group,
+  ],
+  () => (permissionCount.value = ''),
+)
 async function permissions(rows = selection.value) {
   if (!rows.length) return
   permissionRows.value = rows
   permission.value = {
-    mode: rows[0].mode || '0644',
-    owner: rows[0].owner || '',
-    group: rows[0].group || '',
+    mode: '',
+    owner: '',
+    group: '',
     recursive: false,
+    permissionMask: 0,
+    permissionValue: 0,
+  }
+  try {
+    identities.value = await op('identities')
+  } catch (e) {
+    showError(e)
   }
   permissionCount.value = ''
   permissionOpen.value = true
@@ -554,6 +596,17 @@ async function permissionPreview() {
 }
 async function savePermissions() {
   try {
+    if (
+      permission.value.modeDraft !== undefined &&
+      !/^[0]?[0-7]{3}$/.test(permission.value.modeDraft)
+    ) {
+      ElMessage.warning('请输入有效数字权限')
+      return
+    }
+    if (!permission.value.permissionMask && !permission.value.owner && !permission.value.group) {
+      permissionOpen.value = false
+      return
+    }
     if (permission.value.recursive && !permissionCount.value) {
       ElMessage.warning('请先计算影响范围')
       return
@@ -565,8 +618,12 @@ async function savePermissions() {
       '确认权限变更',
       { confirmButtonText: '应用', cancelButtonText: '取消' },
     )
-    await batch('permissions', permissionRows.value, { ...permission.value, confirmed: true })
-    permissionOpen.value = false
+    const saved = await batch('permissions', permissionRows.value, {
+      ...permission.value,
+      confirmed: true,
+      revisions: Object.fromEntries(permissionRows.value.map((r) => [r.path, r.revision])),
+    })
+    if (saved) permissionOpen.value = false
   } catch (e) {
     showError(e)
   }
@@ -691,6 +748,159 @@ async function discardUpload() {
     showError(e)
   }
 }
+const table = ref<any>(),
+  context = ref<{ x: number; y: number; rows: Config[] }>(),
+  contextElement = ref<HTMLElement>(),
+  property = ref<Config>(),
+  propertyOpen = ref(false)
+type FileAction = { key: string; label: string; disabled?: boolean; danger?: boolean }
+function actionsFor(rows: Config[]): FileAction[] {
+  const row = rows[0],
+    one = rows.length === 1,
+    blocked = readOnly.value || rows.some((r) => r.protected || r.special),
+    has = !!rows.length
+  return [
+    ...(one
+      ? [
+          { key: 'open', label: row?.directory ? '打开目录' : '打开文件', disabled: blocked },
+          { key: 'download', label: '下载', disabled: blocked || row?.directory || row?.symlink },
+        ]
+      : []),
+    { key: 'copy', label: '复制', disabled: !has || blocked },
+    { key: 'cut', label: '剪切', disabled: !has || blocked },
+    { key: 'paste', label: '粘贴', disabled: !clipboard.value || blocked || taskBusy.value },
+    { key: 'rename', label: '重命名', disabled: !one || blocked },
+    { key: 'permissions', label: '权限', disabled: !has || blocked },
+    { key: 'compress', label: '压缩', disabled: !has || blocked || taskBusy.value },
+    ...(one && /\.(zip|tar\.gz)$/i.test(row?.name || '')
+      ? [{ key: 'extract', label: '解压', disabled: blocked || taskBusy.value }]
+      : []),
+    { key: 'favorite', label: '收藏目录', disabled: !one || !row?.directory || blocked },
+    { key: 'properties', label: '属性', disabled: !one || blocked },
+    { key: 'delete', label: '移入回收站', disabled: !has || blocked, danger: true },
+    ...(!has
+      ? [
+          { key: 'new-file', label: '新建文件', disabled: readOnly.value },
+          { key: 'new-directory', label: '新建目录', disabled: readOnly.value },
+          { key: 'upload', label: '上传文件', disabled: readOnly.value },
+          { key: 'refresh', label: '刷新目录' },
+        ]
+      : []),
+  ]
+}
+async function fileAction(key: string, rows = [...selection.value]) {
+  context.value = undefined
+  const available = actionsFor(rows).find((a) => a.key === key)
+  if (!available || available.disabled) return
+  const row = rows[0]
+  try {
+    switch (key) {
+      case 'open':
+        await open(row!)
+        break
+      case 'download':
+        download(row!)
+        break
+      case 'copy':
+      case 'cut':
+        clipboard.value = {
+          paths: rows.map((r) => r.path),
+          action: key === 'copy' ? 'copy' : 'move',
+        }
+        break
+      case 'paste':
+        await paste()
+        break
+      case 'rename':
+        await rename(row!)
+        break
+      case 'permissions':
+        await permissions(rows)
+        break
+      case 'compress':
+        archive('compress', rows.length === 1 ? row : undefined)
+        break
+      case 'extract':
+        archive('extract', row)
+        break
+      case 'favorite':
+        await favorite(row!.path)
+        break
+      case 'delete':
+        await batch('delete', rows)
+        break
+      case 'properties':
+        property.value = await op('stat', { path: row!.path })
+        propertyOpen.value = true
+        break
+      case 'new-file':
+        await create(false)
+        break
+      case 'new-directory':
+        await create(true)
+        break
+      case 'upload':
+        uploadInput.value?.click()
+        break
+      case 'refresh':
+        await load()
+        break
+    }
+  } catch (e) {
+    showError(e)
+  }
+}
+async function showContext(event: MouseEvent, row?: Config) {
+  event.preventDefault()
+  event.stopPropagation()
+  if (row && !selection.value.some((r) => r.path === row.path)) {
+    table.value?.clearSelection()
+    table.value?.toggleRowSelection(row, true)
+    selection.value = [row]
+  }
+  const rows = row ? [...selection.value] : []
+  context.value = {
+    x: Math.min(event.clientX, window.innerWidth - 220),
+    y: Math.min(event.clientY, window.innerHeight - 80),
+    rows,
+  }
+  await nextTick()
+  const el = contextElement.value
+  if (el && context.value) {
+    const box = el.getBoundingClientRect()
+    context.value.x = Math.max(8, Math.min(context.value.x, window.innerWidth - box.width - 8))
+    context.value.y = Math.max(8, Math.min(context.value.y, window.innerHeight - box.height - 8))
+    el.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+  }
+}
+function backgroundContext(event: MouseEvent) {
+  if (!(event.target as HTMLElement).closest('.el-table__row')) void showContext(event)
+}
+function contextKey(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    context.value = undefined
+    return
+  }
+  if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault()
+    const buttons = [
+      ...contextElement.value!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+    ]
+    let i = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    i =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? buttons.length - 1
+          : (i + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+    buttons[i]?.focus()
+  }
+}
+function dismissContext(event: Event) {
+  if (!contextElement.value?.contains(event.target as Node)) context.value = undefined
+}
+onMounted(() => document.addEventListener('pointerdown', dismissContext))
+onUnmounted(() => document.removeEventListener('pointerdown', dismissContext))
 onMounted(async () => {
   path.value = String(route.query.path || path.value)
   address.value = path.value
@@ -767,16 +977,10 @@ onUnmounted(() => {
       </el-button>
       <el-button :disabled="readOnly" @click="create(false)">新建文件</el-button>
       <el-button :disabled="readOnly" @click="create(true)">新建目录</el-button>
-      <el-button
-        :disabled="!selection.length || readOnly"
-        @click="clipboard = { paths: selection.map((r) => r.path), action: 'copy' }"
-      >
+      <el-button :disabled="!selection.length || readOnly" @click="fileAction('copy')">
         复制
       </el-button>
-      <el-button
-        :disabled="!selection.length || readOnly"
-        @click="clipboard = { paths: selection.map((r) => r.path), action: 'move' }"
-      >
+      <el-button :disabled="!selection.length || readOnly" @click="fileAction('cut')">
         剪切
       </el-button>
       <el-button :disabled="!clipboard || readOnly || taskBusy" @click="paste">
@@ -862,8 +1066,35 @@ onUnmounted(() => {
         显示隐藏文件
       </el-checkbox>
     </div>
-    <div class="data-list">
+    <div
+      class="data-list"
+      @contextmenu="backgroundContext"
+      @keydown="
+        (e: KeyboardEvent) => {
+          if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+            e.preventDefault()
+            showContext(
+              {
+                clientX: 80,
+                clientY: 180,
+                preventDefault() {},
+                stopPropagation() {},
+              } as MouseEvent,
+              selection[0],
+            )
+          }
+        }
+      "
+    >
       <el-table
+        ref="table"
+        @row-contextmenu="
+          (row: Config, _column: unknown, event: MouseEvent) => showContext(event, row)
+        "
+        :row-class-name="
+          ({ row }: any) =>
+            clipboard?.action === 'move' && clipboard.paths.includes(row.path) ? 'file-row-cut' : ''
+        "
         :data="items"
         row-key="path"
         @selection-change="selection = $event"
@@ -991,27 +1222,27 @@ onUnmounted(() => {
             >
               下载
             </el-button>
-            <el-dropdown
-              @command="
-                (cmd: string) =>
-                  cmd === 'rename'
-                    ? rename(row)
-                    : cmd === 'extract'
-                      ? archive('extract', row)
-                      : cmd === 'permissions'
-                        ? permissions([row])
-                        : batch('delete', [row])
-              "
-            >
-              <el-button link :disabled="row.protected || row.special">更多</el-button>
+            <el-dropdown @command="(key: string) => fileAction(key, [row])">
+              <el-button
+                link
+                :disabled="row.protected || row.special"
+                :aria-label="row.name + ' 更多操作'"
+              >
+                更多
+              </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="rename">重命名</el-dropdown-item>
-                  <el-dropdown-item command="permissions">权限</el-dropdown-item>
-                  <el-dropdown-item v-if="/\.(zip|tar\.gz)$/i.test(row.name)" command="extract">
-                    解压
+                  <el-dropdown-item
+                    v-for="a in actionsFor([row]).filter(
+                      (a) => !['open', 'download'].includes(a.key),
+                    )"
+                    :key="a.key"
+                    :command="a.key"
+                    :disabled="a.disabled"
+                    :divided="a.key === 'delete'"
+                  >
+                    {{ a.label }}
                   </el-dropdown-item>
-                  <el-dropdown-item command="delete" divided>移入回收站</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -1061,6 +1292,85 @@ onUnmounted(() => {
       </div>
     </template>
   </ListPanel>
+  <Teleport to="body">
+    <div
+      v-if="context"
+      ref="contextElement"
+      class="file-context-menu"
+      role="menu"
+      :style="{ left: context.x + 'px', top: context.y + 'px' }"
+      @keydown="contextKey"
+    >
+      <button
+        v-for="a in actionsFor(context.rows)"
+        :key="a.key"
+        role="menuitem"
+        :disabled="a.disabled"
+        :class="{ danger: a.danger }"
+        @click="fileAction(a.key, context.rows)"
+      >
+        {{ a.label }}
+      </button>
+    </div>
+  </Teleport>
+  <AppDialog
+    v-model="archiveOpen"
+    :title="archiveForm.action === 'compress' ? '创建压缩包' : '解压文件'"
+    size="small"
+    width="560px"
+  >
+    <el-form label-width="100px">
+      <el-form-item label="选中项目">
+        <span>{{ archiveForm.paths?.length }} 项</span>
+      </el-form-item>
+      <el-form-item v-if="archiveForm.action === 'compress'" label="压缩格式">
+        <el-select
+          v-model="archiveForm.format"
+          @change="
+            (v: string) =>
+              (archiveForm.target = archiveForm.target.replace(
+                /\.(zip|tar\.gz)$/i,
+                v === 'zip' ? '.zip' : '.tar.gz',
+              ))
+          "
+        >
+          <el-option label="ZIP" value="zip" />
+          <el-option label="TAR.GZ" value="tar.gz" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="目标路径"><el-input v-model="archiveForm.target" /></el-form-item>
+      <el-form-item label="同名处理">
+        <el-select v-model="archiveForm.conflict">
+          <el-option label="跳过" value="skip" />
+          <el-option label="保留两份" value="keep" />
+          <el-option label="覆盖并保留恢复副本" value="overwrite" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="archiveOpen = false">取消</el-button>
+      <el-button type="primary" :loading="archiveBusy" @click="submitArchive">开始</el-button>
+    </template>
+  </AppDialog>
+  <AppDialog v-model="propertyOpen" title="文件属性" size="small" width="560px">
+    <el-descriptions v-if="property" :column="1" border>
+      <el-descriptions-item label="路径">{{ property.path }}</el-descriptions-item>
+      <el-descriptions-item label="类型">
+        {{ property.symlink ? '符号链接' : property.directory ? '文件夹' : '文件' }}
+      </el-descriptions-item>
+      <el-descriptions-item v-if="property.target" label="链接目标">
+        {{ property.target }}
+      </el-descriptions-item>
+      <el-descriptions-item label="大小">
+        {{ property.directory ? '请在列表中计算' : size(property.size) }}
+      </el-descriptions-item>
+      <el-descriptions-item label="修改时间">{{ date(property.modifiedAt) }}</el-descriptions-item>
+      <el-descriptions-item label="权限">{{ property.mode }}</el-descriptions-item>
+      <el-descriptions-item label="所有者 / 用户组">
+        {{ property.owner }} / {{ property.group }}
+      </el-descriptions-item>
+    </el-descriptions>
+  </AppDialog>
   <AppDialog
     v-model="editOpen"
     :title="'编辑 ' + editPath"
@@ -1084,20 +1394,17 @@ onUnmounted(() => {
     </template>
   </AppDialog>
   <AppDialog size="small" v-model="permissionOpen" title="权限与所有者" width="540px">
-    <el-form label-position="top">
-      <el-form-item label="八进制权限（0000–0777）">
-        <el-input v-model="permission.mode" />
-      </el-form-item>
-      <el-form-item label="所有者"><el-input v-model="permission.owner" /></el-form-item>
-      <el-form-item label="用户组"><el-input v-model="permission.group" /></el-form-item>
-      <el-checkbox v-model="permission.recursive" @change="permissionCount = ''">
-        递归应用到子目录和文件
-      </el-checkbox>
-      <el-button v-if="permission.recursive" :disabled="taskBusy" @click="permissionPreview">
-        计算影响范围
-      </el-button>
-      <p>{{ permissionCount }}</p>
-    </el-form>
+    <p class="form-help">已选择 {{ permissionRows.length }} 项；混合值及空白字段保持不变。</p>
+    <FilePermissionFields
+      v-model="permission"
+      :rows="permissionRows"
+      :identities="identities"
+      @update:model-value="permissionCount = ''"
+    />
+    <el-button v-if="permission.recursive" :loading="taskBusy" @click="permissionPreview">
+      计算影响范围
+    </el-button>
+    <p>{{ permissionCount }}</p>
     <template #footer>
       <el-button @click="permissionOpen = false">取消</el-button>
       <el-button type="primary" @click="savePermissions">应用</el-button>

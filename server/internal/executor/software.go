@@ -98,8 +98,11 @@ func (e *Engine) softwareOperation(ctx context.Context, op model.Operation, log 
 		e.siteMu.Lock()
 		defer e.siteMu.Unlock()
 	}
+	if action == "version-identity" {
+		return e.nginxVersionIdentity(r)
+	}
 	if action == "switch-version" {
-		return e.switchNginx(ctx, r, op.Params, log)
+		return e.replaceNginx(ctx, r, op.Params, log)
 	}
 	version := r.Config.String("version")
 	if action == "inspect" {

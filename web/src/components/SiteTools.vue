@@ -3,7 +3,7 @@ import DialogActions from './DialogActions.vue'
 import AppDialog from './AppDialog.vue'
 import { computed, ref, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, action, put, errorText, size, date, type Config, type Resource } from '../lib/api'
+import { api, action, post, errorText, size, date, type Config, type Resource } from '../lib/api'
 import { usePanel } from '../stores/panel'
 import SoftwareSettings from './SoftwareSettings.vue'
 const props = defineProps<{ nginx: Resource[] }>()
@@ -111,12 +111,11 @@ async function applySecurity() {
       '应用网站安全',
       { confirmButtonText: '检查并应用', cancelButtonText: '取消' },
     )
-    const next = await put('/resources/' + r.id, {
+    await post('/sites/' + r.id + '/settings', {
       name: r.name,
       config: { ...r.config, ...security.value },
       revision: r.revision,
     })
-    await action(next.id, 'apply')
     ElMessage.success('安全配置任务已提交')
     await panel.refresh()
   } catch (e) {

@@ -79,7 +79,7 @@ func siteTryFiles(r model.Resource) string {
 	if r.Config.String("type") == "php" {
 		return "try_files $uri $uri/ /index.php?$query_string;"
 	}
-	return "try_files $uri $uri/ /index.html;"
+	return "try_files $uri $uri/ =404;"
 }
 
 func renderProxyRoutes(r model.Resource, redirect string) (string, string) {

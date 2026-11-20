@@ -29,6 +29,13 @@ const diffVisible = ref(false),
     mode: 'restart',
     source: 'values',
   })
+const versionMethod = ref('binary')
+const nginxVersions = computed(() =>
+  panel.catalog.filter(
+    (v) => v.software === 'nginx' && v.version !== props.resource?.config.version,
+  ),
+)
+const versionEntry = computed(() => nginxVersions.value.find((v) => v.id === targetVersion.value))
 const targetVersion = ref(''),
   scopeSite = ref(''),
   session = ref<Config>({ handler: 'files' }),
@@ -399,7 +406,8 @@ async function switchVersion() {
       { confirmButtonText: '确认切换', cancelButtonText: '取消' },
     )
     await submit('switch-version', {
-      targetInstanceId: targetVersion.value,
+      catalogId: targetVersion.value,
+      installMethod: versionMethod.value,
       maintenanceConfirmed: true,
     })
   } catch (e) {
@@ -753,31 +761,56 @@ const documentGlobal = window.document
         <template v-else-if="page === 'version'">
           <h3>版本迁移</h3>
           <template v-if="sw === 'nginx'">
-            <el-select v-model="targetVersion" placeholder="选择已安装的停止中版本">
-              <el-option
-                v-for="r in panel
-                  .kind('instance')
-                  .filter(
-                    (r) =>
-                      r.config.software === 'nginx' &&
-                      r.id !== resource?.id &&
-                      r.status === 'stopped',
-                  )"
-                :key="r.id"
-                :value="r.id"
-                :label="r.name + ' · ' + r.config.version"
-              />
-            </el-select>
+            <el-form label-width="100px">
+              <el-form-item label="目标版本">
+                <el-select
+                  v-model="targetVersion"
+                  placeholder="选择已验证版本"
+                  @change="
+                    () => (versionMethod = versionEntry?.availability?.binary ? 'source' : 'binary')
+                  "
+                >
+                  <el-option
+                    v-for="v in nginxVersions"
+                    :key="v.id"
+                    :value="v.id"
+                    :label="v.version"
+                    :disabled="!!v.disabledReason"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="安装方式">
+                <el-select v-model="versionMethod">
+                  <el-option
+                    label="极速安装"
+                    value="binary"
+                    :disabled="!!versionEntry?.availability?.binary"
+                  />
+                  <el-option
+                    label="编译安装"
+                    value="source"
+                    :disabled="!!versionEntry?.availability?.source"
+                  />
+                </el-select>
+              </el-form-item>
+              <p v-if="versionEntry?.availability?.[versionMethod]" class="form-help">
+                {{ versionEntry.availability[versionMethod] }}
+              </p>
+            </el-form>
             <DialogActions>
               <el-button type="primary" :disabled="!targetVersion" @click="switchVersion">
-                校验并切换入口
+                校验并更换版本
               </el-button>
             </DialogActions>
           </template>
           <p class="form-help">
-            先在软件市场安装目标版本。数据库通过数据库页面迁移至新实例并验证，源实例和数据保留。
+            {{
+              sw === 'nginx'
+                ? '仅替换当前实例的运行程序，站点、证书和实例关联保持不变。'
+                : '数据库通过数据库页面迁移至新实例并验证，源实例和数据保留。'
+            }}
           </p>
-          <DialogActions>
+          <DialogActions v-if="sw !== 'nginx'">
             <el-button
               @click="
                 () => {

@@ -698,3 +698,9 @@ rc.25 本地最终验证：类型检查、生产构建、13 项 Vitest 和完整
 独立 `OpsView checks` 的 check、websites 通过，deployment 作业因新增浏览器验收缺少 Chromium 缓存而失败（第 182 行依赖检查）。正式发布流水线与 candidate 已安装浏览器并通过相同部署验收；补齐独立 deployment 作业的 Chromium 安装步骤，作为不改变发布二进制的 CI 修正单独验证。
 
 独立部署环境修正已验证：提交 `08cc61f` 的 [OpsView checks 44580240133](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44580240133) 中 deployment 作业及 Chromium 安装、真实 systemd 部署回归全部成功。该修正仅补齐 CI 依赖，已发布和线上程序仍为 rc.25。
+
+## 2026-11-20 rc.26 网站与文件管理
+
+本轮新增统一建站及站点设置、PHP/静态切换、数据库联建、网站分类、唯一 Nginx 原位替换，文件权限矩阵和右键动作。迁移 schema 5 → 6，保留原资源与管理员。
+
+本地浏览器 58 项通过（生产前端、真实本机面板、受控操作模拟），新增静态无 PHP 建站、数据库关联字段、统一代理设置、批量混合权限和右键选择；原导航、HTTP/HTTPS 会话、文件编辑冲突、行内备注、目录计算、亮暗主题和移动端回归通过。浏览器操作模拟不等同于真实 Linux 验收；GitHub 真实安装、协议和 systemd 结果待本轮流水线确认后追加。

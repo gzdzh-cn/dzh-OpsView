@@ -22,15 +22,27 @@ func DefaultSiteRoot(domains string) string {
 	}
 	return SiteRoot + "/" + strings.ToLower(fields[0])
 }
-func ValidateSiteRoot(root string) error {
-	if path.Dir(root) != SiteRoot || !siteFolder.MatchString(path.Base(root)) || path.Clean(root) != root || strings.Contains(path.Base(root), "..") {
-		return errors.New("根目录须为 /www/wwwroot 下的独立项目文件夹，只允许字母、数字、点、横线及下划线")
+func ValidateSiteRoot(root string) error { return ValidateSiteRootAt(root, SiteRoot) }
+func ValidateSiteRootAt(root, base string) error {
+	if base == "" {
+		base = SiteRoot
+	}
+	if !regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`).MatchString(base) || !strings.HasPrefix(base, "/") || path.Clean(base) != base || base == "/" || strings.ContainsAny(base, " \t\r\n;\\\"'`$") {
+		return errors.New("建站目录无效")
+	}
+	for _, blocked := range []string{"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/proc", "/sys", "/dev", "/run", "/root", "/var/lib", "/var/run", "/var/log", "/var/cache"} {
+		if base == blocked || strings.HasPrefix(base, blocked+"/") {
+			return errors.New("禁止使用系统或私有目录建站")
+		}
+	}
+	if path.Dir(root) != base || !siteFolder.MatchString(path.Base(root)) || path.Clean(root) != root || strings.Contains(path.Base(root), "..") {
+		return errors.New("根目录须为建站目录下的独立项目文件夹，只允许字母、数字、点、横线及下划线")
 	}
 	return nil
 }
 func ValidateSiteCreate(c model.Config) error {
 	if root := c.String("rootDirectory"); root != "" {
-		if err := ValidateSiteRoot(root); err != nil {
+		if err := ValidateSiteRootAt(root, c.String("siteBaseDirectory")); err != nil {
 			return err
 		}
 	}

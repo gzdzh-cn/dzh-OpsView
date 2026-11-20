@@ -38,7 +38,7 @@ func pathContains(parent, child string) bool {
 	return child == parent || strings.HasPrefix(child, parent+"/") || parent == "/"
 }
 func (e *Engine) filePrivatePaths() []string {
-	paths := []string{filepath.Join(e.Root, "client-auth"), filepath.Join(e.Root, "jobs"), filepath.Join(e.Root, "firewall-admin"), filepath.Join(e.Root, "firewall"), e.firewallModePath(), e.sshPendingPath(), e.sshServicePath(), filepath.Join(e.Root, "ssh-managed-users.json"), e.pendingPath(), filepath.Join(e.Root, "ssh-conflict.conf"), filepath.Join(e.Root, "state"), filepath.Join(e.Root, "executor.key"), filepath.Join(e.Root, "backup.key"), filepath.Join(e.Root, "file-manager"), filepath.Join(filepath.Dir(e.Root), "panel"), "/var/lib/opsview/panel", "/run/opsview", "/var/run/docker.sock", "/etc/opsview/trust", "/etc/opsview/trust.d"}
+	paths := []string{filepath.Join(e.Root, "nginx-recovery"), filepath.Join(e.Root, "client-auth"), filepath.Join(e.Root, "jobs"), filepath.Join(e.Root, "firewall-admin"), filepath.Join(e.Root, "firewall"), e.firewallModePath(), e.sshPendingPath(), e.sshServicePath(), filepath.Join(e.Root, "ssh-managed-users.json"), e.pendingPath(), filepath.Join(e.Root, "ssh-conflict.conf"), filepath.Join(e.Root, "state"), filepath.Join(e.Root, "executor.key"), filepath.Join(e.Root, "backup.key"), filepath.Join(e.Root, "file-manager"), filepath.Join(filepath.Dir(e.Root), "panel"), "/var/lib/opsview/panel", "/run/opsview", "/var/run/docker.sock", "/etc/opsview/trust", "/etc/opsview/trust.d"}
 	if e.socketPath != "" {
 		paths = append(paths, e.socketPath)
 	}
@@ -68,7 +68,7 @@ func checkFilePolicyPaths(path string, internal bool, private []string) error {
 		}
 	}
 	for _, component := range strings.Split(filepath.Clean(path), "/") {
-		if component == ".opsview-trash" || (!internal && ((strings.HasPrefix(component, ".opsview-upload-") || strings.HasPrefix(component, ".opsview-write-")) || strings.HasPrefix(component, ".opsview-copy-") || strings.HasPrefix(component, ".opsview-extract-"))) {
+		if component == ".opsview-trash" || (!internal && ((strings.HasPrefix(component, ".opsview-upload-") || strings.HasPrefix(component, ".opsview-write-")) || strings.HasPrefix(component, ".opsview-copy-") || strings.HasPrefix(component, ".opsview-extract-") || strings.HasPrefix(component, "nginx-stage-"))) {
 			return errors.New("受保护的回收站或临时文件")
 		}
 	}

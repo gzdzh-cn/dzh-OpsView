@@ -232,7 +232,7 @@ test('websites require Nginx and expose exact tab columns', async ({ page }) => 
   for (const [tab, headers] of [
     [
       'PHP 项目',
-      ['网站名', '状态', '备份', '根目录', '日流量', '到期时间', '备注', 'SSL证书', '操作'],
+      ['网站名', '状态', 'PHP', '备份', '根目录', '日流量', '到期时间', '备注', 'SSL证书', '操作'],
     ],
     ['反向代理', ['域名', '状态', '代理地址', '日流量', '备注', 'SSL证书', '操作']],
     ['其他项目', ['项目名称', '状态', '运行端口', '根目录', '到期时间', '备注', 'SSL证书', '操作']],
@@ -242,36 +242,50 @@ test('websites require Nginx and expose exact tab columns', async ({ page }) => 
   }
   await page.screenshot({ path: '../.opsview/screenshots/sites-tabs.png', fullPage: true })
 })
-test('proxy editor submits multiple paths and upstreams', async ({ page }) => {
+test('proxy settings merge paths into the same fixed dialog', async ({ page }) => {
   let submitted: any
-  await page.route('**/api/v1/resources', async (route) => {
-    if (route.request().method() === 'GET') return route.fulfill({ json: [nginxFixture] })
+  const proxy = {
+    id: 'proxy-fixture',
+    kind: 'site',
+    name: 'proxy.example.com',
+    status: 'ready',
+    revision: 1,
+    config: {
+      type: 'proxy',
+      domains: 'proxy.example.com',
+      instanceId: nginxFixture.id,
+      upstream: 'http://127.0.0.1:3000',
+    },
+  }
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture, proxy] }))
+  await page.route('**/api/v1/sites/proxy-fixture/settings', (route) => {
     submitted = route.request().postDataJSON()
-    await route.fulfill({
-      json: { ...submitted, id: 'proxy-fixture', status: 'pending', revision: 1 },
-    })
+    return route.fulfill({ status: 202, json: { taskId: 'proxy-task' } })
   })
-  await page.route('**/api/v1/resources/proxy-fixture/actions/*', (route) =>
-    route.fulfill({ status: 202, json: { id: 'proxy-task' } }),
+  await page.route('**/api/v1/tasks/proxy-task', (route) =>
+    route.fulfill({ json: { id: 'proxy-task', state: 'succeeded' } }),
   )
   await page.goto('/sites')
   await page.getByRole('tab', { name: '反向代理', exact: true }).click()
-  await page.getByRole('button', { name: '添加反向代理', exact: true }).click()
-  await page.getByPlaceholder('默认使用第一个域名').fill('proxy-editor-test')
-  await page.getByRole('textbox', { name: '绑定域名', exact: true }).fill('proxy.example.com')
-  await page.getByRole('dialog').getByRole('button', { name: '高级设置' }).click()
-  await page.getByRole('button', { name: '添加路径规则', exact: true }).click()
-  await page
+  await expect(
+    page.locator('.site-table').getByRole('button', { name: '编辑', exact: true }),
+  ).toHaveCount(0)
+  await page.getByRole('button', { name: 'proxy.example.com', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: '反向代理', exact: true }).click()
+  await dialog.getByRole('button', { name: '添加路径规则', exact: true }).click()
+  await dialog
     .locator('.proxy-route textarea')
     .first()
     .fill('http://127.0.0.1:3000\nhttp://127.0.0.1:3001')
-  await page.getByRole('button', { name: '添加路径规则', exact: true }).click()
-  const second = page.locator('.proxy-route').nth(1)
+  await dialog.getByRole('button', { name: '添加路径规则', exact: true }).click()
+  const second = dialog.locator('.proxy-route').nth(1)
   await second.getByPlaceholder('/ 或 /api/').fill('/api/')
   await second.locator('textarea').fill('http://127.0.0.1:4000')
   await second.getByPlaceholder('$host 或 api.example.com').fill('api.example.com')
-  await page.getByRole('button', { name: '创建并部署', exact: true }).click()
-  await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
+  await dialog.getByRole('button', { name: '保存并应用', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(submitted.revision).toBe(1)
   expect(submitted.config.proxyRoutes[0].targets).toEqual([
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
@@ -395,12 +409,16 @@ test('panel settings have five tabs and stage HTTPS changes inline', async ({ pa
     '备份恢复',
   ])
   await page.getByRole('tab', { name: '面板设置', exact: true }).click()
-  await page.locator('.preference-row').filter({ has: page.getByText('面板访问', { exact: true }) }).getByRole('button', {name:'修改', exact:true}).click()
+  await page
+    .locator('.preference-row')
+    .filter({ has: page.getByText('面板访问', { exact: true }) })
+    .getByRole('button', { name: '修改', exact: true })
+    .click()
   await page.getByText('HTTP（关闭 SSL）', { exact: true }).click()
   await page.getByRole('button', { name: '保存并重新连接', exact: true }).click()
   await page.getByRole('button', { name: '确认修改', exact: true }).click()
   await page.getByRole('textbox', { name: '请输入当前管理员密码', exact: true }).fill(password)
-  await page.getByRole('button', {name:'验证',exact:true}).click()
+  await page.getByRole('button', { name: '验证', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '验证管理员身份', exact: true })).toBeHidden()
   await expect(page.getByRole('link', { name: '打开新地址并确认（120 秒内）' })).toHaveAttribute(
     'href',
@@ -1414,16 +1432,14 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
     name: 'php-8.4',
     config: { software: 'php', version: '8.4.27', mode: 'native' },
   }
-  await page.route('**/api/v1/resources', async (route) => {
-    if (route.request().method() === 'GET') return route.fulfill({ json: [nginxFixture, php] })
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture, php] }))
+  await page.route('**/api/v1/sites', (route) => {
     submitted = route.request().postDataJSON()
     return route.fulfill({
-      json: { ...submitted, id: 'site-create-fixture', revision: 1, status: 'pending' },
+      status: 202,
+      json: { siteId: 'site-create-fixture', taskId: 'site-task' },
     })
   })
-  await page.route('**/api/v1/resources/site-create-fixture/actions/*', (route) =>
-    route.fulfill({ status: 202, json: { id: 'site-task' } }),
-  )
   await page.route('**/api/v1/files', (route) => route.fulfill({ json: { items: [], total: 0 } }))
   await page.goto('/sites')
   await page.getByRole('tab', { name: 'PHP 项目', exact: true }).click()
@@ -1465,7 +1481,7 @@ test('site dialogs follow domains, preserve manual roots and submit managed proc
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(dialog.getByRole('button', { name: '创建并部署', exact: true })).toBeInViewport()
   const geometry = await overlayGeometry(dialog)
-  await dialog.getByRole('button', { name: '高级设置', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: '高级设置', exact: true })).toHaveCount(0)
   const body = dialog.locator('.el-dialog__body')
   expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
   await body.evaluate((el) => {
@@ -2379,8 +2395,12 @@ test('schedule rows support paused copies, run attribution and guided cycles', a
     enabled = r.request().postDataJSON().config.enabled
     return r.fulfill({ json: schedule() })
   })
-  await page.route('**/api/v1/schedules/schedule-test', r=>r.fulfill({json:schedule()}))
-  await page.route('**/api/v1/schedules/schedule-test/runs', r=>r.fulfill({json:[{id:'scheduled-task',state:'succeeded',createdAt:'2026-11-19T01:00:00Z'}]}))
+  await page.route('**/api/v1/schedules/schedule-test', (r) => r.fulfill({ json: schedule() }))
+  await page.route('**/api/v1/schedules/schedule-test/runs', (r) =>
+    r.fulfill({
+      json: [{ id: 'scheduled-task', state: 'succeeded', createdAt: '2026-11-19T01:00:00Z' }],
+    }),
+  )
   await page.route('**/api/v1/schedules', (r) =>
     r.fulfill({
       json: {
@@ -2435,14 +2455,17 @@ test('schedule rows support paused copies, run attribution and guided cycles', a
   await page.getByRole('button', { name: '执行', exact: true }).click()
   await expect.poll(() => executions).toBe(1)
   await page.getByRole('button', { name: '日志', exact: true }).click()
-  await page.getByRole('button',{name:'查看日志',exact:true}).click()
+  await page.getByRole('button', { name: '查看日志', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '计划执行历史' })).toContainText('SHA-256 校验完成')
   await page.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '复制', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '创建计划任务', exact: true })
   await expect(dialog).toBeVisible()
   await overlayGeometry(dialog)
-  await page.screenshot({ path: '../.opsview/screenshots/rc17-schedule-editor.png', fullPage: true })
+  await page.screenshot({
+    path: '../.opsview/screenshots/rc17-schedule-editor.png',
+    fullPage: true,
+  })
   await expect(dialog.getByRole('switch', { name: '启用', exact: true })).not.toBeChecked()
   await expect(dialog.getByRole('textbox', { name: 'Cron 表达式', exact: true })).toHaveValue(
     '0 3 * * *',
@@ -2456,107 +2479,161 @@ test('schedule rows support paused copies, run attribution and guided cycles', a
   )
 })
 
-test('script templates retain revisions and create paused schedules with fixed dialog actions', async ({ page }) => {
-  await page.route('**/api/v1/schedules/capabilities', r => r.fulfill({json:{users:['opsview-task','root'],interpreters:['/usr/bin/python3']}}))
+test('script templates retain revisions and create paused schedules with fixed dialog actions', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/schedules/capabilities', (r) =>
+    r.fulfill({ json: { users: ['opsview-task', 'root'], interpreters: ['/usr/bin/python3'] } }),
+  )
   await page.goto('/backups')
-  await expect(page.getByRole('tab')).toHaveText(['计划任务','备份记录','脚本库'])
-  await page.getByRole('tab',{name:'脚本库',exact:true}).click()
-  await page.getByRole('button',{name:'添加脚本',exact:true}).click()
-  let dialog = page.getByRole('dialog',{name:'添加脚本模板',exact:true})
+  await expect(page.getByRole('tab')).toHaveText(['计划任务', '备份记录', '脚本库'])
+  await page.getByRole('tab', { name: '脚本库', exact: true }).click()
+  await page.getByRole('button', { name: '添加脚本', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: '添加脚本模板', exact: true })
   const geometry = await overlayGeometry(dialog)
-  await dialog.getByRole('textbox',{name:'名称',exact:true}).fill('script-lifecycle')
-  await dialog.getByRole('textbox',{name:'内容',exact:true}).fill('echo fixture\n'.repeat(120))
-  await dialog.locator('.el-dialog__body').evaluate(el=>el.scrollTop=el.scrollHeight)
+  await dialog.getByRole('textbox', { name: '名称', exact: true }).fill('script-lifecycle')
+  await dialog
+    .getByRole('textbox', { name: '内容', exact: true })
+    .fill('echo fixture\n'.repeat(120))
+  await dialog.locator('.el-dialog__body').evaluate((el) => (el.scrollTop = el.scrollHeight))
   expectFixedOverlay(geometry, await overlayGeometry(dialog))
-  await dialog.getByRole('button',{name:'保存',exact:true}).click()
-  const row = page.getByRole('row').filter({hasText:'script-lifecycle'})
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  const row = page.getByRole('row').filter({ hasText: 'script-lifecycle' })
   await expect(row).toBeVisible()
-  await row.getByRole('button',{name:'编辑',exact:true}).click()
-  dialog = page.getByRole('dialog',{name:'编辑脚本模板',exact:true})
-  await dialog.getByRole('textbox',{name:'内容',exact:true}).fill('exit 7')
-  await dialog.getByRole('button',{name:'保存',exact:true}).click()
-  await row.getByRole('button',{name:'编辑',exact:true}).click()
-  await dialog.getByRole('combobox',{name:'历史版本',exact:true}).press('ArrowDown')
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '编辑脚本模板', exact: true })
+  await dialog.getByRole('textbox', { name: '内容', exact: true }).fill('exit 7')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  await dialog.getByRole('combobox', { name: '历史版本', exact: true }).press('ArrowDown')
   await expect(page.getByRole('option')).toHaveCount(2)
   await page.keyboard.press('Escape')
-  await dialog.getByRole('button',{name:'取消',exact:true}).click()
-  await row.getByRole('button',{name:'创建计划',exact:true}).click()
-  dialog = page.getByRole('dialog',{name:'创建计划任务',exact:true})
-  await expect(dialog.getByRole('switch',{name:'启用',exact:true})).not.toBeChecked()
-  await expect(dialog.getByRole('textbox',{name:'脚本内容',exact:true})).toHaveValue('exit 7')
-  await dialog.getByRole('textbox',{name:'任务名称',exact:true}).fill('template-plan')
-  await dialog.getByRole('combobox',{name:'执行用户',exact:true}).press('ArrowDown')
-  await page.getByRole('option',{name:'root',exact:true}).click()
-  await dialog.getByRole('button',{name:'保存',exact:true}).click()
-  await expect(page.getByRole('dialog',{name:'验证管理员身份',exact:true})).toBeVisible()
-  await page.locator('.el-message-box').getByRole('button',{name:'取消',exact:true}).click()
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await row.getByRole('button', { name: '创建计划', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '创建计划任务', exact: true })
+  await expect(dialog.getByRole('switch', { name: '启用', exact: true })).not.toBeChecked()
+  await expect(dialog.getByRole('textbox', { name: '脚本内容', exact: true })).toHaveValue('exit 7')
+  await dialog.getByRole('textbox', { name: '任务名称', exact: true }).fill('template-plan')
+  await dialog.getByRole('combobox', { name: '执行用户', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: 'root', exact: true }).click()
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '验证管理员身份', exact: true })).toBeVisible()
+  await page.locator('.el-message-box').getByRole('button', { name: '取消', exact: true }).click()
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('combobox',{name:'执行用户',exact:true}).press('ArrowDown')
-  await page.getByRole('option',{name:'opsview-task',exact:true}).click()
-  await dialog.getByRole('button',{name:'保存',exact:true}).click()
+  await dialog.getByRole('combobox', { name: '执行用户', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: 'opsview-task', exact: true }).click()
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await page.getByRole('tab',{name:'计划任务',exact:true}).click()
-  const planned=page.getByRole('row').filter({hasText:'template-plan'})
+  await page.getByRole('tab', { name: '计划任务', exact: true }).click()
+  const planned = page.getByRole('row').filter({ hasText: 'template-plan' })
   await expect(planned).toContainText('已暂停')
-  await planned.getByRole('button',{name:'删除',exact:true}).click()
-  await page.locator('.el-message-box').getByRole('button',{name:'删除',exact:true}).click()
+  await planned.getByRole('button', { name: '删除', exact: true }).click()
+  await page.locator('.el-message-box').getByRole('button', { name: '删除', exact: true }).click()
   await expect(planned).toHaveCount(0)
-  await page.getByRole('tab',{name:'脚本库',exact:true}).click()
-  await row.getByRole('button',{name:'删除',exact:true}).click()
-  await page.locator('.el-message-box').getByRole('button',{name:'删除',exact:true}).click()
+  await page.getByRole('tab', { name: '脚本库', exact: true }).click()
+  await row.getByRole('button', { name: '删除', exact: true }).click()
+  await page.locator('.el-message-box').getByRole('button', { name: '删除', exact: true }).click()
   await expect(row).toHaveCount(0)
 })
 
-test('settings CAS conflicts preserve editor and notification tabs load independently', async ({page})=>{
-  let rules=0,channels=0,records=0
-  await page.route('**/api/v1/notifications/*',r=>{
+test('settings CAS conflicts preserve editor and notification tabs load independently', async ({
+  page,
+}) => {
+  let rules = 0,
+    channels = 0,
+    records = 0
+  await page.route('**/api/v1/notifications/*', (r) => {
     const kind = new URL(r.request().url()).pathname.split('/').at(-1)
-    if(kind==='rules')rules++;if(kind==='channels')channels++;if(kind==='records')records++
-    return r.fulfill({json:[]})
+    if (kind === 'rules') rules++
+    if (kind === 'channels') channels++
+    if (kind === 'records') records++
+    return r.fulfill({ json: [] })
   })
   await page.goto('/settings')
   let releaseGroup!: () => void
-  const groupResponse = new Promise<void>((resolve) => { releaseGroup = resolve })
+  const groupResponse = new Promise<void>((resolve) => {
+    releaseGroup = resolve
+  })
   await page.route('**/api/v1/settings/groups/panel', async (route) => {
     await groupResponse
     await route.continue()
   })
-  const setting = page.locator('.preference-item').filter({has:page.getByText('默认建站目录',{exact:true})})
-  await setting.getByRole('button',{name:'修改默认建站目录',exact:true}).click()
-  await expect(setting.getByRole('textbox',{name:'默认建站目录',exact:true})).toBeDisabled()
+  const setting = page
+    .locator('.preference-item')
+    .filter({ has: page.getByText('默认建站目录', { exact: true }) })
+  await setting.getByRole('button', { name: '修改默认建站目录', exact: true }).click()
+  await expect(setting.getByRole('textbox', { name: '默认建站目录', exact: true })).toBeDisabled()
   releaseGroup()
-  await setting.getByRole('textbox',{name:'默认建站目录',exact:true}).fill('/www/conflicting-directory')
-  await page.route('**/api/v1/settings/groups/panel',r=>r.request().method()==='PATCH'?r.fulfill({status:409,json:{error:'设置已被修改，请重新载入'}}):r.continue())
-  await setting.getByRole('button',{name:'保存',exact:true}).click()
+  await setting
+    .getByRole('textbox', { name: '默认建站目录', exact: true })
+    .fill('/www/conflicting-directory')
+  await page.route('**/api/v1/settings/groups/panel', (r) =>
+    r.request().method() === 'PATCH'
+      ? r.fulfill({ status: 409, json: { error: '设置已被修改，请重新载入' } })
+      : r.continue(),
+  )
+  await setting.getByRole('button', { name: '保存', exact: true }).click()
   await expect(setting).toContainText('设置已被修改')
-  await expect(setting.getByRole('textbox',{name:'默认建站目录',exact:true})).toHaveValue('/www/conflicting-directory')
+  await expect(setting.getByRole('textbox', { name: '默认建站目录', exact: true })).toHaveValue(
+    '/www/conflicting-directory',
+  )
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.setViewportSize({width:390,height:844})
-  await expect(setting.getByRole('button',{name:'保存',exact:true})).toBeInViewport()
-  await setting.getByRole('button',{name:'取消',exact:true}).click()
-  await page.getByRole('tab',{name:'告警通知',exact:true}).click()
-  await expect.poll(()=>rules).toBe(1)
-  expect(channels).toBe(0);expect(records).toBe(0)
-  await page.getByRole('tab',{name:'通知渠道',exact:true}).click()
-  await expect.poll(()=>channels).toBe(1)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(setting.getByRole('button', { name: '保存', exact: true })).toBeInViewport()
+  await setting.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('tab', { name: '告警通知', exact: true }).click()
+  await expect.poll(() => rules).toBe(1)
+  expect(channels).toBe(0)
   expect(records).toBe(0)
-  await page.getByRole('tab',{name:'发送记录',exact:true}).click()
-  await expect.poll(()=>records).toBe(1)
+  await page.getByRole('tab', { name: '通知渠道', exact: true }).click()
+  await expect.poll(() => channels).toBe(1)
+  expect(records).toBe(0)
+  await page.getByRole('tab', { name: '发送记录', exact: true }).click()
+  await expect.poll(() => records).toBe(1)
 })
 
-test('backup integrity checks consume queued task results and expose failures',async({page})=>{
-  await page.route('**/api/v1/settings/backups',r=>r.fulfill({json:[{name:'fixture.ovp',size:123,createdAt:'2026-11-19T01:00:00Z',storage:'/www/backup',url:'/fixture.ovp'}]}))
-  await page.route('**/api/v1/backups/archives',r=>r.fulfill({json:{rows:[]}}))
-  let attempt=0,reads=0
-  await page.route('**/api/v1/backups/archives/verify',r=>{attempt++;reads=0;return r.fulfill({status:202,json:{id:'archive-verify'}})})
-  await page.route('**/api/v1/backups/tasks/archive-verify',r=>{reads++;return r.fulfill({json: reads===1?{state:'running'}:attempt===1?{state:'failed',error:'原密钥缺失'}:{state:'succeeded',result:{verified:true}}})})
+test('backup integrity checks consume queued task results and expose failures', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/settings/backups', (r) =>
+    r.fulfill({
+      json: [
+        {
+          name: 'fixture.ovp',
+          size: 123,
+          createdAt: '2026-11-19T01:00:00Z',
+          storage: '/www/backup',
+          url: '/fixture.ovp',
+        },
+      ],
+    }),
+  )
+  await page.route('**/api/v1/backups/archives', (r) => r.fulfill({ json: { rows: [] } }))
+  let attempt = 0,
+    reads = 0
+  await page.route('**/api/v1/backups/archives/verify', (r) => {
+    attempt++
+    reads = 0
+    return r.fulfill({ status: 202, json: { id: 'archive-verify' } })
+  })
+  await page.route('**/api/v1/backups/tasks/archive-verify', (r) => {
+    reads++
+    return r.fulfill({
+      json:
+        reads === 1
+          ? { state: 'running' }
+          : attempt === 1
+            ? { state: 'failed', error: '原密钥缺失' }
+            : { state: 'succeeded', result: { verified: true } },
+    })
+  })
   await page.goto('/backups?tab=records')
-  const row=page.getByRole('row').filter({hasText:'fixture.ovp'})
-  await row.getByRole('button',{name:'校验',exact:true}).click()
+  const row = page.getByRole('row').filter({ hasText: 'fixture.ovp' })
+  await row.getByRole('button', { name: '校验', exact: true }).click()
   await expect(row).toContainText('处理中')
-  await expect(page.getByText('原密钥缺失',{exact:true})).toBeVisible()
+  await expect(page.getByText('原密钥缺失', { exact: true })).toBeVisible()
   await expect(row).toContainText('待校验')
-  await row.getByRole('button',{name:'校验',exact:true}).click()
+  await row.getByRole('button', { name: '校验', exact: true }).click()
   await expect(row).toContainText('已校验')
 })
 
@@ -2665,39 +2742,44 @@ for (const mode of ['light', 'dark']) {
   })
 }
 
-test('overview theme dropdown persists modes and preserves the saved mode on failure', async ({page}) => {
-  let theme = 'light', revision = 4
+test('overview theme dropdown persists modes and preserves the saved mode on failure', async ({
+  page,
+}) => {
+  let theme = 'light',
+    revision = 4
   const writes: any[] = []
-  await page.route('**/api/v1/settings/groups/appearance', async r => {
+  await page.route('**/api/v1/settings/groups/appearance', async (r) => {
     if (r.request().method() === 'PATCH') {
       const body = r.request().postDataJSON()
       expect(body.revision).toBe(revision)
       expect(Object.keys(body.patch)).toEqual(['theme'])
       writes.push(body.patch.theme)
-      if (body.patch.theme === 'dark') return r.fulfill({status:409,json:{error:'主题已被其他会话修改'}})
-      theme = body.patch.theme; revision++
+      if (body.patch.theme === 'dark')
+        return r.fulfill({ status: 409, json: { error: '主题已被其他会话修改' } })
+      theme = body.patch.theme
+      revision++
     }
-    return r.fulfill({json:{revision,config:{theme,primaryColor:'#2563eb'}}})
+    return r.fulfill({ json: { revision, config: { theme, primaryColor: '#2563eb' } } })
   })
   await page.goto('/')
   await expect(page.locator('.metric-card').first()).toBeVisible()
-  await page.getByRole('button',{name:'切换主题',exact:true}).click()
-  await expect(page.getByRole('menuitem')).toHaveText(['跟随系统','亮色 ✓','黑色'])
-  await page.getByRole('menuitem',{name:'黑色',exact:true}).click()
-  await expect(page.getByText('主题已被其他会话修改',{exact:true})).toBeVisible()
+  await page.getByRole('button', { name: '切换主题', exact: true }).click()
+  await expect(page.getByRole('menuitem')).toHaveText(['跟随系统', '亮色 ✓', '黑色'])
+  await page.getByRole('menuitem', { name: '黑色', exact: true }).click()
+  await expect(page.getByText('主题已被其他会话修改', { exact: true })).toBeVisible()
   await expect(page.locator('html')).not.toHaveClass('dark')
-  await page.emulateMedia({colorScheme:'dark'})
-  await page.getByRole('button',{name:'切换主题',exact:true}).click()
-  await page.getByRole('menuitem',{name:'跟随系统',exact:true}).click()
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.getByRole('button', { name: '切换主题', exact: true }).click()
+  await page.getByRole('menuitem', { name: '跟随系统', exact: true }).click()
   await expect(page.locator('html')).toHaveClass('dark')
-  await page.emulateMedia({colorScheme:'light'})
+  await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).not.toHaveClass('dark')
-  expect(writes).toEqual(['dark','auto'])
+  expect(writes).toEqual(['dark', 'auto'])
   await page.goto('/settings')
-  await expect(page.getByRole('tab',{name:'界面设置',exact:true})).toHaveCount(0)
-  await expect(page.getByText('面板名称',{exact:true})).toHaveCount(0)
-  await page.getByRole('tab',{name:'面板设置',exact:true}).click()
-  await expect(page.getByText('侧栏标题',{exact:true})).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: '界面设置', exact: true })).toHaveCount(0)
+  await expect(page.getByText('面板名称', { exact: true })).toHaveCount(0)
+  await page.getByRole('tab', { name: '面板设置', exact: true }).click()
+  await expect(page.getByText('侧栏标题', { exact: true })).toHaveCount(0)
 })
 
 test('default appearance stays light on a dark system until follow-system is selected', async ({
@@ -2770,142 +2852,360 @@ test('dark software editor and error state have no light surface remnants', asyn
   await page.screenshot({ path: '../.opsview/screenshots/theme-dark-editor.png', fullPage: true })
 })
 
-
-test('settings edit values inline, preserve siblings, and clear secret forms when switching tabs', async ({page}) => {
-  let refreshSeconds = 15, revision = 9
-  await page.route('**/api/v1/settings/groups/panel',async r=>{
-    if(r.request().method()==='PATCH') {
-      const body=r.request().postDataJSON()
-      expect(body.patch).toEqual({refreshSeconds:30})
+test('settings edit values inline, preserve siblings, and clear secret forms when switching tabs', async ({
+  page,
+}) => {
+  let refreshSeconds = 15,
+    revision = 9
+  await page.route('**/api/v1/settings/groups/panel', async (r) => {
+    if (r.request().method() === 'PATCH') {
+      const body = r.request().postDataJSON()
+      expect(body.patch).toEqual({ refreshSeconds: 30 })
       expect(body.revision).toBe(revision)
-      refreshSeconds=body.patch.refreshSeconds;revision++
+      refreshSeconds = body.patch.refreshSeconds
+      revision++
     }
-    return r.fulfill({json:{config:{refreshSeconds,timezone:'Local'},revision}})
+    return r.fulfill({ json: { config: { refreshSeconds, timezone: 'Local' }, revision } })
   })
   await page.goto('/settings')
-  const row=page.locator('.preference-item').filter({has:page.getByText('刷新频率',{exact:true})})
-  await row.getByRole('button',{name:'修改刷新频率',exact:true}).click()
+  const row = page
+    .locator('.preference-item')
+    .filter({ has: page.getByText('刷新频率', { exact: true }) })
+  await row.getByRole('button', { name: '修改刷新频率', exact: true }).click()
   await expect(row.getByRole('combobox')).toBeEnabled()
   await row.getByRole('combobox').press('ArrowDown')
-  await page.getByRole('option',{name:'30 秒',exact:true}).click()
-  await row.getByRole('button',{name:'保存',exact:true}).click()
-  await expect(row.getByRole('button',{name:'修改刷新频率',exact:true})).toHaveText('30 秒')
+  await page.getByRole('option', { name: '30 秒', exact: true }).click()
+  await row.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(row.getByRole('button', { name: '修改刷新频率', exact: true })).toHaveText('30 秒')
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.getByRole('tab',{name:'安全设置',exact:true}).click()
-  const passwordRow=page.locator('.preference-item').filter({has:page.getByText('管理员密码',{exact:true})})
-  await passwordRow.getByRole('button',{name:'修改管理员密码',exact:true}).click()
-  await passwordRow.getByRole('textbox',{name:'当前密码',exact:true}).fill('draft-secret')
-  await page.getByRole('tab',{name:'面板设置',exact:true}).click()
-  await page.getByRole('tab',{name:'安全设置',exact:true}).click()
-  await passwordRow.getByRole('button',{name:'修改管理员密码',exact:true}).click()
-  await expect(passwordRow.getByRole('textbox',{name:'当前密码',exact:true})).toHaveValue('')
+  await page.getByRole('tab', { name: '安全设置', exact: true }).click()
+  const passwordRow = page
+    .locator('.preference-item')
+    .filter({ has: page.getByText('管理员密码', { exact: true }) })
+  await passwordRow.getByRole('button', { name: '修改管理员密码', exact: true }).click()
+  await passwordRow.getByRole('textbox', { name: '当前密码', exact: true }).fill('draft-secret')
+  await page.getByRole('tab', { name: '面板设置', exact: true }).click()
+  await page.getByRole('tab', { name: '安全设置', exact: true }).click()
+  await passwordRow.getByRole('button', { name: '修改管理员密码', exact: true }).click()
+  await expect(passwordRow.getByRole('textbox', { name: '当前密码', exact: true })).toHaveValue('')
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.getByRole('tab',{name:'告警通知',exact:true}).click()
-  const tabs=page.locator('.notification-tabs')
-  for(const width of [1440,390]) {
-    await page.setViewportSize({width,height:844})
+  await page.getByRole('tab', { name: '告警通知', exact: true }).click()
+  const tabs = page.locator('.notification-tabs')
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 844 })
     await expect(tabs).toBeVisible()
-    const bounds=await tabs.boundingBox()
-    const panel=await page.locator('.notification-manager').boundingBox()
+    const bounds = await tabs.boundingBox()
+    const panel = await page.locator('.notification-manager').boundingBox()
     expect(bounds!.x).toBeGreaterThanOrEqual(panel!.x)
-    expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(panel!.x+panel!.width+1)
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(panel!.x + panel!.width + 1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
-  await page.screenshot({path:'../.opsview/screenshots/rc19-notifications-mobile.png',fullPage:true,animations:'disabled'})
+  await page.screenshot({
+    path: '../.opsview/screenshots/rc19-notifications-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
 })
 
-test('login requests a verifier code only after a correct password and supports returning',async({page})=>{
-  await page.route('**/api/v1/auth',r=>r.fulfill({json:{authenticated:false,setupRequired:false}}))
-  let submissions=0
-  await page.route('**/api/v1/auth/login',r=>{
+test('login requests a verifier code only after a correct password and supports returning', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/auth', (r) =>
+    r.fulfill({ json: { authenticated: false, setupRequired: false } }),
+  )
+  let submissions = 0
+  await page.route('**/api/v1/auth/login', (r) => {
     submissions++
-    const body=r.request().postDataJSON()
-    return r.fulfill({status:body.code?401:428,json:body.code?{error:'账号、密码或验证码错误'}:{code:'totp_required',error:'请完成验证器验证'}})
+    const body = r.request().postDataJSON()
+    return r.fulfill({
+      status: body.code ? 401 : 428,
+      json: body.code
+        ? { error: '账号、密码或验证码错误' }
+        : { code: 'totp_required', error: '请完成验证器验证' },
+    })
   })
   await page.goto('/')
-  await expect(page.getByRole('textbox',{name:'验证码',exact:true})).toHaveCount(0)
-  await page.getByRole('textbox',{name:'用户名',exact:true}).fill(username)
-  await page.getByRole('textbox',{name:'密码',exact:true}).fill(password)
-  await page.getByRole('button',{name:'进入控制台',exact:true}).click()
-  await expect(page.getByRole('textbox',{name:'验证码',exact:true})).toBeVisible()
-  await expect(page.getByRole('textbox',{name:'密码',exact:true})).toHaveCount(0)
-  await page.getByRole('textbox',{name:'验证码',exact:true}).fill('123456')
-  await page.getByRole('button',{name:'验证并登录',exact:true}).click()
-  await expect(page.getByText('账号、密码或验证码错误',{exact:true})).toBeVisible()
+  await expect(page.getByRole('textbox', { name: '验证码', exact: true })).toHaveCount(0)
+  await page.getByRole('textbox', { name: '用户名', exact: true }).fill(username)
+  await page.getByRole('textbox', { name: '密码', exact: true }).fill(password)
+  await page.getByRole('button', { name: '进入控制台', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '验证码', exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: '密码', exact: true })).toHaveCount(0)
+  await page.getByRole('textbox', { name: '验证码', exact: true }).fill('123456')
+  await page.getByRole('button', { name: '验证并登录', exact: true }).click()
+  await expect(page.getByText('账号、密码或验证码错误', { exact: true })).toBeVisible()
   expect(submissions).toBe(2)
-  await page.getByRole('button',{name:'返回账号登录',exact:true}).click()
-  await expect(page.getByRole('textbox',{name:'验证码',exact:true})).toHaveCount(0)
-  await expect(page.getByRole('textbox',{name:'密码',exact:true})).toHaveValue('')
+  await page.getByRole('button', { name: '返回账号登录', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '验证码', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: '密码', exact: true })).toHaveValue('')
 })
 
-test('security entrance edits inline and stages a reconnect confirmation without changing other access values',async({page})=>{
-  const config={protocol:'https',listenHost:'0.0.0.0',port:18790,publicHost:'panel.example.com',entry:'original_entrance',allowedHost:'',allowedCIDRs:''}
-  await page.route('**/api/v1/settings/runtime',async r=>{
-    if(r.request().method()==='PUT'){
-      const body=r.request().postDataJSON()
-      expect(body.config).toEqual({...config,entry:'new_entrance_2026'})
+test('security entrance edits inline and stages a reconnect confirmation without changing other access values', async ({
+  page,
+}) => {
+  const config = {
+    protocol: 'https',
+    listenHost: '0.0.0.0',
+    port: 18790,
+    publicHost: 'panel.example.com',
+    entry: 'original_entrance',
+    allowedHost: '',
+    allowedCIDRs: '',
+  }
+  await page.route('**/api/v1/settings/runtime', async (r) => {
+    if (r.request().method() === 'PUT') {
+      const body = r.request().postDataJSON()
+      expect(body.config).toEqual({ ...config, entry: 'new_entrance_2026' })
       expect(body.password).toBe(password)
-      return r.fulfill({json:{url:'https://panel.example.com:18790/new_entrance_2026',confirmToken:'b'.repeat(64)}})
+      return r.fulfill({
+        json: {
+          url: 'https://panel.example.com:18790/new_entrance_2026',
+          confirmToken: 'b'.repeat(64),
+        },
+      })
     }
-    return r.fulfill({json:{config}})
+    return r.fulfill({ json: { config } })
   })
   await page.goto('/settings')
-  await page.getByRole('tab',{name:'面板设置',exact:true}).click()
-  const row=page.locator('.preference-item').filter({has:page.getByText('安全入口',{exact:true})})
-  await row.getByRole('button',{name:'修改安全入口',exact:true}).click()
-  await row.getByRole('textbox',{name:'安全入口',exact:true}).fill('new_entrance_2026')
-  await row.getByRole('button',{name:'保存',exact:true}).click()
-  await page.getByRole('button',{name:'确认修改',exact:true}).click()
-  await page.getByRole('textbox',{name:'请输入当前管理员密码',exact:true}).fill(password)
-  await page.getByRole('button',{name:'验证',exact:true}).click()
-  await expect(page.getByRole('link',{name:'打开新地址并确认（120 秒内）',exact:true})).toHaveAttribute('href',/^https:.*new_entrance_2026#runtime-confirm=/)
+  await page.getByRole('tab', { name: '面板设置', exact: true }).click()
+  const row = page
+    .locator('.preference-item')
+    .filter({ has: page.getByText('安全入口', { exact: true }) })
+  await row.getByRole('button', { name: '修改安全入口', exact: true }).click()
+  await row.getByRole('textbox', { name: '安全入口', exact: true }).fill('new_entrance_2026')
+  await row.getByRole('button', { name: '保存', exact: true }).click()
+  await page.getByRole('button', { name: '确认修改', exact: true }).click()
+  await page.getByRole('textbox', { name: '请输入当前管理员密码', exact: true }).fill(password)
+  await page.getByRole('button', { name: '验证', exact: true }).click()
+  await expect(
+    page.getByRole('link', { name: '打开新地址并确认（120 秒内）', exact: true }),
+  ).toHaveAttribute('href', /^https:.*new_entrance_2026#runtime-confirm=/)
   await expect(row.getByRole('textbox')).toHaveCount(0)
 })
 
-test('closing an inline read does not leave subsequent settings busy and security managers expand in place',async({page})=>{
-  await page.route('**/api/v1/settings/runtime',r=>r.fulfill({json:{config:{protocol:'https',port:18790,listenHost:'0.0.0.0',publicHost:'panel.example.com'}}}))
-  let release!:()=>void
-  const barrier=new Promise<void>(r=>{release=r})
-  await page.route('**/api/v1/settings/groups/panel',async r=>{await barrier;await r.fulfill({json:{config:{siteDirectory:'/www/wwwroot',refreshSeconds:15},revision:3}})})
+test('closing an inline read does not leave subsequent settings busy and security managers expand in place', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/settings/runtime', (r) =>
+    r.fulfill({
+      json: {
+        config: {
+          protocol: 'https',
+          port: 18790,
+          listenHost: '0.0.0.0',
+          publicHost: 'panel.example.com',
+        },
+      },
+    }),
+  )
+  let release!: () => void
+  const barrier = new Promise<void>((r) => {
+    release = r
+  })
+  await page.route('**/api/v1/settings/groups/panel', async (r) => {
+    await barrier
+    await r.fulfill({
+      json: { config: { siteDirectory: '/www/wwwroot', refreshSeconds: 15 }, revision: 3 },
+    })
+  })
   await page.goto('/settings')
-  const row=page.locator('.preference-item').filter({has:page.getByText('默认建站目录',{exact:true})})
-  await row.getByRole('button',{name:'修改默认建站目录',exact:true}).click()
+  const row = page
+    .locator('.preference-item')
+    .filter({ has: page.getByText('默认建站目录', { exact: true }) })
+  await row.getByRole('button', { name: '修改默认建站目录', exact: true }).click()
   await expect(row.getByRole('textbox')).toBeDisabled()
-  await page.getByRole('tab',{name:'安全设置',exact:true}).click()
+  await page.getByRole('tab', { name: '安全设置', exact: true }).click()
   release()
-  await page.route('**/api/v1/auth/sessions',r=>r.fulfill({json:[]}))
-  const sessions=page.locator('.preference-item').filter({has:page.getByText('登录会话',{exact:true})})
-  await sessions.getByRole('button',{name:'修改登录会话',exact:true}).click()
-  await expect(sessions.getByRole('button',{name:'全部退出',exact:true})).toBeVisible()
+  await page.route('**/api/v1/auth/sessions', (r) => r.fulfill({ json: [] }))
+  const sessions = page
+    .locator('.preference-item')
+    .filter({ has: page.getByText('登录会话', { exact: true }) })
+  await sessions.getByRole('button', { name: '修改登录会话', exact: true }).click()
+  await expect(sessions.getByRole('button', { name: '全部退出', exact: true })).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await sessions.getByRole('button',{name:'关闭',exact:true}).click()
-  await page.getByRole('tab',{name:'常用设置',exact:true}).click()
-  await row.getByRole('button',{name:'修改默认建站目录',exact:true}).click()
+  await sessions.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('tab', { name: '常用设置', exact: true }).click()
+  await row.getByRole('button', { name: '修改默认建站目录', exact: true }).click()
   await expect(row.getByRole('textbox')).toBeEnabled()
   await row.getByRole('textbox').fill('/draft')
   await row.getByRole('textbox').press('Escape')
   await expect(row.getByRole('textbox')).toHaveCount(0)
-  await expect(row.getByRole('button',{name:'修改默认建站目录',exact:true})).toHaveText('/www/wwwroot')
+  await expect(row.getByRole('button', { name: '修改默认建站目录', exact: true })).toHaveText(
+    '/www/wwwroot',
+  )
 })
 
-test('changing theme keeps the configured polling interval',async({page})=>{
+test('changing theme keeps the configured polling interval', async ({ page }) => {
   await page.clock.install()
-  let resourceReads=0, preferencesRead=false
-  await page.route('**/api/v1/resources',r=>{resourceReads++;return r.fulfill({json:[]})})
-  await page.route('**/api/v1/settings',async r=>{
-    const response=await r.fetch()
-    const data=await response.json()
-    preferencesRead=true
-    return r.fulfill({json:{...data,theme:'light',refreshSeconds:5}})
+  let resourceReads = 0,
+    preferencesRead = false
+  await page.route('**/api/v1/resources', (r) => {
+    resourceReads++
+    return r.fulfill({ json: [] })
   })
-  await page.route('**/api/v1/public/preferences',r=>r.fulfill({json:{theme:'light'}}))
-  await page.route('**/api/v1/settings/groups/appearance',r=>r.fulfill({json:{revision:2,config:{theme:r.request().method()==='PATCH'?'dark':'light'}}}))
+  await page.route('**/api/v1/settings', async (r) => {
+    const response = await r.fetch()
+    const data = await response.json()
+    preferencesRead = true
+    return r.fulfill({ json: { ...data, theme: 'light', refreshSeconds: 5 } })
+  })
+  await page.route('**/api/v1/public/preferences', (r) => r.fulfill({ json: { theme: 'light' } }))
+  await page.route('**/api/v1/settings/groups/appearance', (r) =>
+    r.fulfill({
+      json: { revision: 2, config: { theme: r.request().method() === 'PATCH' ? 'dark' : 'light' } },
+    }),
+  )
   await page.goto('/')
-  await expect.poll(()=>preferencesRead).toBe(true)
-  await page.getByRole('button',{name:'切换主题',exact:true}).click()
-  await page.getByRole('menuitem',{name:'黑色',exact:true}).click()
+  await expect.poll(() => preferencesRead).toBe(true)
+  await page.getByRole('button', { name: '切换主题', exact: true }).click()
+  await page.getByRole('menuitem', { name: '黑色', exact: true }).click()
   await expect(page.locator('html')).toHaveClass('dark')
-  const previous=resourceReads
+  const previous = resourceReads
   await page.clock.runFor(5200)
-  await expect.poll(()=>resourceReads,{timeout:1500}).toBeGreaterThan(previous)
+  await expect.poll(() => resourceReads, { timeout: 1500 }).toBeGreaterThan(previous)
+})
+
+test('static site creation needs no PHP, binds a database and hides advanced controls', async ({
+  page,
+}) => {
+  let submitted: any
+  const mysql = {
+    ...nginxFixture,
+    id: 'mysql-choice',
+    name: 'mysql-8.4.13',
+    config: { software: 'mysql', version: '8.4.13', mode: 'native', port: 3306 },
+  }
+  await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture, mysql] }))
+  await page.route('**/api/v1/site-categories', (route) =>
+    route.fulfill({ json: { rows: ['默认分类', '业务'] } }),
+  )
+  await page.route('**/api/v1/sites', (route) => {
+    submitted = route.request().postDataJSON()
+    return route.fulfill({
+      status: 202,
+      json: { siteId: 'static-new', databaseId: 'db-new', taskId: 'create-task' },
+    })
+  })
+  await page.goto('/sites')
+  await page.getByRole('button', { name: '添加PHP 项目', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('textbox', { name: '绑定域名', exact: true }).fill('static.example.com')
+  await expect(dialog.getByRole('button', { name: '高级设置', exact: true })).toHaveCount(0)
+  await expect(dialog).not.toContainText('Nginx 入口')
+  await expect(dialog.locator('.el-form-item').filter({ hasText: 'PHP 版本' })).toContainText(
+    '静态',
+  )
+  await dialog
+    .locator('.el-form-item')
+    .filter({ has: page.locator('.el-form-item__label').filter({ hasText: /^数据库$/ }) })
+    .locator('.el-select')
+    .click()
+  await page.getByRole('option', { name: /mysql-8.4.13/ }).click()
+  const fields = dialog.locator('.el-form-item')
+  await fields
+    .filter({ has: page.locator('.el-form-item__label').filter({ hasText: /^数据库名$/ }) })
+    .locator('input')
+    .fill('site_static')
+  await fields
+    .filter({ has: page.locator('.el-form-item__label').filter({ hasText: /^专用账号$/ }) })
+    .locator('input')
+    .fill('static_user')
+  await fields
+    .filter({ has: page.locator('.el-form-item__label').filter({ hasText: /^数据库密码$/ }) })
+    .locator('input')
+    .fill('new-only-db-password')
+  await dialog.getByRole('button', { name: '创建并部署', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(submitted.config.type).toBe('static')
+  expect(submitted.config.phpInstanceId).toBeUndefined()
+  expect(submitted.config.rootDirectory).toBe('/www/wwwroot/static.example.com')
+  expect(submitted.database).toMatchObject({
+    instanceId: 'mysql-choice',
+    name: 'site_static',
+    username: 'static_user',
+  })
+  expect(submitted.config.password).toBeUndefined()
+})
+
+test('file context menu preserves batch selection and permission edits change only explicit bits', async ({
+  page,
+}) => {
+  const items = [
+    {
+      name: 'first.txt',
+      path: '/first.txt',
+      mode: '0644',
+      owner: 'root',
+      group: 'staff',
+      size: 1,
+      directory: false,
+      revision: 'one',
+    },
+    {
+      name: 'second.txt',
+      path: '/second.txt',
+      mode: '0600',
+      owner: 'www-data',
+      group: 'www-data',
+      size: 2,
+      directory: false,
+      revision: 'two',
+    },
+  ]
+  let saved: any
+  await page.route('**/api/v1/files', (route) => {
+    const p = route.request().postDataJSON()
+    if (p.action === 'metadata') return route.fulfill({ json: { favorites: [], shortcuts: [] } })
+    if (p.action === 'list')
+      return route.fulfill({ json: { path: '/', items, total: 2, readOnly: false } })
+    if (p.action === 'identities')
+      return route.fulfill({
+        json: {
+          users: [
+            { name: 'root', id: 0 },
+            { name: 'www-data', id: 33 },
+          ],
+          groups: [
+            { name: 'staff', id: 50 },
+            { name: 'www-data', id: 33 },
+          ],
+        },
+      })
+    if (p.action === 'permissions') saved = p
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/files')
+  const rows = page.locator('.data-list .el-table__body tr')
+  await expect(rows).toHaveCount(2)
+  await rows.nth(0).locator('.el-checkbox').click()
+  await rows.nth(1).locator('.el-checkbox').click()
+  await page.getByRole('button', { name: 'first.txt', exact: true }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: '权限', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '权限与所有者', exact: true })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByPlaceholder('保持混合权限')).toHaveValue('')
+  await dialog
+    .locator('.file-permission-matrix section')
+    .first()
+    .getByText('执行', { exact: true })
+    .click()
+  await expect(dialog.getByPlaceholder('保持混合权限')).toHaveValue('')
+  await dialog.getByRole('button', { name: '应用', exact: true }).click()
+  await page
+    .getByRole('dialog', { name: '确认权限变更', exact: true })
+    .getByRole('button', { name: '应用', exact: true })
+    .click()
+  await expect.poll(() => saved?.permissionMask).toBe(64)
+  expect(saved.permissionValue).toBe(64)
+  expect(saved.paths).toEqual(['/first.txt', '/second.txt'])
+  expect(saved.owner).toBe('')
+  expect(saved.group).toBe('')
+  expect(saved.revisions).toEqual({ '/first.txt': 'one', '/second.txt': 'two' })
+  await expect(dialog).toBeHidden()
+  await page.getByRole('button', { name: 'second.txt', exact: true }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: '剪切', exact: true }).click()
+  await expect(rows.nth(1)).toHaveClass(/file-row-cut/)
+  await page.getByRole('button', { name: 'first.txt', exact: true }).click({ button: 'right' })
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('menu')).toHaveCount(0)
 })

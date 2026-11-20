@@ -121,7 +121,7 @@ func (a *App) BackupPanel(ctx context.Context) (model.Config, error) {
 			sums[name] = hex.EncodeToString(sum[:])
 		}
 		if err == nil {
-			raw, er := json.Marshal(model.Config{"formatVersion": 2, "opsviewVersion": version.Current, "schemaVersion": 5, "sha256": sums, "keyRequirement": "original master.key; executor backup.key kept separately", "managedRestore": "review-only"})
+			raw, er := json.Marshal(model.Config{"formatVersion": 2, "opsviewVersion": version.Current, "schemaVersion": 6, "sha256": sums, "keyRequirement": "original master.key; executor backup.key kept separately", "managedRestore": "review-only"})
 			if er == nil {
 				er = tw.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0600, Size: int64(len(raw)), Typeflag: tar.TypeReg})
 			}
@@ -318,7 +318,7 @@ func RestorePanel(data, artifact, destination string) error {
 			Schema int               `json:"schemaVersion"`
 			Hashes map[string]string `json:"sha256"`
 		}
-		if json.Unmarshal(data, &m) != nil || m.Format != 2 || m.Schema > 5 || len(m.Hashes) == 0 {
+		if json.Unmarshal(data, &m) != nil || m.Format != 2 || m.Schema > 6 || len(m.Hashes) == 0 {
 			return errors.New("备份清单版本不支持")
 		}
 		for name, want := range m.Hashes {

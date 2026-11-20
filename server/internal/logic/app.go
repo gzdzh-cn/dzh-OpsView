@@ -37,6 +37,24 @@ func (a *App) Start() {
 	_, _ = a.Store.DB.Exec(`UPDATE tasks SET state='interrupted',error='服务重启，请检查实际状态后重试',updated_at=? WHERE state IN ('queued','running')`, dao.Now())
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
+	// Reconcile a completed or recovered in-place version swap after a panel/executor interruption.
+	instancesForRecovery, _ := a.Store.Resources("instance")
+	for _, i := range instancesForRecovery {
+		if i.Config.String("software") == "nginx" && i.Config.String("mode") == "native" {
+			recovery, cancelRecovery := context.WithTimeout(ctx, 15*time.Second)
+			v, er := a.Executor.Execute(recovery, model.Operation{Name: "instance.version-identity", Resource: i, Params: model.Config{}}, func(string) {})
+			cancelRecovery()
+			if er == nil && v.String("version") != "" && v.String("catalogId") != "" && i.Config.String("version") != v.String("version") {
+				for k, value := range v {
+					i.Config[k] = value
+				}
+				i.Name = "nginx-" + v.String("version")
+				if er = a.Store.Update(&i); er != nil {
+					log.Printf("Nginx 版本元数据核对失败：%v", er)
+				}
+			}
+		}
+	}
 	for worker := 0; worker < 4; worker++ {
 		a.wg.Add(1)
 		go func() {
@@ -146,6 +164,21 @@ func (a *App) Queue(r model.Resource, action string, p model.Config) (model.Task
 	}
 	if r.Kind == "instance" && action == "install" && (r.Status == "error" || r.Status == "uninstalled" || r.Config.Bool("retainedData")) {
 		return model.Task{}, errors.New("失败或已卸载的实例仍保留版本占用，请卸载并明确清理记录后重新安装")
+	}
+	if r.Kind == "instance" && r.Config.String("software") == "nginx" && action == "switch-version" {
+		all, err := a.Store.Resources("instance")
+		if err != nil {
+			return model.Task{}, err
+		}
+		count := 0
+		for _, i := range all {
+			if i.Config.String("software") == "nginx" {
+				count++
+			}
+		}
+		if count != 1 {
+			return model.Task{}, errors.New("请先合并清理历史 Nginx 多实例")
+		}
 	}
 	if p == nil {
 		p = model.Config{}
@@ -273,7 +306,9 @@ func (a *App) runNext(ctx context.Context) {
 		}
 	}()
 	var data model.Config
-	if op.Name == "schedule.execute" {
+	if op.Name == "site.provision" {
+		data, e = a.provisionSite(ctx, op, emit)
+	} else if op.Name == "schedule.execute" {
 		data, e = a.executeSchedule(ctx, op, emit)
 		if data != nil {
 			_ = a.Store.SaveTaskResult(t.ID, data)
@@ -299,9 +334,11 @@ func (a *App) runNext(ctx context.Context) {
 			a.auditFileTask(op, state)
 		}
 		a.Store.Event(t.ID, "失败："+msg)
-		if r, err := a.Store.Resource(op.Resource.ID); err == nil && (strings.HasSuffix(op.Name, ".install") || strings.HasSuffix(op.Name, ".apply") || strings.HasSuffix(op.Name, ".start")) {
-			r.Status = "error"
-			_ = a.Store.Update(&r)
+		if r, err := a.Store.Resource(op.Resource.ID); err == nil && (strings.HasSuffix(op.Name, ".install") || strings.HasSuffix(op.Name, ".apply") || strings.HasSuffix(op.Name, ".start") || op.Name == "site.provision") {
+			if !(r.Kind == "site" && op.Name == "site.apply" && r.Status != "pending" && r.Status != "error") {
+				r.Status = "error"
+				_ = a.Store.Update(&r)
+			}
 		}
 		return
 	}
@@ -408,8 +445,15 @@ func (a *App) runNext(ctx context.Context) {
 			if r.Config == nil {
 				r.Config = model.Config{}
 			}
+			if op.Name == "site.apply" {
+				r.Name = op.Resource.Name
+				r.Config = op.Resource.Config
+			}
 			for k, v := range data {
 				r.Config[k] = v
+			}
+			if op.Name == "instance.switch-version" {
+				r.Name = "nginx-" + r.Config.String("version")
 			}
 			r.Status = "ready"
 			if status, ok := data["runtimeStatus"].(string); ok && (status == "stopped" || status == "expired") {
@@ -420,6 +464,9 @@ func (a *App) runNext(ctx context.Context) {
 			}
 			er = a.Store.Update(&r)
 		}
+	}
+	if er == nil && op.Name == "site.apply" {
+		_ = a.Store.Set("site-draft:"+r.ID, nil)
 	}
 	if er != nil && !errors.Is(er, sql.ErrNoRows) {
 		_ = a.Store.Finish(t.ID, "failed", "操作已执行，但记录更新失败："+er.Error())

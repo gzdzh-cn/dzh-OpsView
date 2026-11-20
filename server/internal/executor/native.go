@@ -154,6 +154,9 @@ func (e *Engine) installSource(ctx context.Context, r model.Resource, entry cata
 	if err := os.Rename(staged, runtimePath); err != nil {
 		return err
 	}
+	if r.Config.Bool("stageRuntime") && entry.Software == "nginx" {
+		return prepareRuntimePermissions(base + "/runtime")
+	}
 	return e.configureNative(ctx, r, base, log)
 }
 func (e *Engine) configureNative(ctx context.Context, r model.Resource, base string, log func(string)) error {

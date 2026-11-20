@@ -25,7 +25,7 @@ func (e *Engine) trustedSiteRoot(r model.Resource) (string, error) {
 	}
 	root := siteDocumentRoot(stored, filepath.Join(e.Root, "sites", r.ID))
 	if root != filepath.Join(e.Root, "sites", r.ID, "www") {
-		if err := logic.ValidateSiteRoot(root); err != nil {
+		if err := logic.ValidateSiteRootAt(root, stored.Config.String("siteBaseDirectory")); err != nil {
 			return "", err
 		}
 	}
@@ -40,6 +40,7 @@ func (e *Engine) prepareSiteRoot(r *model.Resource, base string) error {
 	root := r.Config.String("rootDirectory")
 	if stored, err := e.load(r.ID); err == nil {
 		root = siteDocumentRoot(stored, base)
+		r.Config["siteBaseDirectory"] = stored.Config.String("siteBaseDirectory")
 	} else if _, err := os.Stat(legacy); err == nil && root == "" {
 		root = legacy // unfinished installations created by older releases
 	} else if r.Config.String("type") == "proxy" {
@@ -48,7 +49,7 @@ func (e *Engine) prepareSiteRoot(r *model.Resource, base string) error {
 		root = logic.DefaultSiteRoot(r.Config.String("domains"))
 	}
 	if root != legacy {
-		if err := logic.ValidateSiteRoot(root); err != nil {
+		if err := logic.ValidateSiteRootAt(root, r.Config.String("siteBaseDirectory")); err != nil {
 			return err
 		}
 	}
@@ -61,7 +62,16 @@ func (e *Engine) prepareSiteRoot(r *model.Resource, base string) error {
 		return err
 	}
 	if root != legacy {
-		for _, parent := range []string{"/www", logic.SiteRoot} {
+		parents := []string{}
+		for parent := filepath.Dir(root); parent != "/"; parent = filepath.Dir(parent) {
+			parents = append([]string{parent}, parents...)
+		}
+		for _, parent := range parents {
+			f, er := e.filePath(parent, false)
+			if er != nil {
+				return er
+			}
+			f.close()
 			_, priorErr := os.Lstat(parent)
 			if err := os.MkdirAll(parent, 0755); err != nil {
 				return err
@@ -77,7 +87,7 @@ func (e *Engine) prepareSiteRoot(r *model.Resource, base string) error {
 			}
 			uid, _, _ := fileOwner(st)
 			if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0022 != 0 || uid != 0 {
-				return errors.New("/www 及 /www/wwwroot 必须由 root 所有且不可由其他用户写入")
+				return errors.New("建站目录的上级路径必须由 root 所有且不可由其他用户写入")
 			}
 		}
 		// Reservations survive failed deployments; a second site cannot adopt a pending project's files.

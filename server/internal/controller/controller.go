@@ -71,6 +71,7 @@ func (c *Controller) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/passkeys/login-begin", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-begin"); c.passkeys(w, r) })
 	mux.HandleFunc("POST /api/v1/auth/passkeys/login-finish", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-finish"); c.passkeys(w, r) })
 	routes := map[string]http.HandlerFunc{
+		"POST /api/v1/sites": c.createSite, "POST /api/v1/sites/{id}/settings": c.saveSiteSettings, "POST /api/v1/sites/{id}/provision": c.retrySite, "GET /api/v1/site-categories": c.siteCategories, "POST /api/v1/site-categories": c.siteCategories,
 		"GET /api/v1/backups/archives": c.archives, "POST /api/v1/backups/archives/{action}": c.archives, "GET /api/v1/backups/download": c.archiveDownload, "PUT /api/v1/backups/upload": c.uploadArchive,
 		"GET /api/v1/auth/passkeys/{step}": c.passkeys, "POST /api/v1/auth/passkeys/{step}": c.passkeys,
 		"GET /api/v1/notifications/{kind}": c.notificationAdmin, "POST /api/v1/notifications/{kind}": c.notificationAdmin, "PUT /api/v1/notifications/{kind}/{id}": c.notificationAdmin, "DELETE /api/v1/notifications/{kind}/{id}": c.notificationAdmin, "POST /api/v1/notifications/channels/{id}/test": c.testNotification,
@@ -99,7 +100,7 @@ func (c *Controller) Handler() http.Handler {
 		"GET /api/v1/overview": c.overview, "GET /api/v1/resources": c.resources, "POST /api/v1/resources": c.createResource, "PUT /api/v1/resources/{id}": c.updateResource, "DELETE /api/v1/resources/{id}": c.deleteResource, "POST /api/v1/resources/{id}/actions/{action}": c.action,
 		"GET /api/v1/catalog": func(w http.ResponseWriter, r *http.Request) { send(w, 200, catalog.ForSystem(catalogSystem())) }, "GET /api/v1/plugins": c.plugins, "POST /api/v1/plugins/import": c.importPlugin, "POST /api/v1/catalog/import": c.importCatalog,
 		"POST /api/v1/schedules/import": c.importSchedules,
-		"GET /api/v1/schedules":         c.schedules, "GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
+		"GET /api/v1/schedules":         c.schedules, "GET /api/v1/tasks": c.tasks, "GET /api/v1/tasks/{id}": c.taskStatus, "GET /api/v1/tasks/{id}/events": c.events, "GET /api/v1/audit": c.audit, "GET /api/v1/settings": c.settings, "POST /api/v1/settings/certificate": c.panelCertificate, "POST /api/v1/repositories/{id}/refresh": c.refreshRepository, "PUT /api/v1/settings": c.saveSettings,
 		"POST /api/v1/files":         c.files,
 		"GET /api/v1/files/transfer": c.fileTransfer, "PUT /api/v1/files/transfer": c.fileTransfer, "GET /api/v1/files/tasks/{id}": c.fileTaskResult, "GET /api/v1/system": c.system, "POST /api/v1/system/actions/{action}": c.systemAction,
 		"POST /api/v1/system/firewall/{action}": c.firewallAdmin,
@@ -254,6 +255,8 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 		res.Config = model.Config{}
 	}
 	if res.Kind == "site" {
+		res.Config["siteBaseDirectory"] = c.panelPreferences().String("siteDirectory")
+		delete(res.Config, "databaseId")
 		delete(res.Config, "documentRoot")
 		delete(res.Config, "runningRoot")
 		if res.Config.String("rootDirectory") == "" && res.Config.String("type") != "proxy" {
@@ -296,10 +299,16 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 	send(w, 201, res)
 }
 func (c *Controller) validate(res *model.Resource) error {
+	if res.Kind == "site" {
+		if err := c.bindSite(res); err != nil {
+			return err
+		}
+	}
 	if res.Kind == "app" {
 		return errors.New("应用进程功能已下线")
 	}
 	if res.Kind == "instance" {
+		delete(res.Config, "stageRuntime")
 		if res.Config.String("mode") != "" && res.Config.String("mode") != "native" {
 			return errors.New("软件市场仅支持原生安装，容器应用请使用 Docker 菜单")
 		}
@@ -378,14 +387,14 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 		delete(b.Config, "appId")
 	}
 	if res.Kind == "site" {
-		for _, key := range []string{"documentRoot", "runningRoot"} {
+		for _, key := range []string{"documentRoot", "runningRoot", "databaseId", "siteBaseDirectory"} {
 			b.Config[key] = res.Config[key]
 		}
 		if res.Config.String("documentRoot") != "" && b.Config.String("rootDirectory") != res.Config.String("rootDirectory") {
 			fail(w, 409, "已部署站点不支持通过编辑迁移根目录")
 			return
 		}
-		if res.Config.String("type") != b.Config.String("type") {
+		if res.Config.String("type") != b.Config.String("type") && !(isLocalSite(res.Config.String("type")) && isLocalSite(b.Config.String("type"))) {
 			fail(w, 409, "已创建站点不能修改项目类型")
 			return
 		}
@@ -419,6 +428,16 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "资源有运行中的任务")
 			return
 		}
+	}
+	if res.Kind == "site" {
+		if e = c.App.Store.Set("site-draft:"+res.ID, res); e != nil {
+			fail(w, 500, "草稿保存失败")
+			return
+		}
+		c.App.Store.Audit("site.draft", res.ID, clientIP(r))
+		res.Config = publicResourceConfig(res)
+		send(w, 200, res)
+		return
 	}
 	if e = c.App.Store.Update(&res); e != nil {
 		fail(w, 409, e.Error())
@@ -490,6 +509,20 @@ func (c *Controller) action(w http.ResponseWriter, r *http.Request) {
 	if res.Kind == "app" {
 		fail(w, 410, "应用进程功能已下线，已有服务与数据保留")
 		return
+	}
+	if res.Kind == "site" && r.PathValue("action") == "apply" {
+		var draft model.Resource
+		if c.App.Store.Setting("site-draft:"+res.ID, &draft) == nil && draft.ID == res.ID {
+			if draft.Revision != res.Revision {
+				fail(w, 409, "旧接口草稿已过期，请重新载入合并")
+				return
+			}
+			res = draft
+			if err := c.validate(&res); err != nil {
+				fail(w, 400, err.Error())
+				return
+			}
+		}
 	}
 	var p model.Config
 	if !decode(w, r, &p) {

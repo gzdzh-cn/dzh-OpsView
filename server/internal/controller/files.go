@@ -16,7 +16,7 @@ func (c *Controller) files(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := p.String("action")
-	allowed := map[string]bool{"list": true, "read": true, "write": true, "metadata": true, "favorite": true, "note": true, "mkdir": true, "stat": true, "search": true, "size": true, "trash": true, "copy": true, "move": true, "rename": true, "permissions": true, "chmod": true, "delete": true, "compress": true, "extract": true, "upload-create": true, "upload-status": true, "upload-finish": true, "upload-cancel": true}
+	allowed := map[string]bool{"identities": true, "list": true, "read": true, "write": true, "metadata": true, "favorite": true, "note": true, "mkdir": true, "stat": true, "search": true, "size": true, "trash": true, "copy": true, "move": true, "rename": true, "permissions": true, "chmod": true, "delete": true, "compress": true, "extract": true, "upload-create": true, "upload-status": true, "upload-finish": true, "upload-cancel": true}
 	if !allowed[action] {
 		fail(w, 400, "文件操作无效")
 		return

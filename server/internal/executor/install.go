@@ -30,6 +30,9 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 	action := strings.TrimPrefix(op.Name, "instance.")
 	r := op.Resource
 	if action == "install" {
+		if r.Config.Bool("stageRuntime") {
+			return nil, errors.New("禁止外部设置暂存安装参数")
+		}
 		if r.Status == "error" || r.Status == "uninstalled" || r.Config.Bool("retainedData") {
 			return nil, errors.New("请先卸载并清理保留记录后，再新建实例安装")
 		}
@@ -71,7 +74,7 @@ func (e *Engine) instance(ctx context.Context, op model.Operation, log func(stri
 				return nil, errors.New("端口已被其他实例使用")
 			}
 			if entry.Software == "nginx" && other.Kind == "instance" && other.Config.String("software") == "nginx" {
-				r.Config["deferStart"] = true
+				return nil, errors.New("只能安装一个受管 Nginx，请从现有实例更换版本")
 			}
 		}
 

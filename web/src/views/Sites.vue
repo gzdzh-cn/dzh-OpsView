@@ -9,7 +9,7 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePanel } from '../stores/panel'
-import { action, api, put, errorText, size, date, type Resource, type Config } from '../lib/api'
+import { action, api, post, errorText, size, date, type Resource, type Config } from '../lib/api'
 import SiteCreate from '../components/SiteCreate.vue'
 import SiteTools from '../components/SiteTools.vue'
 import CodeEditor from '../components/CodeEditor.vue'
@@ -21,7 +21,14 @@ const panel = usePanel(),
   tab = usePageState('tab', String(route.query.tab || 'php')),
   filter = usePageState('filter', ''),
   createOpen = ref(false),
-  editing = ref<Resource>(),
+  categories = ref<string[]>(['默认分类']),
+  category = usePageState('category', ''),
+  categoryOpen = ref(false),
+  categoryName = ref(''),
+  categoryOld = ref(''),
+  draftName = ref(''),
+  baseline = ref(''),
+  saving = ref(false),
   selected = ref<Resource>(),
   settingsOpen = ref(false),
   page = ref('general'),
@@ -48,8 +55,11 @@ const rows = computed(() =>
     .filter(
       (r) =>
         (tab.value === 'other'
-          ? ['static', 'app', 'managed'].includes(r.config.type)
-          : r.config.type === tab.value) &&
+          ? ['app', 'managed'].includes(r.config.type)
+          : tab.value === 'php'
+            ? ['php', 'static'].includes(r.config.type)
+            : r.config.type === tab.value) &&
+        (!category.value || (r.config.category || '默认分类') === category.value) &&
         (r.name + ' ' + r.config.domains + ' ' + r.config.note)
           .toLowerCase()
           .includes(filter.value.toLowerCase()),
@@ -95,16 +105,76 @@ watch(
   { immediate: true },
 )
 function openCreate() {
-  editing.value = undefined
   createOpen.value = true
 }
-function edit(row: Resource) {
-  editing.value = row
-  createOpen.value = true
+async function loadCategories() {
+  try {
+    categories.value = (await api('/site-categories')).rows
+  } catch (e) {
+    error.value = errorText(e)
+  }
+}
+void loadCategories()
+async function changeCategory(remove = false) {
+  try {
+    await post('/site-categories', { old: categoryOld.value, name: categoryName.value, remove })
+    await loadCategories()
+    await panel.refresh(['resources'])
+    categoryOld.value = ''
+    categoryName.value = ''
+  } catch (e) {
+    error.value = errorText(e)
+  }
+}
+const localSite = computed(() => ['php', 'static'].includes(draft.value.type))
+const runtime = computed({
+  get: () => (draft.value.type === 'static' ? 'static' : draft.value.phpInstanceId),
+  set: (v: string) => {
+    draft.value.type = v === 'static' ? 'static' : 'php'
+    draft.value.phpInstanceId = v === 'static' ? undefined : v
+    draft.value.rewriteTemplate = v === 'static' ? 'none' : undefined
+  },
+})
+const dirty = computed(() => JSON.stringify([draftName.value, draft.value]) !== baseline.value)
+async function confirmLeave() {
+  if (!dirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前修改尚未保存，是否放弃？', '未保存的修改', {
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+async function closeSettings(done: () => void) {
+  if (saving.value) return
+  if (await confirmLeave()) done()
+}
+async function switchPage(key: string) {
+  if (key === page.value) return
+  if (dirty.value && !(await confirmLeave())) return
+  if (dirty.value && selected.value) {
+    draft.value = JSON.parse(JSON.stringify(selected.value.config))
+    draftName.value = selected.value.name
+    baseline.value = JSON.stringify([draftName.value, draft.value])
+  }
+  page.value = key
+  if (['logs', 'process'].includes(key)) await loadLogs()
+}
+function phpLabel(row: Resource) {
+  if (row.config.type === 'static') return '静态'
+  return (
+    panel.kind('instance').find((r) => r.id === row.config.phpInstanceId)?.config.version ||
+    '关联异常'
+  )
 }
 async function open(row: Resource) {
   selected.value = row
-  draft.value = { ...row.config }
+  draft.value = JSON.parse(JSON.stringify(row.config))
+  draftName.value = row.name
+  baseline.value = JSON.stringify([draftName.value, draft.value])
   settingsOpen.value = true
   page.value = 'general'
   error.value = ''
@@ -154,17 +224,38 @@ function appPort(row: Resource) {
   return panel.resources.find((r) => r.id === row.config.legacyAppId)?.config.port || '—'
 }
 async function save() {
-  if (!selected.value) return
+  if (!selected.value || saving.value) return
   try {
-    const row = await put('/resources/' + selected.value.id, {
-      name: selected.value.name,
+    saving.value = true
+    error.value = ''
+    const queued = await post('/sites/' + selected.value.id + '/settings', {
+      name: draftName.value,
       config: draft.value,
       revision: selected.value.revision,
     })
-    await action(row.id, 'apply')
+    while (!reads.signal.aborted) {
+      const task = await api('/tasks/' + queued.taskId, { signal: reads.signal })
+      if (task.state === 'succeeded') break
+      if (['failed', 'cancelled', 'interrupted'].includes(task.state))
+        throw new Error(task.error || '应用未完成，草稿已保留')
+      await new Promise((resolve) => setTimeout(resolve, 800))
+    }
+    if (reads.signal.aborted) return
+    baseline.value = JSON.stringify([draftName.value, draft.value])
     settingsOpen.value = false
-    await panel.refresh()
-    ElMessage.success('配置应用任务已提交')
+    await panel.refresh(['resources', 'tasks'])
+    ElMessage.success('配置已应用')
+  } catch (e) {
+    error.value = errorText(e)
+  } finally {
+    saving.value = false
+  }
+}
+async function retry(row: Resource) {
+  try {
+    await post('/sites/' + row.id + '/provision')
+    await panel.refresh(['tasks'])
+    ElMessage.success('重试任务已提交')
   } catch (e) {
     error.value = errorText(e)
   }
@@ -229,6 +320,10 @@ async function loadLogs() {
             }
           "
         />
+        <el-select v-model="category" placeholder="全部分类" clearable style="width: 140px">
+          <el-option v-for="v in categories" :key="v" :label="v" :value="v" />
+        </el-select>
+        <el-button @click="categoryOpen = true">分类管理</el-button>
         <el-input v-model="filter" placeholder="搜索名称、域名或备注" clearable />
         <span>{{ rows.length }} 个项目</span>
       </div>
@@ -259,6 +354,21 @@ async function loadLogs() {
               >
                 {{ status(row) }}
               </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="tab === 'php'" label="PHP" width="100">
+            <template #default="{ row }">
+              <el-button
+                link
+                @click="
+                  () => {
+                    open(row)
+                    page = 'runtime'
+                  }
+                "
+              >
+                {{ phpLabel(row) }}
+              </el-button>
             </template>
           </el-table-column>
           <el-table-column v-if="tab === 'php'" label="备份" width="120">
@@ -349,6 +459,7 @@ async function loadLogs() {
               </el-button>
             </template>
           </el-table-column>
+
           <el-table-column label="SSL证书" width="150">
             <template #default="{ row }">
               <el-button
@@ -368,7 +479,9 @@ async function loadLogs() {
           <el-table-column label="操作" width="170" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="open(row)">设置</el-button>
-              <el-button link @click="edit(row)">编辑</el-button>
+              <el-button v-if="['error', 'pending'].includes(row.status)" link @click="retry(row)">
+                重试
+              </el-button>
               <el-button link type="danger" @click="run(row, 'delete')">删除</el-button>
             </template>
           </el-table-column>
@@ -376,19 +489,29 @@ async function loadLogs() {
       </div>
     </template>
   </LoadingContent>
-  <SiteCreate v-model="createOpen" :initial="initial" :editing="editing" />
+  <SiteCreate v-model="createOpen" :initial="initial" />
   <AppDialog
     v-model="settingsOpen"
+    :before-close="closeSettings"
     :title="selected?.name + ' · 网站设置'"
     split
     width="min(1000px,95vw)"
     :close-on-click-modal="false"
   >
-    <div class="site-settings ops-settings-layout">
+    <div class="site-settings ops-settings-layout" :inert="saving || undefined" :aria-busy="saving">
       <aside>
         <button
           v-for="[key, label] in [
-            ['general', '域名与运行环境'],
+            ['general', '域名与基础'],
+            ...(localSite
+              ? [
+                  ['directory', '网站目录'],
+                  ['runtime', '运行环境'],
+                  ['routing', '默认文档与伪静态'],
+                ]
+              : [['runtime', draft.type === 'proxy' ? '反向代理' : '进程配置']]),
+            ['advanced', '高级配置'],
+            ['security', '网站安全'],
             ['ssl', 'SSL 证书'],
             ['traffic', '流量统计'],
             ['expiry', '到期时间'],
@@ -399,12 +522,7 @@ async function loadLogs() {
           ]"
           :key="key"
           :class="{ active: page === key }"
-          @click="
-            () => {
-              page = key
-              if (key === 'logs' || key === 'process') loadLogs()
-            }
-          "
+          @click="switchPage(key)"
         >
           {{ label }}
         </button>
@@ -412,30 +530,115 @@ async function loadLogs() {
       <section class="ops-settings-content">
         <el-alert v-if="error" :title="error" type="error" :closable="false" />
         <template v-if="page === 'general'">
-          <el-form label-position="top">
-            <el-form-item label="绑定域名"><el-input v-model="draft.domains" /></el-form-item>
-            <el-form-item label="根目录">
-              <el-input :model-value="draft.documentRoot || '部署后生成'" readonly />
+          <el-form label-width="110px">
+            <el-form-item label="项目名称">
+              <el-input v-model="draftName" maxlength="63" />
             </el-form-item>
-            <el-form-item v-if="draft.type === 'php'" label="PHP 运行环境">
-              <el-select v-model="draft.phpInstanceId">
+            <el-form-item label="绑定域名">
+              <el-input v-model="draft.domains" type="textarea" :rows="4" />
+            </el-form-item>
+            <el-form-item label="网站分类">
+              <el-select v-model="draft.category" placeholder="默认分类">
+                <el-option v-for="v in categories" :key="v" :value="v" :label="v" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="draft.databaseId" label="关联数据库">
+              <span>
+                {{
+                  panel.resources.find((r) => r.id === draft.databaseId)?.name || draft.databaseId
+                }}
+              </span>
+              <el-button link @click="$router.push('/databases')">管理数据库</el-button>
+            </el-form-item>
+          </el-form>
+        </template>
+        <template v-else-if="page === 'directory'">
+          <el-form label-width="110px">
+            <el-form-item label="根目录">
+              <el-input :model-value="draft.documentRoot || draft.rootDirectory" readonly />
+            </el-form-item>
+            <el-form-item label="运行目录">
+              <el-input
+                v-model="draft.runningDirectory"
+                placeholder="相对网站根目录，例如 public"
+              />
+            </el-form-item>
+          </el-form>
+        </template>
+        <template v-else-if="page === 'routing'">
+          <el-form label-width="150px"><SiteRuntimeOptions v-model="draft" /></el-form>
+        </template>
+        <template v-else-if="page === 'runtime'">
+          <el-form label-width="110px">
+            <el-form-item v-if="localSite" label="PHP 版本">
+              <el-select v-model="runtime">
+                <el-option label="静态" value="static" />
                 <el-option
-                  v-for="r in panel.kind('instance').filter((r) => r.config.software === 'php')"
+                  v-for="r in panel
+                    .kind('instance')
+                    .filter(
+                      (r) =>
+                        r.config.software === 'php' &&
+                        r.config.mode === 'native' &&
+                        ['ready', 'stopped', 'running'].includes(r.status),
+                    )"
                   :key="r.id"
                   :value="r.id"
-                  :label="r.name + ' · ' + r.config.version"
+                  :label="'PHP ' + r.config.version"
                 />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="draft.type === 'proxy'" label="代理地址">
-              <el-input v-model="draft.upstream" />
-            </el-form-item>
-            <SiteRuntimeOptions v-model="draft" />
-            <el-form-item label="高级配置"><CodeEditor v-model="draft.advanced" /></el-form-item>
+            <template v-if="['proxy', 'app'].includes(draft.type)">
+              <el-form-item label="目标地址"><el-input v-model="draft.upstream" /></el-form-item>
+              <el-form-item label="发送 Host"><el-input v-model="draft.proxyHost" /></el-form-item>
+              <SiteRuntimeOptions v-model="draft" />
+            </template>
+            <template v-if="draft.type === 'managed'">
+              <el-form-item label="执行文件"><el-input v-model="draft.executable" /></el-form-item>
+              <el-form-item label="启动参数">
+                <el-input v-model="draft.arguments" placeholder="JSON 数组" />
+              </el-form-item>
+              <el-form-item label="运行端口">
+                <el-input-number v-model="draft.port" :min="1024" :max="65535" />
+              </el-form-item>
+              <el-form-item label="运行用户">
+                <el-select v-model="draft.user">
+                  <el-option label="独立站点用户" value="isolated" />
+                  <el-option label="www-data" value="www-data" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="环境变量">
+                <el-input
+                  v-model="draft.environment"
+                  type="textarea"
+                  :rows="4"
+                  placeholder="JSON 对象"
+                />
+              </el-form-item>
+              <el-form-item label="健康检查"><el-input v-model="draft.healthURL" /></el-form-item>
+              <el-form-item label="开机启动"><el-switch v-model="draft.autoStart" /></el-form-item>
+            </template>
           </el-form>
-          <DialogActions>
-            <el-button type="primary" @click="save">保存并应用</el-button>
-          </DialogActions>
+        </template>
+        <template v-else-if="page === 'advanced'">
+          <el-form label-position="top">
+            <el-form-item label="Nginx 高级参数">
+              <CodeEditor v-model="draft.advanced" />
+            </el-form-item>
+          </el-form>
+        </template>
+        <template v-else-if="page === 'security'">
+          <el-form label-width="150px">
+            <el-form-item label="安全响应头">
+              <el-switch v-model="draft.securityHeaders" />
+            </el-form-item>
+            <el-form-item label="禁止嵌入框架">
+              <el-switch v-model="draft.denyFrames" />
+            </el-form-item>
+            <el-form-item label="禁止上传目录执行 PHP">
+              <el-switch v-model="draft.denyUploadPHP" />
+            </el-form-item>
+          </el-form>
         </template>
         <template v-else-if="page === 'ssl'">
           <p>当前证书：{{ date(selected?.config.certificateExpires) }}</p>
@@ -512,8 +715,7 @@ async function loadLogs() {
               v-if="selected"
               @click="
                 () => {
-                  settingsOpen = false
-                  edit(selected!)
+                  page = 'runtime'
                 }
               "
             >
@@ -550,6 +752,59 @@ async function loadLogs() {
         </template>
       </section>
     </div>
+    <template #footer>
+      <el-button :disabled="saving" @click="closeSettings(() => (settingsOpen = false))">
+        关闭
+      </el-button>
+      <el-button
+        v-if="['general', 'directory', 'runtime', 'routing', 'advanced', 'security'].includes(page)"
+        type="primary"
+        :loading="saving"
+        @click="save"
+      >
+        保存并应用
+      </el-button>
+    </template>
+  </AppDialog>
+  <AppDialog v-model="categoryOpen" title="网站分类" size="small" width="520px">
+    <div class="page-toolbar">
+      <el-input v-model="categoryName" placeholder="分类名称" />
+      <el-button type="primary" @click="changeCategory()">
+        {{ categoryOld ? '保存改名' : '添加分类' }}
+      </el-button>
+    </div>
+    <el-table :data="categories.map((name) => ({ name }))">
+      <el-table-column prop="name" label="分类" />
+      <el-table-column label="操作">
+        <template #default="{ row }">
+          <template v-if="row.name !== '默认分类'">
+            <el-button
+              link
+              @click="
+                () => {
+                  categoryOld = row.name
+                  categoryName = row.name
+                }
+              "
+            >
+              改名
+            </el-button>
+            <el-button
+              link
+              type="danger"
+              @click="
+                () => {
+                  categoryOld = row.name
+                  changeCategory(true)
+                }
+              "
+            >
+              删除
+            </el-button>
+          </template>
+        </template>
+      </el-table-column>
+    </el-table>
   </AppDialog>
 </template>
 <style scoped>

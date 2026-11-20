@@ -70,6 +70,20 @@ func (e *Engine) database(ctx context.Context, op model.Operation, log func(stri
 		r.Config["owner"] = username
 		r.Config["managedAccount"] = true
 		if _, err = e.load(r.ID); err == nil {
+			if op.Params.Bool("resume") {
+				stored, er := e.load(r.ID)
+				if er == nil && stored.Kind == "database" && stored.Name == r.Name && stored.Config.String("instanceId") == inst.ID && stored.Config.String("username") == username {
+					if software == "postgresql" {
+						if er = e.configurePGAccess(ctx, inst, log); er != nil {
+							return nil, er
+						}
+					}
+					if er = e.dbRun(ctx, inst, r.Name, "SELECT 1"); er != nil {
+						return nil, er
+					}
+					return model.Config{"engine": software, "encoding": stored.Config["encoding"], "owner": username, "managedAccount": true}, nil
+				}
+			}
 			return nil, errors.New("数据库已登记，禁止重复创建")
 		}
 		if err = e.databaseVacant(ctx, inst, r); err != nil {

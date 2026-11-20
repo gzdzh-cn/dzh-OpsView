@@ -230,14 +230,42 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if err = os.MkdirAll(base+"/cert", 0700); err != nil {
 		return nil, err
 	}
-	if _, err = os.Stat(siteDocumentRoot(r, base) + "/index.html"); os.IsNotExist(err) {
-		_ = security.WriteAtomic(siteDocumentRoot(r, base)+"/index.html", []byte("<!doctype html><html lang=zh-CN><meta charset=utf-8><title>站点已就绪</title><h1>站点已就绪</h1><p>由 OpsView 管理。</p></html>"), 0644)
+	if _, er := e.load(r.ID); er != nil && (r.Config.String("type") == "static" || r.Config.String("type") == "php") {
+		if err = createSiteTemplates(siteRunningRoot(r, base)); err != nil {
+			return nil, err
+		}
 	}
 	old, readErr := os.ReadFile(confpath)
 	if readErr != nil && !os.IsNotExist(readErr) {
 		return nil, readErr
 	}
 
+	runtimeApplied := false
+	defer func() {
+		if retErr == nil || !runtimeApplied {
+			return
+		}
+		recovery, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		var restoreErr error
+		if len(old) > 0 {
+			restoreErr = security.WriteAtomic(confpath, old, 0644)
+		} else {
+			restoreErr = os.Remove(confpath)
+			if os.IsNotExist(restoreErr) {
+				restoreErr = nil
+			}
+		}
+		if restoreErr == nil {
+			restoreErr = e.nginx(recovery, inst, log, "-t")
+		}
+		if restoreErr == nil {
+			restoreErr = e.nginx(recovery, inst, log, "-s", "reload")
+		}
+		if restoreErr != nil {
+			retErr = fmt.Errorf("网站应用失败，配置回退需要检查：%v；%w", restoreErr, retErr)
+		}
+	}()
 	previousConfigPath := ""
 	if stored, err := e.load(r.ID); err == nil {
 		r.Config["phpPaused"] = stored.Config.Bool("phpPaused")
@@ -344,7 +372,18 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		r.Config["tls"] = true
 		r.Config["certificateProvider"] = "acme"
 	}
-	if r.Config.String("type") == "php" {
+	priorSite, _ := e.load(r.ID)
+	if priorSite.Config.String("type") == "static" && r.Config.String("type") == "php" {
+		php, er := e.load(r.Config.String("phpInstanceId"))
+		if er != nil {
+			return nil, er
+		}
+		if php.Config.Bool("servicesPaused") {
+			return nil, errors.New("请先在 PHP 服务设置中恢复运行环境")
+		}
+		r.Config["phpPaused"] = false
+	}
+	if r.Config.String("type") == "php" || priorSite.Config.String("type") == "php" {
 		restore, snapshotErr := e.snapshotSitePHP(ctx, r, base)
 		if snapshotErr != nil {
 			return nil, snapshotErr
@@ -356,8 +395,27 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 				}
 			}
 		}()
-		if err = e.setupSitePHP(ctx, r, base, log); err != nil {
-			return nil, err
+		if r.Config.String("type") == "php" {
+			if err = e.setupSitePHP(ctx, r, base, log); err != nil {
+				return nil, err
+			}
+			php, _ := e.load(r.Config.String("phpInstanceId"))
+			if !siteUnavailable(r) && !r.Config.Bool("phpPaused") && !php.Config.Bool("servicesPaused") {
+				deadline := time.Now().Add(10 * time.Second)
+				for {
+					if _, er := fpmStatus(ctx, base+"/run/php.sock"); er == nil {
+						break
+					}
+					if time.Now().After(deadline) || ctx.Err() != nil {
+						return nil, errors.New("站点 FPM 协议探测失败，原运行方式保留")
+					}
+					select {
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					case <-time.After(200 * time.Millisecond):
+					}
+				}
+			}
 		}
 	}
 	if r.Config.String("type") == "managed" && !siteUnavailable(r) && (action == "apply" || action == "certificate") {
@@ -379,6 +437,13 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		return nil, err
 	}
 
+	runtimeApplied = true
+	if prior, er := e.load(r.ID); er == nil && prior.Config.String("type") == "php" && r.Config.String("type") == "static" {
+		if err = run(ctx, log, "", nil, nil, "systemctl", "disable", "--now", phpSiteUnit(prior)); err != nil {
+			_ = e.applyNginx(context.Background(), inst, confpath, old, candidate, log)
+			return nil, err
+		}
+	}
 	if previousConfigPath != "" {
 		original, err := os.ReadFile(previousConfigPath)
 		if err != nil {
@@ -446,6 +511,9 @@ func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 		return conf + " location / { return 403; }\n}\n"
 	}
 	if r.Config.String("type") == "php" {
+		if _, er := os.Stat(filepath.Join(siteRunningRoot(r, base), "404.html")); er == nil {
+			conf += siteErrorPage(siteRunningRoot(r, base))
+		}
 		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / { " + redirect + siteTryFiles(r) + " }\n location ~ \\.php$ { " + redirect + "try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
 		return conf + "}\n"
 	}
@@ -456,6 +524,10 @@ func (e *Engine) renderSite(r, inst model.Resource, base string) string {
 		}
 		conf += " location / {\n" + redirect + "  proxy_pass " + siteUpstream(r) + ";\n  proxy_http_version 1.1;\n  proxy_set_header Host " + siteProxyHost(r) + ";\n  proxy_set_header Upgrade $http_upgrade;\n  proxy_set_header Connection $opsview_connection;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n }\n"
 	} else {
+		conf += " location ~* \\.(?:php[0-9]?|phtml|phar)(?:/|$) { return 403; }\n"
+		if _, er := os.Stat(filepath.Join(siteRunningRoot(r, base), "404.html")); er == nil {
+			conf += siteErrorPage(siteRunningRoot(r, base))
+		}
 		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / {\n" + redirect + " " + siteTryFiles(r) + " }\n"
 	}
 	return conf + "}\n"

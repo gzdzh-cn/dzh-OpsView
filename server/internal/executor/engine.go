@@ -109,6 +109,9 @@ func (e *Engine) Serve(ctx context.Context, socket string) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	e.cancel = cancel
 	defer cancel()
+	if err = e.recoverNginxReplacements(runCtx); err != nil {
+		return err
+	}
 	go e.watchFirewall(runCtx)
 	go e.watchSSH(runCtx)
 	go e.watchSites(runCtx)

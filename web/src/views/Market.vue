@@ -302,6 +302,10 @@ watch(
   { immediate: true },
 )
 function openInstall(software: string) {
+  if (software === 'nginx' && panel.kind('instance').some((r) => r.config.software === 'nginx')) {
+    ElMessage.warning('只能保留一个受管 Nginx，请从设置中更换版本')
+    return
+  }
   const entry =
     panel.catalog.find((v) => v.id === versions.value[software]) ||
     panel.catalog.find((v) => v.software === software && !v.disabledReason)

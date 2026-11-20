@@ -36,7 +36,7 @@ func (e *Engine) app(ctx context.Context, op model.Operation, log func(string)) 
 	base := filepath.Join(e.Root, "apps", r.ID)
 	if r.Kind == "site-process" {
 		base = r.Config.String("workingDirectory")
-		if err := logic.ValidateSiteRoot(base); err != nil {
+		if err := logic.ValidateSiteRootAt(base, filepath.Dir(base)); err != nil {
 			return nil, err
 		}
 		if _, err := safePath("/", strings.TrimPrefix(base, "/")); err != nil {

@@ -281,3 +281,30 @@ func TestServerFileRevisionDetectsPreservedModificationTime(t *testing.T) {
 		t.Fatal(string(data))
 	}
 }
+
+func TestPermissionMaskKeepsMixedBitsAndChecksRevision(t *testing.T) {
+	e, dir := fileFixture(t)
+	a := filepath.Join(dir, "a")
+	b := filepath.Join(dir, "b")
+	os.WriteFile(a, []byte("a"), 0600)
+	os.WriteFile(b, []byte("b"), 0640)
+	p := model.Config{"paths": []string{a, b}, "permissionMask": 1, "permissionValue": 1}
+	if _, err := e.fileBatch(context.Background(), "permissions", p, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	sa, _ := os.Stat(a)
+	sb, _ := os.Stat(b)
+	if sa.Mode().Perm() != 0601 || sb.Mode().Perm() != 0641 {
+		t.Fatal("mixed permissions overwritten", sa.Mode(), sb.Mode())
+	}
+	rev := fileRevision(sa)
+	os.WriteFile(a, []byte("external-modification"), 0601)
+	p = model.Config{"paths": []string{a}, "mode": "777", "revisions": map[string]any{a: rev}}
+	if _, err := e.fileBatch(context.Background(), "permissions", p, func(string) {}); err == nil {
+		t.Fatal("stale file revision accepted")
+	}
+	sa, _ = os.Stat(a)
+	if sa.Mode().Perm() == 0777 {
+		t.Fatal("permission changed despite conflict")
+	}
+}

@@ -466,6 +466,9 @@ func (e *Engine) fileBatch(ctx context.Context, action string, p model.Config, l
 			}
 			results = append(results, model.Config{"path": actual, "target": target})
 		case "permissions":
+			if p.Int("permissionMask") < 0 || p.Int("permissionMask") > 0777 || p.Int("permissionValue") < 0 || p.Int("permissionValue") > 0777 {
+				return nil, errors.New("权限范围无效")
+			}
 			mode, er := strconv.ParseUint(p.String("mode"), 8, 32)
 			if p.String("mode") != "" && (er != nil || mode > 0777) {
 				return nil, errors.New("权限必须在 0000–0777，不允许特殊提权位")
@@ -494,10 +497,32 @@ func (e *Engine) fileBatch(ctx context.Context, action string, p model.Config, l
 					return er
 				}
 				defer f.Close()
+				if expected, ok := p["revisions"].(map[string]any); ok {
+					if rev, yes := expected[path].(string); yes && rev != "" {
+						actual, er := f.Stat()
+						if er != nil {
+							return er
+						}
+						if fileRevision(actual) != rev {
+							return &model.RevisionConflict{Revision: fileRevision(actual)}
+						}
+					}
+				}
 				if uid >= 0 || gid >= 0 {
 					if er = f.Chown(uid, gid); er != nil {
 						return er
 					}
+				}
+				if p.Int("permissionMask") != 0 {
+					mask, value := p.Int("permissionMask"), p.Int("permissionValue")
+					if mask < 0 || mask > 0777 || value < 0 || value > 0777 {
+						return errors.New("权限范围无效")
+					}
+					current, er := f.Stat()
+					if er != nil {
+						return er
+					}
+					return f.Chmod((current.Mode().Perm() &^ os.FileMode(mask)) | os.FileMode(value&mask))
 				}
 				if p.String("mode") != "" {
 					return f.Chmod(os.FileMode(mode))
@@ -536,6 +561,8 @@ func (e *Engine) serverFiles(ctx context.Context, op model.Operation, log func(s
 	p := op.Params
 	action := strings.TrimPrefix(op.Name, "files.")
 	switch action {
+	case "identities":
+		return fileIdentities()
 	case "list":
 		return e.listFiles(ctx, p)
 	case "read":

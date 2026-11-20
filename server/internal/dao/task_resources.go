@@ -24,7 +24,7 @@ func (s *Store) taskKeys(tx *sql.Tx, op model.Operation) []string {
 		if r.Kind == "site" || r.Kind == "instance" && r.Config.String("software") == "nginx" {
 			add("nginx-entry")
 		}
-		ids := []string{r.Config.String("instanceId"), r.Config.String("phpInstanceId")}
+		ids := []string{r.Config.String("instanceId"), r.Config.String("phpInstanceId"), r.Config.String("databaseId")}
 		ids = append(ids, scheduling.TargetIDs(r.Config)...)
 		for _, id := range ids {
 			if id == "" {

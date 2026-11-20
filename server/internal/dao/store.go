@@ -38,7 +38,7 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if schemaVersion > 5 {
+	if schemaVersion > 6 {
 		db.Close()
 		return nil, errors.New("面板数据库来自较新版本，禁止降级打开")
 	}
@@ -70,6 +70,10 @@ func Open(dir string) (*Store, error) {
 		return nil, e
 	}
 	if e = s.migrateV5(); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = s.migrateV6(); e != nil {
 		db.Close()
 		return nil, e
 	}
@@ -167,6 +171,15 @@ func (s *Store) Create(r *model.Resource) error {
 	sw, ver := instanceVersion(r)
 	if sw != "" && ver != "" {
 		var existing string
+		if sw == "nginx" {
+			er := tx.QueryRow(`SELECT resource_id FROM software_versions WHERE software='nginx' LIMIT 1`).Scan(&existing)
+			if er == nil {
+				return &model.DuplicateVersion{ResourceID: existing}
+			}
+			if !errors.Is(er, sql.ErrNoRows) {
+				return er
+			}
+		}
 		er := tx.QueryRow(`SELECT resource_id FROM software_versions WHERE software=? AND version=?`, sw, ver).Scan(&existing)
 		if er == nil {
 			return &model.DuplicateVersion{ResourceID: existing}
@@ -222,6 +235,14 @@ func (s *Store) Update(r *model.Resource) error {
 			if _, e = tx.Exec(`INSERT INTO database_bindings VALUES(?,?,?,?,?)`, r.ID, r.Config.String("instanceId"), r.Name, r.Config.String("username"), r.Config.Bool("imported")); e != nil {
 				return e
 			}
+		}
+	}
+	if sw, ver := instanceVersion(r); sw != "" && ver != "" {
+		if _, e = tx.Exec(`DELETE FROM software_versions WHERE resource_id=?`, r.ID); e != nil {
+			return e
+		}
+		if _, e = tx.Exec(`INSERT OR IGNORE INTO software_versions VALUES(?,?,?)`, sw, ver, r.ID); e != nil {
+			return e
 		}
 	}
 	if e = tx.Commit(); e != nil {
@@ -306,13 +327,30 @@ func (s *Store) Audits() ([]model.Audit, error) {
 	return out, rows.Err()
 }
 func (s *Store) Enqueue(op model.Operation) (model.Task, error) {
-	t := model.Task{ScheduleID: op.Params.String("scheduleId"), ID: security.ID(), ResourceID: op.Resource.ID, Operation: op.Name, State: "queued", CreatedAt: Now(), UpdatedAt: Now()}
 	tx, e := s.DB.Begin()
+	if e != nil {
+		return model.Task{}, e
+	}
+	defer tx.Rollback()
+	t, e := s.enqueueTx(tx, op)
 	if e != nil {
 		return t, e
 	}
-	defer tx.Rollback()
+	return t, tx.Commit()
+}
+func (s *Store) enqueueTx(tx *sql.Tx, op model.Operation) (model.Task, error) {
+	t := model.Task{ScheduleID: op.Params.String("scheduleId"), ID: security.ID(), ResourceID: op.Resource.ID, Operation: op.Name, State: "queued", CreatedAt: Now(), UpdatedAt: Now()}
+	var e error
 	var n int
+	if op.Name == "site.apply" {
+		var rev int
+		if e = tx.QueryRow(`SELECT revision FROM resources WHERE id=?`, op.Resource.ID).Scan(&rev); e != nil {
+			return t, e
+		}
+		if rev != op.Resource.Revision {
+			return t, ErrRevision
+		}
+	}
 	if e = tx.QueryRow(`SELECT count(*) FROM tasks WHERE resource_id=? AND state IN ('queued','running')`, t.ResourceID).Scan(&n); e != nil {
 		return t, e
 	}
@@ -345,7 +383,7 @@ func (s *Store) Enqueue(op model.Operation) (model.Task, error) {
 			return t, e
 		}
 	}
-	return t, tx.Commit()
+	return t, nil
 }
 func (s *Store) Task(id string) (model.Task, error) {
 	var t model.Task

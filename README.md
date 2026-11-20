@@ -1,12 +1,12 @@
 # OpsView
 
-文件管理支持路径面包屑、目录大小原位计算和备注行内保存；网站根目录默认 `/www/wwwroot/域名`，支持网站内进程托管、统计、安全检查和 Nginx 管理。详见 [网站管理说明](docs/website-management.md)。
+本轮完善网站统一设置、静态/PHP 切换、数据库联建和分类；Nginx 仅保留一个受管实例并支持原位版本替换。文件管理增加权限矩阵、系统用户/组选择、右键菜单与归档表单。详见 [网站管理说明](docs/website-management.md)。
 
 本版完善系统防火墙与 SSH 管理：UFW/firewalld 四类实际规则、启停、禁 Ping、地区过滤、Fail2ban 与回退，SSH 多端口、认证、公钥与登录记录。详见 [系统安全使用与恢复](docs/system-security.md)。
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.3-rc.25 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.3-rc.26 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
 本轮增加概览右上角主题下拉（跟随系统、亮色、黑色），亮色侧栏采用浅灰蓝背景。设置点击当前值行内保存，复杂认证就地展开，隐藏面板名称、侧栏标题及界面设置标签；修正告警子标签布局。登录仅在密码验证后按需显示验证码。新安装生成随机安全入口；`ov` 使用双列菜单，支持入口开关、轮换及脱敏登录信息。
 
@@ -14,7 +14,7 @@
 
 功能、架构、安装维护方式和当前限制的完整介绍见 [项目介绍](项目介绍.md)。
 
-rc.17 将 SQLite schema 升至 5；退回 rc.16 必须恢复**同一升级前快照中的元数据、运行配置和旧程序**，不能只替换二进制，见 [备份与设置手册](docs/backups-settings.md#升级与回退)。rc.11 的 schema 4、rc.5 的 schema 3 历史迁移及更早版本回退说明保留在 [运维手册](docs/operations.md)。已有资源 ID 与管理员保留，同名数据库可分布于不同实例。
+rc.26 将 SQLite schema 升至 6，保存站点编排关联；退回 rc.25 须恢复配套元数据快照。rc.17 将 SQLite schema 升至 5；退回 rc.16 必须恢复**同一升级前快照中的元数据、运行配置和旧程序**，不能只替换二进制，见 [备份与设置手册](docs/backups-settings.md#升级与回退)。rc.11 的 schema 4、rc.5 的 schema 3 历史迁移及更早版本回退说明保留在 [运维手册](docs/operations.md)。已有资源 ID 与管理员保留，同名数据库可分布于不同实例。
 
 ## 本地启动
 
@@ -50,9 +50,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.25/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.25/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.25
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.26/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.26/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.26
 # 已安装面板：
-ov update --version v0.1.3-rc.25
+ov update --version v0.1.3-rc.26
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
@@ -159,4 +159,4 @@ PHP Session 提供文件、受管 Redis 和本机 memcached 三种存储。memca
 rc.8 的 Nginx 新增 48 组合引用独立软件 Release `software-44268894751`。原始报告见 [rc.8 原生验收](docs/releases/v0.1.3-rc.8-native-acceptance.json)，默认推荐仍为 1.30.6。
 
 
-本轮备份与计划、六类面板设置、脚本执行授权、告警及 schema 5 升级回退说明见 [备份与设置手册](docs/backups-settings.md)。本次仅发布测试包，服务器更新单独安排。
+本轮备份与计划、六类面板设置、脚本执行授权、告警及 schema 5 升级回退说明见 [备份与设置手册](docs/backups-settings.md)。本次按授权在验证后更新线上；rc.26 迁移至 schema 6，回退须恢复配套元数据快照。

@@ -22,7 +22,7 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 	if os.Getenv("OPSVIEW_SITE_SMOKE") != "true" || os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("disposable GitHub systemd host required")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	root, err := os.MkdirTemp("/var/tmp", "opsview-site-smoke-")
 	if err != nil {
@@ -34,7 +34,7 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := func(s string) { t.Log(s) }
-	inst := model.Resource{ID: security.ID(), Kind: "instance", Name: "nginx-test", Status: "ready", Config: model.Config{"software": "nginx", "mode": "native", "port": unusedSessionPort(t)}}
+	inst := model.Resource{ID: security.ID(), Kind: "instance", Name: "nginx-test", Status: "ready", Config: model.Config{"software": "nginx", "version": "1.24.0", "catalogId": "nginx-1.24.0", "installMethod": "binary", "mode": "native", "port": unusedSessionPort(t)}}
 	base := filepath.Join(root, "instances", inst.ID)
 	for _, p := range []string{"runtime/sbin", "runtime/conf", "logs"} {
 		if err = os.MkdirAll(filepath.Join(base, p), 0755); err != nil {
@@ -55,10 +55,11 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 	if err = e.save(inst); err != nil {
 		t.Fatal(err)
 	}
-	if err = e.nginx(ctx, inst, log); err != nil {
+	unitBody := fmt.Sprintf("Type=forking\nPIDFile=%s/logs/nginx.pid\nExecStart=%s/runtime/sbin/nginx -p %s/runtime/ -c %s/conf/nginx.conf\nExecReload=%s/runtime/sbin/nginx -p %s/runtime/ -c %s/conf/nginx.conf -s reload\nExecStop=%s/runtime/sbin/nginx -p %s/runtime/ -c %s/conf/nginx.conf -s quit\n", base, base, base, base, base, base, base, base, base, base)
+	if err = installUnit(ctx, inst, unitBody, log); err != nil {
 		t.Fatal(err)
 	}
-	defer e.nginx(context.Background(), inst, func(string) {}, "-s", "quit")
+	t.Cleanup(func() { cleanupSiteUnit(t, serviceName(inst)) })
 	request := func(domain, path string) (int, string, http.Header) {
 		t.Helper()
 		req, _ := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://127.0.0.1:%d%s", inst.Config.Int("port"), path), nil)
@@ -99,6 +100,13 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 		if code, body, _ := request(static.Name, p); code != 403 || strings.Contains(body, "must-not-leak") {
 			t.Fatal(code, body)
 		}
+	}
+	security.WriteAtomic(doc+"/secret.PHP", []byte("<?php must-not-leak"), 0644)
+	if code, body, _ := request(static.Name, "/secret.PHP"); code != 403 || strings.Contains(body, "must-not-leak") {
+		t.Fatal("PHP source exposed", code)
+	}
+	if code, body, _ := request(static.Name, "/missing"); code != 404 || !strings.Contains(body, "页面未找到") {
+		t.Fatal("not a real custom 404", code, body)
 	}
 	result, err := e.siteSecurity(stored)
 	if err != nil || !strings.Contains(fmt.Sprint(result["checks"]), ".env") {
@@ -148,6 +156,29 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 	security.WriteAtomic(pdir+"/uploads/test.php", []byte("<?php echo 'forbidden';"), 0644)
 	if code, _, _ := request(phpsite.Name, "/uploads/test.php"); code != 403 {
 		t.Fatal(code)
+	}
+	phpStored, _ := e.load(phpsite.ID)
+	phpStored.Config["type"] = "static"
+	if _, err = e.Execute(ctx, model.Operation{Name: "site.apply", Resource: phpStored}, log); err != nil {
+		t.Fatal("PHP to static", err)
+	}
+	if code, body, _ := request(phpsite.Name, "/index.php"); code != 403 || strings.Contains(body, "<?php") {
+		t.Fatal("PHP source leaked", code, body)
+	}
+	if active, _ := output(ctx, "systemctl", "is-active", phpSiteUnit(phpsite)); strings.TrimSpace(active) == "active" {
+		t.Fatal("FPM still active")
+	}
+	if enabled, _ := output(ctx, "systemctl", "is-enabled", phpSiteUnit(phpsite)); strings.TrimSpace(enabled) == "enabled" {
+		t.Fatal("FPM still enabled")
+	}
+	phpStored, _ = e.load(phpsite.ID)
+	phpStored.Config["type"] = "php"
+	phpStored.Config["phpInstanceId"] = php.ID
+	if _, err = e.Execute(ctx, model.Operation{Name: "site.apply", Resource: phpStored}, log); err != nil {
+		t.Fatal("static to PHP", err)
+	}
+	if code, body, _ := request(phpsite.Name, "/index.php"); code != 200 || body != "php-new-root" {
+		t.Fatal("PHP restoration", code, body)
 	}
 	// Managed process starts as a non-root user and is proxied on its loopback port.
 	app := newSite("managed")
@@ -200,6 +231,31 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 	}
 	if code, _, _ := request(app.Name, "/"); code != 403 {
 		t.Fatal("expired site exposed", code)
+	}
+	beforeSites := []model.Resource{}
+	for _, r := range e.states() {
+		if r.Kind == "site" {
+			beforeSites = append(beforeSites, r)
+		}
+	}
+	replacement, err := e.Execute(ctx, model.Operation{Name: "instance.switch-version", Resource: inst, Params: model.Config{"catalogId": "nginx-1.30.6", "installMethod": "binary", "maintenanceConfirmed": true}}, log)
+	if err != nil {
+		t.Fatal("in-place Nginx replacement", err)
+	}
+	if replacement.String("version") != "1.30.6" {
+		t.Fatal(replacement)
+	}
+	if code, body, _ := request(static.Name, "/"); code != 200 || body != "new-root-content" {
+		t.Fatal("site lost after replacement", code, body)
+	}
+	for _, r := range beforeSites {
+		now, er := e.load(r.ID)
+		if er != nil || now.Config.String("instanceId") != inst.ID {
+			t.Fatal("site association changed", er)
+		}
+	}
+	if _, er := os.Stat(e.nginxRecovery(inst.ID) + "/runtime/sbin/nginx"); er != nil {
+		t.Fatal("fallback not retained", er)
 	}
 	t.Log("PASS real Nginx/PHP/systemd: /www/wwwroot, protection, isolated process, rollback and expiry")
 }
