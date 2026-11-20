@@ -100,7 +100,16 @@ jobs:
       - run: ./scripts/test-log-rotation.sh
       - run: ./scripts/test-php-session.sh
       - name: Verify UFW and firewalld with independent clients on four systems
-        run: bash scripts/test-firewall-linux.sh
+        run: |
+          set -o pipefail
+          if bash scripts/test-firewall-linux.sh 2>&1 | tee /tmp/opsview-firewall-acceptance.log; then exit 0; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          detail = Path('/tmp/opsview-firewall-acceptance.log').read_text(errors='replace')[-16000:]
+          detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Firewall acceptance failure::{detail}')
+          PY
+          exit 1
       - run: make release
       - name: Verify release checksums
         run: sha256sum --check SHA256SUMS
