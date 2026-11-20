@@ -3,6 +3,13 @@ name: Publish Linux release
 on:
   push:
     tags: ['v[0-9]*.[0-9]*.[0-9]*']
+    branches: ['codex/release/**']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable release tag to build and verify
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -12,11 +19,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  target:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - id: resolve
+        name: Resolve existing release tag
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME#codex/release/}}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]] || { echo 'Invalid release tag' >&2; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
   build:
+    needs: target
+    env:
+      RELEASE_TAG: ${{ needs.target.outputs.tag }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.target.outputs.tag }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
@@ -27,12 +53,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Verify release tag
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: bash -c 'source ./install.sh; validate_version "$RELEASE_TAG"'
       - name: Verify displayed versions match tag
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           python3 - <<'PY'
           import json, os, pathlib, re
@@ -100,13 +122,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   publish:
-    needs: build
+    needs: [target, build]
+    env:
+      RELEASE_TAG: ${{ needs.target.outputs.tag }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.target.outputs.tag }}
       - uses: actions/download-artifact@v4
         with:
           name: opsview-release
@@ -115,7 +141,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -133,12 +158,14 @@ jobs:
             gh release edit "$RELEASE_TAG" --draft=false --latest
           fi
   verify-public-install:
-    needs: publish
+    needs: [target, publish]
+    env:
+      RELEASE_TAG: ${{ needs.target.outputs.tag }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.target.outputs.tag }}
       - name: Verify public installation and ov update
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: sudo env GITHUB_ACTIONS=true RELEASE_TAG="$RELEASE_TAG" python3 scripts/test-release-install.py
