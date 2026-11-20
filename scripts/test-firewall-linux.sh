@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 # Dedicated bridge and network namespaces. No host-network, host system paths,
 # privileged mode, or Docker socket is exposed to a test container.
-v6subnet="fd77:0:$(printf '%x' "$$")::/64"
+v6subnet="fd77:0:$(printf '%x' "$(( $$ & 65535 ))")::/64"
 docker network create --ipv6 --subnet "$v6subnet" "$network" >/dev/null
 index=0
 for base in "$@"; do

@@ -101,8 +101,11 @@ jobs:
       - run: ./scripts/test-php-session.sh
       - name: Verify UFW and firewalld with independent clients on four systems
         run: |
+          # CI-only fixture updates do not move the immutable product checkout.
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:scripts/test-firewall-linux.sh" > /tmp/opsview-test-firewall-linux.sh
           set -o pipefail
-          if bash scripts/test-firewall-linux.sh 2>&1 | tee /tmp/opsview-firewall-acceptance.log; then exit 0; fi
+          if bash /tmp/opsview-test-firewall-linux.sh 2>&1 | tee /tmp/opsview-firewall-acceptance.log; then exit 0; fi
           python3 - <<'PY'
           from pathlib import Path
           detail = Path('/tmp/opsview-firewall-acceptance.log').read_text(errors='replace')[-16000:]
