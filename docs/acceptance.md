@@ -729,3 +729,19 @@ rc.26 标签固定在 `1bc7ca8`，仅比上述提交补充建站目录文档。�
 删除预览绑定当前会话、修订、选项、关联计划和执行器现场，服务端执行 5 秒等待及数据库维护确认。共享资源拒绝随删；数据库加密备份校验先于站点删除，目录/日志进入文件回收站。独立加密恢复记录保存各阶段与回收 ID，元数据最后移除，保留原备份恢复入口。执行器空结果新增终止标记，兼容旧结果帧。
 
 本地 Go 全量 race/vet 通过，补充同请求并发创建、重试事务回滚、删除会话/修订/维护确认及真实空结果协议测试。前端类型检查、生产构建、13 项 Vitest 通过。完整 Playwright 首轮 59/60 通过，剩余测试因旧“创建并部署”定位失败，改用“创建”后专项通过；批量部分失败、倒计时复位、固定头尾及移动端覆盖通过。缓存导航 P95 为 66.9ms，仅代表本地生产构建夹具。GitHub 真实 Linux 和公开安装结果完成后另记，不将本地跳过的 systemd 测试描述为已验收。
+
+
+### rc.27 公开发布与线上更新完成
+
+产品标签 `v0.1.3-rc.27` 固定为 `f332f33`。[常规检查 44711000087](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44711000087) 的 check、deployment、websites 全部成功；[候选包 44711000094](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44711000094) 全部成功。[正式发布 44711131040](https://github.com/gzdzh-cn/dzh-OpsView/actions/runs/44711131040) 的 build、publish、verify-public-install 全部成功，公开包于 2026-11-20T10:08:08Z 发布。
+
+- Go 全量 race/vet、前端类型检查/构建、13 项 Vitest、源代码及实际发布二进制各 60 项 Playwright 均通过；四系统、真实 Nginx/PHP/systemd、SQL/Redis、文件、安全及安装回退检查完成。
+- 本地临时 MySQL、PostgreSQL 的站点删除恢复专项通过：备份失败保留站点/文件，回收后恢复新库并核对数据。首次本地 PostgreSQL `:18` 镜像拉取超时，仅将测试夹具覆盖为已缓存 `:18.0` 后补测通过；产品源码未替换，正式 CI 使用仓库原始夹具完成验证。
+- Linux amd64 包 SHA-256：`8e3b445c3b74627858dfeb580a5ffd36a6f521b4abadef79e4acdd4d4a6ff74c`。
+- 授权生产更新于 2026-11-20 18:10:12（Asia/Shanghai）完成，从 rc.26 升级 rc.27。更新前没有 queued/running 变更任务，下载校验及连续三次健康检查通过。
+- 更新前新备份 `/www/backup/opsview-panel/20261120T101000.835922399.ovp`；先前同轮备份 `/www/backup/opsview-panel/20261120T092959.774982716.ovp` 已恢复到独立目录 `/var/lib/opsview/restore-verified-6h0ey_yz/panel`，schema 6、完整性及配套密钥核对通过。
+- 更新器配套快照 `/var/lib/opsview/updates/20261120T101008Z-80883`。与其比较确认原有 2 个实例、2 个站点的 ID、修订及加密配置完全保留，管理员密文和主密钥一致，运行配置 HTTP/18790 与关闭安全入口状态保留；面板及执行器 active，NRestarts=0。
+- 生产读取 44 个静态 JS/CSS 资产及全部 SPA 路由正常；Chromium 桌面/移动登录页无 JS 或网络错误，管理员未重置。实际安装执行器通过 Unix Socket 只读列出服务器根目录，受保护运行目录隐藏，未改动业务文件。
+- 当前有效站点 `test2.goframe.com.cn` 在本机 Host 探测和公网探测均返回 200。旧 `test.goframe.com.cn` 为升级前已存在的残留面板记录：17:29 的独立备份不含其 Nginx 配置而含 test2 配置，旧执行器记录也已不存在；本次未擅自重建或删除业务数据。新删除预览可核对现场后清理残留，不能把该旧 404 记为升级回归。
+
+回退 rc.26 使用上述同次更新完整快照，停服后配套恢复程序、元数据、运行配置和单元。业务回收数据另按对应回收站恢复，不因旧元数据恢复自动撤销。
