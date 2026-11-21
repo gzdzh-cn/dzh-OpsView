@@ -8,7 +8,9 @@ import (
 	"opsview/internal/model"
 	"opsview/internal/security"
 	"os"
+	"os/user"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -90,11 +92,80 @@ func (e *Engine) inspectSiteDeletion(r model.Resource) (model.Config, error) {
 			}
 		}
 	}
-	userPolicy := "已有或共享用户不随站点删除"
-	if r.Config.String("user") == "isolated" || r.Config.String("user") == "" {
-		userPolicy = "保留独立用户；文件彻底清理后检查依赖再清理"
+	inspection := model.Config{"directory": root, "directoryReason": reason, "identity": identity, "configHash": confHash, "legacyUnits": legacyUnits, "phase": phase, "recoveryOptions": recoveryOptions}
+	if r.Config.String("type") == "managed" {
+		if err := e.inspectSiteAccountDeletion(r, inspection); err != nil {
+			return nil, err
+		}
 	}
-	return model.Config{"directory": root, "directoryReason": reason, "identity": identity, "configHash": confHash, "legacyUnits": legacyUnits, "phase": phase, "recoveryOptions": recoveryOptions, "runtimeUser": r.Config.String("runtimeUser"), "userPolicy": userPolicy, "firewallPolicy": "仅清理本项目创建且无其他依赖的端口规则"}, nil
+	return inspection, nil
+}
+
+func (e *Engine) inspectSiteAccountDeletion(r model.Resource, inspection model.Config) error {
+	name := r.Config.String("runtimeUser")
+	if name == "" && r.Config.String("user") != "isolated" {
+		name = r.Config.String("user")
+	}
+	inspection["runtimeUser"] = name
+	inspection["userPolicy"] = "已有、共享或未经归属核验的用户不随站点删除"
+	if u, err := user.Lookup(name); err == nil {
+		inspection["runtimeUID"] = u.Uid
+		inspection["runtimeGID"] = u.Gid
+		if g, err := user.LookupGroupId(u.Gid); err == nil {
+			inspection["runtimeGroup"] = g.Name
+		}
+	}
+	e.siteUsersMu.Lock()
+	registry, err := e.readSiteAccounts()
+	e.siteUsersMu.Unlock()
+	if err != nil {
+		return err
+	}
+	for _, a := range registry.Accounts {
+		if a.Site == r.ID && a.Phase != "deleted" {
+			inspection["runtimeUser"] = a.Name
+			inspection["runtimeGroup"] = a.Group
+			inspection["runtimeUID"] = a.UID
+			inspection["runtimeGID"] = a.GID
+			inspection["accountPhase"] = a.Phase
+			inspection["accountReason"] = a.Reason
+			inspection["userPolicy"] = "保留独立用户及专属组，维持保留/回收文件的所有权；彻底清理后再检查依赖"
+			if u, er := user.Lookup(a.Name); er != nil || !siteAccountIdentity(u, a) {
+				inspection["accountReason"] = "账号身份尚未核实或已被外部修改，禁止自动清理"
+			}
+		}
+	}
+	e.firewallMu.Lock()
+	ports, err := e.sitePortRecords()
+	e.firewallMu.Unlock()
+	if err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(ports))
+	for key, row := range ports {
+		if row != nil && row.Sites[r.ID] {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	rules := []model.Config{}
+	for _, key := range keys {
+		row := ports[key]
+		policy := "保留外部规则，仅解除本项目关联"
+		if row.Owned {
+			policy = "执行时重新核对归属与修订，匹配后清理"
+			if len(row.Sites) > 1 {
+				policy = "其他项目仍在使用，保留规则并解除本项目关联"
+			}
+		}
+		rules = append(rules, model.Config{"backend": row.Backend, "ports": row.Rule.Ports, "family": row.Rule.Family, "policy": policy, "revision": row.Rule.Revision})
+	}
+	inspection["portRules"] = rules
+	inspection["firewallPolicy"] = "没有关联的项目端口规则"
+	if len(rules) > 0 {
+		inspection["firewallPolicy"] = "仅清理本项目创建且无其他依赖的端口规则"
+	}
+	return nil
 }
 
 // Only an exact unit generated for this site and its registered PHP instance can

@@ -209,9 +209,19 @@ async function remove() {
       </template>
       <div v-if="row.inspection?.userPolicy" class="form-help">
         运行用户：{{ row.inspection.runtimeUser || '未登记' }}；{{ row.inspection.userPolicy }}
+        <template v-if="row.inspection.runtimeGroup">
+          · 用户组 {{ row.inspection.runtimeGroup }}（UID {{ row.inspection.runtimeUID }} / GID
+          {{ row.inspection.runtimeGID }}）
+        </template>
+      </div>
+      <div v-if="row.inspection?.accountReason" class="form-help">
+        账号保留原因：{{ row.inspection.accountReason }}
       </div>
       <div v-if="row.inspection?.firewallPolicy" class="form-help">
         {{ row.inspection.firewallPolicy }}
+      </div>
+      <div v-for="(rule, index) in row.inspection?.portRules || []" :key="index" class="form-help">
+        {{ rule.backend }} · TCP {{ rule.ports }} · {{ rule.family }}：{{ rule.policy }}
       </div>
       <div v-if="row.services?.length" class="form-help">
         停止并移除：{{ row.services.join('、') }}

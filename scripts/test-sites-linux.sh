@@ -9,7 +9,12 @@ mkdir -p dist/tests
 if sudo env GITHUB_ACTIONS=true OPSVIEW_SITE_SMOKE=true OPSVIEW_RUNTIME_SMOKE=true OPSVIEW_SITE_FIREWALL_SMOKE=true dist/tests/sites.test -test.run '^TestLinux(WebsiteCreation|SiteRuntimePolicy|SitePermissionRollback|SitePortOwnership)$' -test.v -test.timeout=10m 2>&1 | tee dist/tests/sites-acceptance.log; then exit 0; fi
 python3 - <<'PYTHON'
 from pathlib import Path
-detail = Path('dist/tests/sites-acceptance.log').read_text(errors='replace')[-3000:]
+lines = Path('dist/tests/sites-acceptance.log').read_text(errors='replace').splitlines()
+failures = set()
+for i, line in enumerate(lines):
+    if '--- FAIL:' in line or '.go:' in line and not any(x in line for x in ('Created symlink', 'Removed "')):
+        failures.update(range(max(0, i - 2), min(len(lines), i + 2)))
+detail = '\n'.join(lines[i] for i in sorted(failures))[-14000:]
 detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
 print(f'::error title=Website acceptance failure::{detail}')
 PYTHON
