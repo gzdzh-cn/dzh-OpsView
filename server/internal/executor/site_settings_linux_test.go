@@ -51,7 +51,7 @@ func testWebsiteSettings(t *testing.T, e *Engine, inst model.Resource) {
 		}
 	}
 	for path, content := range map[string]string{"index.html": "settings-root", "secure/index.html": "authenticated-content", "private/index.html": "must-stay-private", "docs/index.html": "child-directory", "style.css": "body{color:red}", "image.jpg": "test-image"} {
-		if err = os.WriteFile(root+"/"+path, []byte(content), 0644); err != nil {
+		if err = security.WriteAtomic(root+"/"+path, []byte(content), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
