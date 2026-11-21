@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/security"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -378,31 +378,26 @@ func (e *Engine) siteAccountDependency(ctx context.Context, a *siteAccount) erro
 			return err
 		}
 	}
-	// No unknown owned files may become orphaned. This is a read-only, bounded
-	// scan; if a filesystem is unreadable or time runs out the account is kept.
-	return filepath.WalkDir("/", func(p string, d fs.DirEntry, er error) error {
-		if ctx.Err() != nil {
-			return errors.New("文件归属检查超时，账号保留待重试")
-		}
-		if er != nil {
-			return er
-		}
-		if p == "/proc" || p == "/sys" || p == "/dev" || p == "/run" {
-			return filepath.SkipDir
-		}
-		st, er := d.Info()
-		if os.IsNotExist(er) {
-			return nil
-		}
-		if er != nil {
-			return er
-		}
-		uid, gid, _ := fileOwner(st)
-		if strconv.Itoa(uid) == a.UID || strconv.Itoa(gid) == a.GID {
-			return fmt.Errorf("仍有账号或专属组所有的文件：%s", p)
-		}
-		return nil
-	})
+	return scanSiteAccountFiles(ctx, a.UID, a.GID)
+}
+
+// GNU find performs the same no-follow ownership scan without a Go allocation
+// and stat round trip per entry. Large build/runtime trees must not routinely
+// exhaust the cleanup budget. No shell, no writes, and any incomplete scan keeps
+// the account. Do not use -xdev: data on separately mounted disks also counts.
+func scanSiteAccountFiles(ctx context.Context, uid, gid string) error {
+	cmd := exec.CommandContext(ctx, "find", "-P", "/", "-ignore_readdir_race", "(", "-path", "/proc", "-o", "-path", "/sys", "-o", "-path", "/dev", "-o", "-path", "/run", ")", "-prune", "-o", "(", "-uid", uid, "-o", "-gid", gid, ")", "-print", "-quit")
+	b, err := cmd.Output()
+	if ctx.Err() != nil {
+		return errors.New("文件归属检查超时，账号保留待重试")
+	}
+	if err != nil {
+		return fmt.Errorf("文件归属检查未完整完成，账号保留待重试：%w", err)
+	}
+	if p := strings.TrimSpace(string(b)); p != "" {
+		return fmt.Errorf("仍有账号或专属组所有的文件：%s", p)
+	}
+	return nil
 }
 
 func siteAccountIdentity(u *user.User, a *siteAccount) bool {

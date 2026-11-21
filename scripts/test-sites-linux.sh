@@ -13,7 +13,10 @@ lines = Path('dist/tests/sites-acceptance.log').read_text(errors='replace').spli
 for i, line in enumerate(lines):
     if '--- FAIL:' not in line:
         continue
-    detail = '\n'.join(lines[max(0, i - 8):i + 2])[-3000:]
+    name = line.split('--- FAIL:', 1)[1].strip().split()[0]
+    start = next((j for j, value in enumerate(lines) if value.strip() == '=== RUN   ' + name), max(0, i - 8))
+    end = next((j for j in range(start + 1, i) if lines[j].startswith('=== RUN')), i)
+    detail = '\n'.join(lines[start:end][-12:] + [line])[-3000:]
     detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
     print(f'::error title=Website acceptance failure::{detail}')
 PYTHON
