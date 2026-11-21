@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -252,6 +254,58 @@ func TestLinuxSitePermissionRollback(t *testing.T) {
 	defer output(ctx, "umount", dir+"/mounted")
 	if _, _, err = e.inspectSitePermissions(ctx, r); err == nil {
 		t.Fatal("mount boundary accepted")
+	}
+}
+
+func TestLinuxSiteAccountCleanupBudget(t *testing.T) {
+	if os.Getenv("OPSVIEW_RUNTIME_SMOKE") != "true" || os.Getenv("GITHUB_ACTIONS") != "true" {
+		t.Skip("disposable opted-in Linux host required")
+	}
+	e := &Engine{Root: t.TempDir()}
+	r := model.Resource{ID: security.ID(), Config: model.Config{"user": "isolated", "documentRoot": "/www/wwwroot/cleanup-" + security.ID()}}
+	u, err := e.ensureSiteAccount(context.Background(), r, func(s string) { t.Log(s) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output(context.Background(), "groupdel", "--", u.Username)
+	defer output(context.Background(), "userdel", "--", u.Username)
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err = e.cleanupSiteAccounts(canceled); err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := e.readSiteAccounts()
+	if _, err = user.Lookup(u.Username); err != nil || !strings.Contains(registry.Accounts[u.Username].Reason, "待重试") {
+		t.Fatal("an incomplete ownership scan must preserve the account", err)
+	}
+	file, err := os.CreateTemp("/var/tmp", "opsview-owned-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	defer os.Remove(file.Name())
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+	if err = os.Chown(file.Name(), uid, gid); err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithTimeout(context.Background(), time.Minute)
+	defer stop()
+	if err = e.cleanupSiteAccounts(ctx); err != nil {
+		t.Fatal(err)
+	}
+	registry, _ = e.readSiteAccounts()
+	if _, err = user.Lookup(u.Username); err != nil || !strings.Contains(registry.Accounts[u.Username].Reason, file.Name()) {
+		t.Fatal("an external owned file must preserve the account", err)
+	}
+	if err = os.Remove(file.Name()); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.cleanupSiteAccounts(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = user.Lookup(u.Username); err == nil {
+		t.Fatal("retry did not remove the unreferenced owned account")
 	}
 }
 

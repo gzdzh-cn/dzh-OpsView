@@ -389,6 +389,9 @@ func scanSiteAccountFiles(ctx context.Context, uid, gid string) error {
 	cmd := exec.CommandContext(ctx, "find", "-P", "/", "-ignore_readdir_race", "(", "-path", "/proc", "-o", "-path", "/sys", "-o", "-path", "/dev", "-o", "-path", "/run", ")", "-prune", "-o", "(", "-uid", uid, "-o", "-gid", gid, ")", "-print", "-quit")
 	b, err := cmd.Output()
 	if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return errors.New("文件归属检查已取消，账号保留待重试")
+		}
 		return errors.New("文件归属检查超时，账号保留待重试")
 	}
 	if err != nil {

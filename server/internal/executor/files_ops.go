@@ -124,6 +124,9 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 	return e.fileTrashContext(context.Background(), p)
 }
 func (e *Engine) fileTrashContext(parent context.Context, p model.Config) (model.Config, error) {
+	if err := parent.Err(); err != nil {
+		return nil, err
+	}
 	index, err := e.trashIndex()
 	if err != nil {
 		return nil, err
@@ -142,6 +145,9 @@ func (e *Engine) fileTrashContext(parent context.Context, p model.Config) (model
 			return nil, errors.New("永久清空需要明确确认")
 		}
 		for id, item := range index {
+			if err = parent.Err(); err != nil {
+				return nil, err
+			}
 			paths = append(paths, item.Original)
 			if err = removeTrashEntry(item); err != nil {
 				return nil, err
