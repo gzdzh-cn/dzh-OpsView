@@ -61,6 +61,9 @@ func (c *Controller) bindSite(r *model.Resource) error {
 	if i.Config.Bool("installationIncomplete") || (i.Status != "ready" && i.Status != "running" && i.Status != "stopped") {
 		return errors.New("Nginx 尚未完成安装，请检查实例")
 	}
+	if _, err := logic.SiteBindings(r.Config, i.Config.Int("port")); err != nil {
+		return err
+	}
 	r.Config["instanceId"] = i.ID
 	if r.Config.String("category") == "" {
 		r.Config["category"] = "默认分类"
@@ -122,6 +125,10 @@ func (c *Controller) createSite(w http.ResponseWriter, r *http.Request) {
 	}
 	if site.Config.String("rootDirectory") == "" && site.Config.String("type") != "proxy" {
 		site.Config["rootDirectory"] = filepath.Join(c.panelPreferences().String("siteDirectory"), filepath.Base(logic.DefaultSiteRoot(site.Config.String("domains"))))
+	}
+	if err := logic.HashSiteAccessPasswords(site.Config); err != nil {
+		fail(w, 400, err.Error())
+		return
 	}
 	if err := c.validate(&site); err != nil {
 		fail(w, 400, err.Error())
@@ -231,6 +238,10 @@ func (c *Controller) saveSiteSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	security.PreserveMasked(p.Config, old)
+	if err = logic.HashSiteAccessPasswords(p.Config); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
 	site.Name = p.Name
 	site.Config = p.Config
 	if err = c.validate(&site); err != nil {

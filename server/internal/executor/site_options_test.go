@@ -31,7 +31,7 @@ func TestSiteRuntimeDirectoryAndProxyRendering(t *testing.T) {
 			t.Fatal(upstream)
 		}
 	}
-	for _, want := range []string{"location /api/", "proxy_read_timeout 120s;", "proxy_set_header Host api.example.com;", "proxy_set_header Upgrade $http_upgrade;", "proxy_ssl_name api.example.com;"} {
+	for _, want := range []string{"location ^~ /api/", "proxy_read_timeout 120s;", "proxy_set_header Host api.example.com;", "proxy_set_header Upgrade $http_upgrade;", "proxy_ssl_name api.example.com;"} {
 		if !strings.Contains(locations, want) {
 			t.Fatal(locations)
 		}

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/outbound"
 	"opsview/internal/scheduling"
@@ -358,7 +360,26 @@ func (e *Engine) scheduleProbe(ctx context.Context, p model.Config) (model.Confi
 	if target.Kind != "site" {
 		return nil, errors.New("目标不是网站")
 	}
-	domains := strings.Fields(target.Config.String("domains"))
+	inst, err := e.load(target.Config.String("instanceId"))
+	if err != nil {
+		return nil, err
+	}
+	bindings, err := logic.SiteBindings(target.Config, inst.Config.Int("port"))
+	if err != nil {
+		return nil, err
+	}
+	domains := []string{}
+	if len(bindings) > 0 {
+		host := bindings[0].Host
+		if strings.HasPrefix(host, "*.") {
+			return nil, errors.New("可用性告警需要具体域名作为主域名")
+		}
+		port := bindings[0].Port
+		if target.Config.Bool("tls") {
+			port = 443
+		}
+		domains = append(domains, net.JoinHostPort(host, strconv.Itoa(port)))
+	}
 	if len(domains) == 0 {
 		return nil, errors.New("网站没有域名")
 	}

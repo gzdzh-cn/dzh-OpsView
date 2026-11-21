@@ -88,13 +88,17 @@ func (c *Controller) siteRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := r.PathValue("view")
-	if view != "traffic" && view != "logs" && view != "security" && view != "process-logs" {
+	if view != "traffic" && view != "logs" && view != "security" && view != "process-logs" && view != "configuration" && view != "directories" {
 		fail(w, 404, "网站接口不存在")
+		return
+	}
+	if view == "logs" && r.URL.Query().Get("kind") != "" && r.URL.Query().Get("kind") != "access" && r.URL.Query().Get("kind") != "error" {
+		fail(w, 400, "日志类型无效")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	data, err := c.App.Executor.Execute(ctx, model.Operation{Name: "site." + view, Resource: resource, Params: model.Config{}}, func(string) {})
+	data, err := c.App.Executor.Execute(ctx, model.Operation{Name: "site." + view, Resource: resource, Params: model.Config{"kind": r.URL.Query().Get("kind")}}, func(string) {})
 	if err != nil {
 		fail(w, 422, err.Error())
 		return

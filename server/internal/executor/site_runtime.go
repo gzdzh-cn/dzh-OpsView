@@ -11,6 +11,7 @@ import (
 	"opsview/internal/software"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -113,6 +114,19 @@ func (e *Engine) setupSitePHP(ctx context.Context, r model.Resource, base string
 		}
 	} else if statErr != nil {
 		return statErr
+	}
+	// Keep existing tuning while replacing only the explicit OpsView isolation block.
+	fpmPath := base + "/conf/php-fpm.conf"
+	currentFPM, err := os.ReadFile(fpmPath)
+	if err != nil {
+		return err
+	}
+	fpmText := regexp.MustCompile(`(?s)\n; opsview-isolation-begin\n.*?; opsview-isolation-end\n`).ReplaceAllString(string(currentFPM), "")
+	if r.Config.Bool("phpIsolation") {
+		fpmText += "\n; opsview-isolation-begin\nphp_admin_value[open_basedir] = " + siteDocumentRoot(r, base) + ":" + base + "/sessions:/tmp\n; opsview-isolation-end\n"
+	}
+	if err = security.WriteAtomic(fpmPath, []byte(fpmText), 0644); err != nil {
+		return err
 	}
 	runtime := filepath.Join(e.Root, "instances", php.ID, "runtime")
 	if _, err = output(ctx, runtime+"/sbin/php-fpm", "-t", "-y", base+"/conf/php-fpm.conf", "-c", base+"/conf/php.ini"); err != nil {

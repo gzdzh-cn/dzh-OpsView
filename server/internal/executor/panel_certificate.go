@@ -10,12 +10,12 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/http01"
 	"net"
+	"opsview/internal/logic"
 	"opsview/internal/model"
 	"opsview/internal/runtimeconfig"
 	"opsview/internal/security"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -60,7 +60,7 @@ func (e *Engine) panelCertificate(ctx context.Context, p model.Config, log func(
 		if site.Kind != "site" {
 			continue
 		}
-		for _, domain := range strings.Fields(site.Config.String("domains")) {
+		for _, domain := range logic.SiteDomainNames(site.Config) {
 			if domain == host {
 				if inst, err := e.load(site.Config.String("instanceId")); err == nil && inst.Config.Int("port") == 80 && inst.Status == "ready" {
 					provider = webroot{filepath.Join(e.Root, "sites", site.ID, "acme", ".well-known", "acme-challenge")}

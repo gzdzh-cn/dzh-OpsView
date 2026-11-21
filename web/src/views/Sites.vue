@@ -14,8 +14,13 @@ import SiteCreate from '../components/SiteCreate.vue'
 import SiteDelete from '../components/SiteDelete.vue'
 import { Refresh } from '@element-plus/icons-vue'
 import SiteTools from '../components/SiteTools.vue'
-import CodeEditor from '../components/CodeEditor.vue'
 import SiteRuntimeOptions from '../components/SiteRuntimeOptions.vue'
+import SiteDomainManager from '../components/SiteDomainManager.vue'
+import SitePolicyFields from '../components/SitePolicyFields.vue'
+import SiteConfigViewer from '../components/SiteConfigViewer.vue'
+import SiteAlerts from '../components/SiteAlerts.vue'
+import SiteSafety from '../components/SiteSafety.vue'
+import { observeSiteTask } from '../lib/siteTask'
 const route = useRoute()
 const reads = new AbortController()
 onBeforeUnmount(() => reads.abort())
@@ -39,6 +44,8 @@ const panel = usePanel(),
   traffic = ref<Record<string, Config>>({}),
   logs = ref(''),
   trafficPeriod = ref('24h'),
+  logKind = ref('access'),
+  directories = ref<string[]>([]),
   cert = ref({ certificate: '', privateKey: '' })
 if (route.query.tab) tab.value = String(route.query.tab)
 const nginx = computed(() =>
@@ -193,6 +200,7 @@ async function switchPage(key: string) {
   }
   page.value = key
   if (['logs', 'process'].includes(key)) await loadLogs()
+  if (key === 'subdirectories') await loadDirectories()
 }
 function phpLabel(row: Resource) {
   if (row.config.type === 'static') return '静态'
@@ -206,6 +214,7 @@ async function open(row: Resource) {
   draft.value = JSON.parse(JSON.stringify(row.config))
   draftName.value = row.name
   baseline.value = JSON.stringify([draftName.value, draft.value])
+  directories.value = []
   settingsOpen.value = true
   page.value = 'general'
   error.value = ''
@@ -254,32 +263,45 @@ function appPort(row: Resource) {
   if (row.config.type === 'managed') return row.config.port || '—'
   return panel.resources.find((r) => r.id === row.config.legacyAppId)?.config.port || '—'
 }
-async function save() {
-  if (!selected.value || saving.value) return
+async function save(): Promise<boolean> {
+  if (!selected.value || saving.value) return false
+  const id = selected.value.id
   try {
     saving.value = true
     error.value = ''
-    const queued = await post('/sites/' + selected.value.id + '/settings', {
+    const queued = await post('/sites/' + id + '/settings', {
       name: draftName.value,
       config: draft.value,
       revision: selected.value.revision,
     })
-    while (!reads.signal.aborted) {
-      const task = await api('/tasks/' + queued.taskId, { signal: reads.signal })
-      if (task.state === 'succeeded') break
-      if (['failed', 'cancelled', 'interrupted'].includes(task.state))
-        throw new Error(task.error || '应用未完成，草稿已保留')
-      await new Promise((resolve) => setTimeout(resolve, 800))
-    }
-    if (reads.signal.aborted) return
-    baseline.value = JSON.stringify([draftName.value, draft.value])
-    settingsOpen.value = false
+    const task = await observeSiteTask(queued.taskId, reads.signal)
+    if (task.state !== 'succeeded') throw new Error(task.error || '应用未完成，草稿已保留')
     await panel.refresh(['resources', 'tasks'])
+    if (panel.errors.resources)
+      throw new Error('配置已应用，列表更新失败：' + panel.errors.resources + '；请刷新后核对')
+    const current = panel.resources.find((r) => r.id === id)
+    if (!current) throw new Error('配置已应用，站点记录暂不可查询；请刷新后核对')
+    selected.value = current
+    draft.value = JSON.parse(JSON.stringify(current.config))
+    draftName.value = current.name
+    baseline.value = JSON.stringify([draftName.value, draft.value])
     ElMessage.success('配置已应用')
+    return true
   } catch (e) {
-    error.value = errorText(e)
+    if (!isAbort(e)) error.value = errorText(e)
+    return false
   } finally {
     saving.value = false
+  }
+}
+async function loadDirectories() {
+  const id = selected.value?.id
+  if (!id) return
+  try {
+    const result = await api(`/sites/${id}/directories`, { signal: reads.signal })
+    if (selected.value?.id === id) directories.value = result.directories || []
+  } catch (e) {
+    if (!isAbort(e) && selected.value?.id === id) error.value = errorText(e)
   }
 }
 async function run(row: Resource, op: string, params: Config = {}) {
@@ -296,17 +318,26 @@ async function run(row: Resource, op: string, params: Config = {}) {
     if (e !== 'cancel' && e !== 'close') error.value = errorText(e)
   }
 }
+let logSequence = 0
 async function loadLogs() {
-  if (!selected.value) return
+  const id = selected.value?.id
+  if (!id) return
+  const sequence = ++logSequence
+  logs.value = ''
   try {
-    logs.value =
-      (
-        await api(
-          `/sites/${selected.value.id}/${page.value === 'process' ? 'process-logs' : 'logs'}`,
-        )
-      ).content || '暂无日志'
+    const result = await api(
+      `/sites/${id}/${page.value === 'process' ? 'process-logs' : 'logs?kind=' + logKind.value}`,
+      { signal: reads.signal },
+    )
+    if (
+      sequence === logSequence &&
+      selected.value?.id === id &&
+      ['logs', 'process'].includes(page.value)
+    )
+      logs.value = result.content || '暂无日志'
   } catch (e) {
-    error.value = errorText(e)
+    if (!isAbort(e) && sequence === logSequence && selected.value?.id === id)
+      error.value = errorText(e)
   }
 }
 </script>
@@ -337,13 +368,6 @@ async function loadLogs() {
           批量删除
           <span v-if="checked.length">（{{ checked.length }}）</span>
         </el-button>
-        <el-button
-          :icon="Refresh"
-          :loading="refreshing"
-          aria-label="刷新网站列表"
-          title="刷新网站列表"
-          @click="refreshSites"
-        />
         <SiteTools
           :nginx="nginx"
           @settings="
@@ -357,8 +381,16 @@ async function loadLogs() {
           <el-option v-for="v in categories" :key="v" :label="v" :value="v" />
         </el-select>
         <el-button @click="categoryOpen = true">分类管理</el-button>
-        <el-input v-model="filter" placeholder="搜索名称、域名或备注" clearable />
-        <span>{{ rows.length }} 个项目</span>
+        <div class="site-search">
+          <el-input v-model="filter" placeholder="搜索名称、域名或备注" clearable />
+          <el-button
+            :icon="Refresh"
+            :loading="refreshing"
+            aria-label="刷新网站列表"
+            title="刷新网站列表"
+            @click="refreshSites"
+          />
+        </div>
       </div>
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
       <div class="surface site-table">
@@ -537,21 +569,35 @@ async function loadLogs() {
       <aside>
         <button
           v-for="[key, label] in [
-            ['general', '域名与基础'],
+            ['general', '域名管理'],
             ...(localSite
               ? [
+                  ['subdirectories', '子目录绑定'],
                   ['directory', '网站目录'],
-                  ['runtime', '运行环境'],
-                  ['routing', '默认文档与伪静态'],
                 ]
-              : [['runtime', draft.type === 'proxy' ? '反向代理' : '进程配置']]),
-            ['advanced', '高级配置'],
-            ['security', '网站安全'],
+              : []),
+            ['access', '访问限制'],
+            ['limits', '流量限制'],
+            ...(localSite
+              ? [
+                  ['routing', '伪静态'],
+                  ['documents', '默认文档'],
+                ]
+              : []),
+            ['advanced', '配置文件'],
             ['ssl', 'SSL 证书'],
+            ['runtime', localSite ? 'PHP' : draft.type === 'proxy' ? '反向代理' : '进程配置'],
+            ['redirects', '重定向'],
+            ...(localSite ? [['proxy-rules', '反向代理']] : []),
+            ['hotlink', '防盗链'],
+            ['tamper', '防篡改'],
+            ['security', '网站安全'],
+            ['logs', '网站日志'],
+            ['alerts', '网站告警'],
+            ['other', '其他设置'],
             ['traffic', '流量统计'],
             ['expiry', '到期时间'],
-            ['note', '备注'],
-            ['logs', '网站日志'],
+            ['note', '分类与备注'],
             ...(selected?.config.type === 'managed' ? [['process', '应用进程']] : []),
             ['backup', '网站备份'],
           ]"
@@ -564,33 +610,55 @@ async function loadLogs() {
       </aside>
       <section class="ops-settings-content">
         <el-alert v-if="error" :title="error" type="error" :closable="false" />
-        <template v-if="page === 'general'">
-          <el-form label-width="104px">
-            <el-form-item label="项目名称">
-              <el-input v-model="draftName" maxlength="63" />
-            </el-form-item>
-            <el-form-item label="绑定域名">
-              <el-input v-model="draft.domains" type="textarea" :rows="4" />
-            </el-form-item>
-            <el-form-item label="网站分类">
-              <el-select v-model="draft.category" placeholder="默认分类">
-                <el-option v-for="v in categories" :key="v" :value="v" :label="v" />
-              </el-select>
-            </el-form-item>
-            <el-form-item v-if="draft.databaseId" label="关联数据库">
-              <span>
-                {{
-                  panel.resources.find((r) => r.id === draft.databaseId)?.name || draft.databaseId
-                }}
-              </span>
-              <el-button link @click="$router.push('/databases')">管理数据库</el-button>
-            </el-form-item>
-          </el-form>
+        <template v-if="page === 'general' || page === 'subdirectories'">
+          <SiteDomainManager
+            v-if="selected"
+            :key="selected.id + page"
+            v-model="draft"
+            :committed="selected.config"
+            :site-id="selected.id"
+            :port="
+              panel.resources.find((r) => r.id === selected?.config.instanceId)?.config.port || 80
+            "
+            :busy="saving"
+            :child="page === 'subdirectories'"
+            :directories="directories"
+            :apply="save"
+          />
+        </template>
+        <template
+          v-else-if="
+            ['access', 'limits', 'redirects', 'proxy-rules', 'hotlink', 'other'].includes(page)
+          "
+        >
+          <SitePolicyFields v-model="draft" :key="selected?.id + page" :page="page" />
+        </template>
+        <template v-else-if="page === 'alerts' && selected">
+          <SiteAlerts :key="selected.id" :site="selected" />
+        </template>
+        <template v-else-if="page === 'tamper'">
+          <el-alert title="当前未集成内核防篡改执行器" type="info" :closable="false" />
+          <p class="form-help">
+            宝塔此项依赖付费内核插件。普通目录权限不能替代内核防篡改；本版本不提供无法验证的开关。可在文件管理中核对权限，并配置独立备份。
+          </p>
+          <el-button @click="page = 'backup'">查看网站备份</el-button>
         </template>
         <template v-else-if="page === 'directory'">
           <el-form label-width="104px">
             <el-form-item label="根目录">
               <el-input :model-value="draft.documentRoot || draft.rootDirectory" readonly />
+              <small class="form-help">根目录不在此移动，避免目录与站点状态不一致。</small>
+              <el-button
+                link
+                @click="
+                  $router.push({
+                    path: '/files',
+                    query: { path: draft.documentRoot || draft.rootDirectory },
+                  })
+                "
+              >
+                打开文件管理
+              </el-button>
             </el-form-item>
             <el-form-item label="运行目录">
               <el-input
@@ -598,10 +666,51 @@ async function loadLogs() {
                 placeholder="相对网站根目录，例如 public"
               />
             </el-form-item>
+            <el-form-item label="访问日志">
+              <el-switch
+                :model-value="!draft.accessLogDisabled"
+                @update:model-value="draft.accessLogDisabled = !$event"
+              />
+            </el-form-item>
           </el-form>
         </template>
         <template v-else-if="page === 'routing'">
-          <el-form label-width="104px"><SiteRuntimeOptions v-model="draft" /></el-form>
+          <el-form label-width="104px">
+            <el-form-item label="伪静态模板">
+              <el-select v-model="draft.rewriteTemplate" placeholder="默认路由规则">
+                <el-option label="直接文件访问" value="none" />
+                <el-option v-if="draft.type === 'static'" label="单页应用" value="spa" />
+                <template v-else>
+                  <el-option
+                    v-for="[value, label] in [
+                      ['front-controller', 'PHP 前端控制器'],
+                      ['wordpress', 'WordPress'],
+                      ['thinkphp', 'ThinkPHP'],
+                      ['laravel', 'Laravel（运行目录 public）'],
+                    ]"
+                    :key="value"
+                    :value="value"
+                    :label="label"
+                  />
+                </template>
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <p class="form-help">
+            模板生成受控路由，应用时检查 Nginx 配置；Laravel 请在网站目录中设置运行目录 public。
+          </p>
+        </template>
+        <template v-else-if="page === 'documents'">
+          <el-form label-position="top">
+            <el-form-item label="默认文档（每行一个，按顺序查找）">
+              <el-input
+                v-model="draft.defaultDocuments"
+                type="textarea"
+                :rows="8"
+                :placeholder="draft.type === 'php' ? 'index.php\nindex.html' : 'index.html'"
+              />
+            </el-form-item>
+          </el-form>
         </template>
         <template v-else-if="page === 'runtime'">
           <el-form label-width="104px">
@@ -623,6 +732,19 @@ async function loadLogs() {
                 />
               </el-select>
             </el-form-item>
+            <template v-if="draft.type === 'php'">
+              <el-form-item label="目录隔离">
+                <el-switch v-model="draft.phpIsolation" />
+                <small class="form-help">限制 PHP 读取项目、会话及临时目录，保存后生效。</small>
+              </el-form-item>
+              <el-form-item label="上传禁用 PHP">
+                <el-switch v-model="draft.denyUploadPHP" />
+              </el-form-item>
+              <p class="form-help">
+                每站点独立 FPM 用户和文件 Session 目录；Redis/Memcached Session
+                沿用已配置的站点命名空间。
+              </p>
+            </template>
             <template v-if="['proxy', 'app'].includes(draft.type)">
               <el-form-item label="目标地址"><el-input v-model="draft.upstream" /></el-form-item>
               <el-form-item label="发送 Host"><el-input v-model="draft.proxyHost" /></el-form-item>
@@ -655,25 +777,15 @@ async function loadLogs() {
             </template>
           </el-form>
         </template>
-        <template v-else-if="page === 'advanced'">
-          <el-form label-position="top">
-            <el-form-item label="Nginx 高级参数">
-              <CodeEditor v-model="draft.advanced" />
-            </el-form-item>
-          </el-form>
+        <template v-else-if="page === 'advanced' && selected">
+          <SiteConfigViewer
+            :key="selected.id + '-' + selected.revision"
+            v-model="draft"
+            :site-id="selected.id"
+          />
         </template>
-        <template v-else-if="page === 'security'">
-          <el-form label-width="104px">
-            <el-form-item label="安全响应头">
-              <el-switch v-model="draft.securityHeaders" />
-            </el-form-item>
-            <el-form-item label="禁止嵌入框架">
-              <el-switch v-model="draft.denyFrames" />
-            </el-form-item>
-            <el-form-item label="上传目录禁用 PHP">
-              <el-switch v-model="draft.denyUploadPHP" />
-            </el-form-item>
-          </el-form>
+        <template v-else-if="page === 'security' && selected">
+          <SiteSafety :key="selected.id" :site-id="selected.id" />
         </template>
         <template v-else-if="page === 'ssl'">
           <p>当前证书：{{ date(selected?.config.certificateExpires) }}</p>
@@ -733,6 +845,24 @@ async function loadLogs() {
           </DialogActions>
         </template>
         <template v-else-if="page === 'note'">
+          <el-form label-width="104px">
+            <el-form-item label="项目名称">
+              <el-input v-model="draftName" maxlength="63" />
+            </el-form-item>
+            <el-form-item label="网站分类">
+              <el-select v-model="draft.category" placeholder="默认分类">
+                <el-option v-for="v in categories" :key="v" :value="v" :label="v" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="draft.databaseId" label="关联数据库">
+              <span>
+                {{
+                  panel.resources.find((r) => r.id === draft.databaseId)?.name || draft.databaseId
+                }}
+              </span>
+              <el-button link @click="$router.push('/databases')">管理数据库</el-button>
+            </el-form-item>
+          </el-form>
           <el-input v-model="draft.note" type="textarea" maxlength="1000" :rows="6" />
           <DialogActions>
             <el-button type="primary" @click="save">保存备注</el-button>
@@ -764,7 +894,13 @@ async function loadLogs() {
           <pre>{{ logs }}</pre>
         </template>
         <template v-else-if="page === 'logs'">
-          <el-button @click="loadLogs">刷新日志</el-button>
+          <div class="page-toolbar">
+            <el-radio-group v-model="logKind" @change="loadLogs">
+              <el-radio-button value="access">访问日志</el-radio-button>
+              <el-radio-button value="error">错误日志</el-radio-button>
+            </el-radio-group>
+            <el-button @click="loadLogs">刷新日志</el-button>
+          </div>
           <pre>{{ logs }}</pre>
         </template>
         <template v-else-if="page === 'backup'">
@@ -792,7 +928,23 @@ async function loadLogs() {
         关闭
       </el-button>
       <el-button
-        v-if="['general', 'directory', 'runtime', 'routing', 'advanced', 'security'].includes(page)"
+        v-if="
+          [
+            'general',
+            'subdirectories',
+            'directory',
+            'runtime',
+            'routing',
+            'documents',
+            'advanced',
+            'access',
+            'limits',
+            'redirects',
+            'proxy-rules',
+            'hotlink',
+            'other',
+          ].includes(page)
+        "
         type="primary"
         :loading="saving"
         @click="save"
@@ -850,13 +1002,16 @@ async function loadLogs() {
   flex-wrap: wrap;
   margin: 12px 0;
 }
-.site-toolbar .el-input {
-  width: 230px;
+.site-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
+  width: min(100%, 280px);
 }
-.site-toolbar > span {
-  margin-left: auto;
-  color: var(--el-text-color-secondary);
+.site-search .el-input {
+  flex: 1;
+  min-width: 0;
 }
 .site-table {
   padding: 12px;

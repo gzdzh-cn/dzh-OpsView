@@ -17,6 +17,11 @@ var siteFolder = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$`)
 
 func DefaultSiteRoot(domains string) string {
 	fields := strings.Fields(domains)
+	if len(fields) > 0 {
+		if binding, err := SiteBindingValue(fields[0], 80); err == nil {
+			fields[0] = strings.TrimPrefix(binding.Host, "*.")
+		}
+	}
 	if len(fields) == 0 || !siteFolder.MatchString(fields[0]) {
 		return ""
 	}

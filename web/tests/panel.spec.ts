@@ -275,6 +275,8 @@ test('proxy settings merge paths into the same fixed dialog', async ({ page }) =
   await page.route('**/api/v1/resources', (route) => route.fulfill({ json: [nginxFixture, proxy] }))
   await page.route('**/api/v1/sites/proxy-fixture/settings', (route) => {
     submitted = route.request().postDataJSON()
+    proxy.config = submitted.config
+    proxy.revision++
     return route.fulfill({ status: 202, json: { taskId: 'proxy-task' } })
   })
   await page.route('**/api/v1/tasks/proxy-task', (route) =>
@@ -299,7 +301,10 @@ test('proxy settings merge paths into the same fixed dialog', async ({ page }) =
   await second.locator('textarea').fill('http://127.0.0.1:4000')
   await second.getByPlaceholder('$host 或 api.example.com').fill('api.example.com')
   await dialog.getByRole('button', { name: '保存并应用', exact: true }).click()
-  await expect(dialog).toBeHidden()
+  await expect(page.getByText('配置已应用', { exact: true })).toBeVisible()
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '添加路径规则', exact: true })).toBeVisible()
+  await expect(dialog.locator('.proxy-route')).toHaveCount(2)
   expect(submitted.revision).toBe(1)
   expect(submitted.config.proxyRoutes[0].targets).toEqual([
     'http://127.0.0.1:3000',
@@ -3465,3 +3470,220 @@ for (const mode of ['light', 'dark']) {
     })
   })
 }
+
+test('website domain bindings apply multiline additions, retain failed drafts and keep refresh beside search', async ({
+  page,
+}) => {
+  const site: any = {
+    id: 'domain-settings-site',
+    kind: 'site',
+    name: 'domain.test',
+    status: 'ready',
+    revision: 1,
+    config: {
+      type: 'static',
+      domains: 'domain.test',
+      instanceId: nginxFixture.id,
+      documentRoot: '/www/wwwroot/domain.test',
+    },
+  }
+  let fail = true,
+    posts = 0
+  await page.route('**/api/v1/resources', (r) => r.fulfill({ json: [nginxFixture, site] }))
+  await page.route('**/api/v1/sites/domain-settings-site/traffic', (r) =>
+    r.fulfill({ json: { todayBytes: 0, hours: {} } }),
+  )
+  await page.route('**/api/v1/sites/domain-settings-site/settings', (r) => {
+    posts++
+    const value = r.request().postDataJSON()
+    expect(value.revision).toBe(site.revision)
+    if (fail) return r.fulfill({ status: 422, json: { error: 'Nginx 配置未通过，原站点继续运行' } })
+    site.config = value.config
+    site.name = value.name
+    site.revision++
+    return r.fulfill({ status: 202, json: { taskId: 'domain-apply' } })
+  })
+  await page.route('**/api/v1/tasks/domain-apply', (r) =>
+    r.fulfill({ json: { id: 'domain-apply', state: 'succeeded' } }),
+  )
+  await page.goto('/sites')
+  await expect(page.locator('.site-toolbar')).not.toContainText('个项目')
+  const adjacent = await page
+    .locator('.site-toolbar .el-input')
+    .evaluate((el) => el.nextElementSibling?.getAttribute('aria-label'))
+  expect(adjacent).toBe('刷新网站列表')
+  await page.getByRole('button', { name: 'domain.test', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'domain.test · 网站设置', exact: true })
+  const input = dialog.getByRole('textbox', { name: '添加绑定域名', exact: true })
+  await input.fill('www.domain.test\napi.domain.test:8081')
+  await dialog.getByRole('button', { name: '添加域名', exact: true }).click()
+  await expect(dialog).toContainText('Nginx 配置未通过')
+  await expect(input).toHaveValue('www.domain.test\napi.domain.test:8081')
+  await expect(dialog.getByRole('link', { name: 'www.domain.test', exact: true })).toHaveCount(0)
+  fail = false
+  await dialog.getByRole('button', { name: '添加域名', exact: true }).click()
+  await expect(dialog.getByRole('link', { name: 'www.domain.test', exact: true })).toBeVisible()
+  expect(site.config.domains.split(/\s+/)).toEqual([
+    'domain.test',
+    'www.domain.test',
+    'api.domain.test:8081',
+  ])
+  const link = dialog.getByRole('link', { name: 'api.domain.test', exact: true })
+  await expect(link).toHaveAttribute('href', 'http://api.domain.test:8081/')
+  await expect(link).toHaveAttribute('target', '_blank')
+  await expect(input).toHaveValue('')
+  await dialog
+    .getByRole('row')
+    .filter({ has: page.getByRole('link', { name: 'www.domain.test', exact: true }) })
+    .getByRole('button', { name: '解除', exact: true })
+    .click()
+  await page
+    .getByRole('dialog', { name: '解除域名绑定', exact: true })
+    .getByRole('button', { name: '解除绑定', exact: true })
+    .click()
+  await expect(dialog.getByRole('link', { name: 'www.domain.test', exact: true })).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+  expect(posts).toBe(3)
+})
+
+for (const mode of ['light', 'dark']) {
+  test(`${mode} website setting menus preserve fixed dialog layout and expose real policy forms`, async ({
+    page,
+  }) => {
+    await mockTheme(page, mode)
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    const site: any = {
+      id: 'all-settings-site',
+      kind: 'site',
+      name: 'settings.test',
+      status: 'ready',
+      revision: 2,
+      config: {
+        type: 'static',
+        domains: 'settings.test',
+        instanceId: nginxFixture.id,
+        documentRoot: '/www/wwwroot/settings.test',
+        advanced: '',
+      },
+    }
+    await page.route('**/api/v1/resources', (r) => r.fulfill({ json: [nginxFixture, site] }))
+    await page.route('**/api/v1/sites/all-settings-site/*', (r) => {
+      const path = new URL(r.request().url()).pathname.split('/').at(-1)
+      return r.fulfill({
+        json:
+          path === 'configuration'
+            ? {
+                current: 'server { listen 80; }',
+                history: [{ revision: 'before-apply', content: 'server { listen 81; }' }],
+                drift: false,
+              }
+            : path === 'security'
+              ? { checks: [{ name: '目录权限', status: 'pass', detail: '未开放全局写入' }] }
+              : path === 'directories'
+                ? { directories: ['public', 'docs'] }
+                : path === 'logs'
+                  ? { content: 'actual-log-line' }
+                  : { todayBytes: 0, hours: {} },
+      })
+    })
+    await page.route('**/api/v1/notifications/rules', (r) => r.fulfill({ json: [] }))
+    await page.route('**/api/v1/notifications/channels', (r) => r.fulfill({ json: [] }))
+    await page.goto('/sites')
+    await page.getByRole('button', { name: 'settings.test', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'settings.test · 网站设置', exact: true })
+    const geometry = await overlayGeometry(dialog)
+    for (const label of [
+      '子目录绑定',
+      '网站目录',
+      '访问限制',
+      '流量限制',
+      '伪静态',
+      '默认文档',
+      '配置文件',
+      'SSL 证书',
+      'PHP',
+      '重定向',
+      '反向代理',
+      '防盗链',
+      '防篡改',
+      '网站安全',
+      '网站日志',
+      '网站告警',
+      '其他设置',
+      '流量统计',
+      '到期时间',
+      '分类与备注',
+      '网站备份',
+      '域名管理',
+    ]) {
+      await dialog.locator('aside').getByRole('button', { name: label, exact: true }).click()
+      await expectFixedOverlay(geometry, await overlayGeometry(dialog))
+    }
+    await dialog.locator('aside').getByRole('button', { name: '其他设置', exact: true }).click()
+    await dialog.getByRole('tab', { name: '响应头', exact: true }).click()
+    await expect(
+      dialog.getByRole('textbox', { name: 'Content-Security-Policy', exact: true }),
+    ).toBeVisible()
+    await page.screenshot({
+      path: `../.opsview/screenshots/site-settings-${mode}.png`,
+      animations: 'disabled',
+    })
+    await page.setViewportSize({ width: 390, height: 844 })
+    const before = await overlayGeometry(dialog)
+    await dialog.locator('.ops-settings-content').evaluate((el) => (el.scrollTop = el.scrollHeight))
+    expectFixedOverlay(before, await overlayGeometry(dialog))
+    await expect(dialog.getByRole('button', { name: '保存并应用', exact: true })).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
+    await page.screenshot({
+      path: `../.opsview/screenshots/site-settings-${mode}-mobile.png`,
+      animations: 'disabled',
+    })
+    expect(errors).toEqual([])
+  })
+}
+
+test('website policy changes keep the revision and stay in the current menu after real task completion', async ({
+  page,
+}) => {
+  const site: any = {
+    id: 'policy-settings-site',
+    kind: 'site',
+    name: 'policies.test',
+    status: 'ready',
+    revision: 7,
+    config: { type: 'static', domains: 'policies.test', instanceId: nginxFixture.id },
+  }
+  let submitted: any
+  await page.route('**/api/v1/resources', (r) => r.fulfill({ json: [nginxFixture, site] }))
+  await page.route('**/api/v1/sites/policy-settings-site/traffic', (r) =>
+    r.fulfill({ json: { todayBytes: 0 } }),
+  )
+  await page.route('**/api/v1/sites/policy-settings-site/settings', (r) => {
+    submitted = r.request().postDataJSON()
+    site.config = submitted.config
+    site.revision++
+    return r.fulfill({ status: 202, json: { taskId: 'policy-apply' } })
+  })
+  await page.route('**/api/v1/tasks/policy-apply', (r) =>
+    r.fulfill({ json: { state: 'succeeded' } }),
+  )
+  await page.goto('/sites')
+  await page.getByRole('button', { name: 'policies.test', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'policies.test · 网站设置', exact: true })
+  await dialog.locator('aside').getByRole('button', { name: '流量限制', exact: true }).click()
+  await dialog
+    .locator('.el-switch')
+    .filter({ has: page.getByRole('switch', { name: '流量限制', exact: true }) })
+    .click()
+  await dialog.getByRole('button', { name: '保存并应用', exact: true }).click()
+  await expect.poll(() => submitted?.revision).toBe(7)
+  expect(submitted.config).toMatchObject({
+    limitEnabled: true,
+    maxConnections: 300,
+    perIPConnections: 25,
+    rateKB: 512,
+  })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('aside .active')).toHaveText('流量限制')
+})

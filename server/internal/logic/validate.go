@@ -60,14 +60,8 @@ func Validate(r model.Resource) error {
 		if len(c.String("note")) > 1000 {
 			return errors.New("备注最多 1000 字符")
 		}
-		domains := strings.Fields(c.String("domains"))
-		if len(domains) == 0 {
-			return errors.New("至少填写一个域名")
-		}
-		for _, d := range domains {
-			if len(d) > 253 || !Domain.MatchString(d) {
-				return errors.New("域名无效")
-			}
+		if _, err := SiteBindings(c, 80); err != nil {
+			return err
 		}
 		if err := ValidateNginxAdvanced(c.String("advanced")); err != nil {
 			return err

@@ -104,7 +104,7 @@ func renderProxyRoutes(r model.Resource, redirect string) (string, string) {
 			upstreams += " server " + net.JoinHostPort(u.Hostname(), port) + ";\n"
 		}
 		upstreams += "}\n"
-		locations += " location " + route.Path + " {\n" + redirect + " proxy_pass " + first.Scheme + "://" + name + ";\n proxy_http_version 1.1;\n proxy_set_header Host " + route.Host + ";\n proxy_set_header X-Real-IP $remote_addr;\n proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n proxy_set_header X-Forwarded-Proto $scheme;\n"
+		locations += " location ^~ " + route.Path + " {\n" + redirect + " proxy_pass " + first.Scheme + "://" + name + ";\n proxy_http_version 1.1;\n proxy_set_header Host " + route.Host + ";\n proxy_set_header X-Real-IP $remote_addr;\n proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n proxy_set_header X-Forwarded-Proto $scheme;\n"
 		locations += fmt.Sprintf(" proxy_connect_timeout %ds;\n proxy_read_timeout %ds;\n proxy_send_timeout %ds;\n", route.ConnectTimeout, route.ReadTimeout, route.SendTimeout)
 		if route.Websocket {
 			locations += " proxy_set_header Upgrade $http_upgrade;\n proxy_set_header Connection $opsview_connection;\n"
@@ -117,4 +117,14 @@ func renderProxyRoutes(r model.Resource, redirect string) (string, string) {
 		locations += " }\n"
 	}
 	return upstreams, locations
+}
+
+func siteDefaultLocation(r model.Resource, body string) string {
+	rules, _ := logic.SiteRedirects(r.Config)
+	for _, rule := range rules {
+		if rule.Path == "/" && !rule.Exact {
+			return ""
+		}
+	}
+	return " location / {\n" + body + " }\n"
 }

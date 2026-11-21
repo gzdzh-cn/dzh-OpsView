@@ -2,6 +2,8 @@ import { queries } from './query'
 import type { components } from './api.generated'
 export type Resource = Omit<components['schemas']['Resource'], 'config'> & { config: Config }
 export type Task = components['schemas']['Task']
+export type SiteBinding = components['schemas']['SiteBinding']
+export type SiteSettings = components['schemas']['SiteSettings']
 export type Config = Record<string, any>
 let csrf = ''
 let sessionGeneration = 0

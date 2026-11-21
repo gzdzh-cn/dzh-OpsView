@@ -376,3 +376,22 @@
     width: 100%;
   }
 }
+
+/* Website policy fields use shared dialog scrolling and compact control density. */
+.site-settings-dialog .site-policy-form .site-header-field .el-form-item__label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.site-settings-dialog .site-rule-block .page-toolbar {
+  margin-top: 0;
+}
+.site-settings-dialog .page-toolbar {
+  gap: 8px;
+}
+.site-settings-dialog .form-help {
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+.site-settings-dialog :is(.el-tabs, .el-table, .site-domain-manager) {
+  min-width: 0;
+}

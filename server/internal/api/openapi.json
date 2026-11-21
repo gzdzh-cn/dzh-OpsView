@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpsView API",
-    "version": "0.1.3-rc.29"
+    "version": "0.1.3-rc.30"
   },
   "paths": {
     "/api/v1/health": {
@@ -3629,7 +3629,23 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ResourceUpdate"
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "$ref": "#/components/schemas/SiteSettings"
+                  },
+                  "revision": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "name",
+                  "config",
+                  "revision"
+                ]
               }
             }
           }
@@ -3868,6 +3884,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "access",
+                "error"
+              ],
+              "default": "access"
+            }
           }
         ]
       }
@@ -3945,6 +3973,156 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/sites/{id}/configuration": {
+      "get": {
+        "operationId": "get_sites_id_configuration",
+        "summary": "读取网站configuration",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "current": {
+                      "type": "string"
+                    },
+                    "managed": {
+                      "type": "string"
+                    },
+                    "drift": {
+                      "type": "boolean"
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "revision": {
+                            "type": "string"
+                          },
+                          "content": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "revision",
+                          "content"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "current",
+                    "managed",
+                    "drift",
+                    "history"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/sites/{id}/directories": {
+      "get": {
+        "operationId": "get_sites_id_directories",
+        "summary": "读取网站directories",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "directories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "directories"
+                  ]
                 }
               }
             }
@@ -14397,6 +14575,236 @@
           "operation",
           "cron"
         ]
+      },
+      "SiteBinding": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "directory": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "host"
+        ]
+      },
+      "SiteRedirect": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "code": {
+            "type": "integer",
+            "enum": [
+              301,
+              302,
+              307,
+              308
+            ]
+          },
+          "exact": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "target",
+          "code",
+          "exact"
+        ]
+      },
+      "SiteAccess": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "新密码提交明文，经服务端哈希后入队；读取返回遮盖值，原样提交保留密码"
+          }
+        },
+        "required": [
+          "path",
+          "username",
+          "password"
+        ]
+      },
+      "SiteSettings": {
+        "type": "object",
+        "properties": {
+          "domains": {
+            "type": "string",
+            "description": "空白分隔；域名、泛域名、IP、自定义 HTTP 端口；HTTPS 在证书设置管理"
+          },
+          "subdirectoryBindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteBinding"
+            },
+            "maxItems": 32
+          },
+          "accessRules": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SiteAccess"
+            }
+          },
+          "denyPaths": {
+            "type": "string"
+          },
+          "denyExtensions": {
+            "type": "string"
+          },
+          "allowAddresses": {
+            "type": "string"
+          },
+          "denyAddresses": {
+            "type": "string"
+          },
+          "limitEnabled": {
+            "type": "boolean"
+          },
+          "maxConnections": {
+            "type": "integer"
+          },
+          "perIPConnections": {
+            "type": "integer"
+          },
+          "rateKB": {
+            "type": "integer"
+          },
+          "redirects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteRedirect"
+            }
+          },
+          "hotlinkEnabled": {
+            "type": "boolean"
+          },
+          "hotlinkStatus": {
+            "type": "integer",
+            "enum": [
+              403,
+              404
+            ]
+          },
+          "redirect404Target": {
+            "type": "string"
+          },
+          "hotlinkDomains": {
+            "type": "string"
+          },
+          "hotlinkExtensions": {
+            "type": "string"
+          },
+          "hotlinkAllowEmpty": {
+            "type": "boolean"
+          },
+          "gzipEnabled": {
+            "type": "boolean"
+          },
+          "gzipLevel": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "cacheEnabled": {
+            "type": "boolean"
+          },
+          "cacheExtensions": {
+            "type": "string"
+          },
+          "cacheSeconds": {
+            "type": "integer"
+          },
+          "responseHeaders": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "corsEnabled": {
+            "type": "boolean"
+          },
+          "corsOrigin": {
+            "type": "string"
+          },
+          "corsMethods": {
+            "type": "string"
+          },
+          "corsHeaders": {
+            "type": "string"
+          },
+          "corsCredentials": {
+            "type": "boolean"
+          },
+          "clientAuthEnabled": {
+            "type": "boolean"
+          },
+          "clientCA": {
+            "type": "string",
+            "maxLength": 65536,
+            "description": "仅客户端公共 CA 证书，不提交私钥"
+          },
+          "accessLogDisabled": {
+            "type": "boolean"
+          },
+          "phpIsolation": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "domains",
+          "subdirectoryBindings",
+          "accessRules",
+          "denyPaths",
+          "denyExtensions",
+          "allowAddresses",
+          "denyAddresses",
+          "limitEnabled",
+          "maxConnections",
+          "perIPConnections",
+          "rateKB",
+          "redirects",
+          "hotlinkEnabled",
+          "hotlinkStatus",
+          "redirect404Target",
+          "hotlinkDomains",
+          "hotlinkExtensions",
+          "hotlinkAllowEmpty",
+          "gzipEnabled",
+          "gzipLevel",
+          "cacheEnabled",
+          "cacheExtensions",
+          "cacheSeconds",
+          "responseHeaders",
+          "corsEnabled",
+          "corsOrigin",
+          "corsMethods",
+          "corsHeaders",
+          "corsCredentials",
+          "clientAuthEnabled",
+          "clientCA",
+          "accessLogDisabled",
+          "phpIsolation"
+        ],
+        "additionalProperties": true
       }
     },
     "securitySchemes": {

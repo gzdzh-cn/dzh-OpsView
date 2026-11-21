@@ -44,6 +44,15 @@ func SiteProxyRoutes(c model.Config) ([]ProxyRoute, error) {
 		if !regexp.MustCompile(`^/[A-Za-z0-9/._~-]*$`).MatchString(r.Path) || len(r.Path) > 256 || strings.Contains(r.Path, "..") || seen[r.Path] {
 			return nil, errors.New("代理路径须为不重复的 / 开头前缀，不允许正则或目录跳转")
 		}
+		if c.String("type") != "proxy" && r.Path == "/" {
+			return nil, errors.New("本地网站的代理路径不能覆盖 / 根路径")
+		}
+		redirects, _ := SiteRedirects(c)
+		for _, rule := range redirects {
+			if rule.Path == r.Path {
+				return nil, errors.New("代理和重定向路径重复")
+			}
+		}
 		seen[r.Path] = true
 		if len(r.Targets) < 1 || len(r.Targets) > 16 {
 			return nil, errors.New("每条规则需要 1–16 个上游")
@@ -83,13 +92,16 @@ func SiteProxyRoutes(c model.Config) ([]ProxyRoute, error) {
 			}
 		}
 	}
-	if len(routes) > 0 && !seen["/"] {
+	if c.String("type") == "proxy" && len(routes) > 0 && !seen["/"] {
 		return nil, errors.New("请保留 / 默认代理路径")
 	}
 	return routes, nil
 }
 
 func ValidateSiteOptions(c model.Config) error {
+	if err := ValidateSiteSettings(c); err != nil {
+		return err
+	}
 	if err := ValidateSiteCreate(c); err != nil {
 		return err
 	}
@@ -109,15 +121,6 @@ func ValidateSiteOptions(c model.Config) error {
 	if value := c.String("rewriteTemplate"); value != "" && value != "none" && value != "front-controller" && value != "wordpress" && value != "thinkphp" && value != "laravel" && value != "spa" {
 		return errors.New("伪静态模板无效")
 	}
-	if c.String("type") == "proxy" {
-		_, err := SiteProxyRoutes(c)
-		return err
-	}
-	if raw, ok := c["proxyRoutes"]; ok && raw != nil {
-		b, _ := json.Marshal(raw)
-		if string(b) != "[]" && string(b) != "null" {
-			return errors.New("仅反向代理项目支持路径规则")
-		}
-	}
-	return nil
+	_, err := SiteProxyRoutes(c)
+	return err
 }

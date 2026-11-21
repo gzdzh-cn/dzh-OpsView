@@ -54,7 +54,7 @@ export function observeSiteTask(id: string, signal: AbortSignal): Promise<Task> 
             new Error(
               permanent
                 ? `无法查询任务：${(error as Error).message}；请到任务中心核对`
-                : '任务连接暂时不可用，后台任务未取消。请重新打开创建窗口或到任务中心核对',
+                : '任务连接暂时不可用，后台任务未取消。请重新打开相关窗口或到任务中心核对',
             ),
           )
           return

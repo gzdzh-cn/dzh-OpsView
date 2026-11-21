@@ -995,6 +995,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sites/{id}/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取网站configuration */
+        get: operations["get_sites_id_configuration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sites/{id}/directories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取网站directories */
+        get: operations["get_sites_id_directories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/runtime": {
         parameters: {
             query?: never;
@@ -3182,6 +3216,68 @@ export interface components {
             body?: string;
             allowPrivate?: boolean;
             expectedStatus?: number;
+        };
+        SiteBinding: {
+            host: string;
+            port?: number;
+            directory?: string;
+        };
+        SiteRedirect: {
+            path: string;
+            target: string;
+            /** @enum {integer} */
+            code: 301 | 302 | 307 | 308;
+            exact: boolean;
+        };
+        SiteAccess: {
+            path: string;
+            username: string;
+            /** @description 新密码提交明文，经服务端哈希后入队；读取返回遮盖值，原样提交保留密码 */
+            password: string;
+        };
+        SiteSettings: {
+            /** @description 空白分隔；域名、泛域名、IP、自定义 HTTP 端口；HTTPS 在证书设置管理 */
+            domains: string;
+            subdirectoryBindings: components["schemas"]["SiteBinding"][];
+            accessRules: {
+                [key: string]: components["schemas"]["SiteAccess"];
+            };
+            denyPaths: string;
+            denyExtensions: string;
+            allowAddresses: string;
+            denyAddresses: string;
+            limitEnabled: boolean;
+            maxConnections: number;
+            perIPConnections: number;
+            rateKB: number;
+            redirects: components["schemas"]["SiteRedirect"][];
+            hotlinkEnabled: boolean;
+            /** @enum {integer} */
+            hotlinkStatus: 403 | 404;
+            redirect404Target: string;
+            hotlinkDomains: string;
+            hotlinkExtensions: string;
+            hotlinkAllowEmpty: boolean;
+            gzipEnabled: boolean;
+            gzipLevel: number;
+            cacheEnabled: boolean;
+            cacheExtensions: string;
+            cacheSeconds: number;
+            responseHeaders: {
+                [key: string]: string;
+            };
+            corsEnabled: boolean;
+            corsOrigin: string;
+            corsMethods: string;
+            corsHeaders: string;
+            corsCredentials: boolean;
+            clientAuthEnabled: boolean;
+            /** @description 仅客户端公共 CA 证书，不提交私钥 */
+            clientCA: string;
+            accessLogDisabled: boolean;
+            phpIsolation: boolean;
+        } & {
+            [key: string]: unknown;
         };
     };
     responses: never;
@@ -6013,7 +6109,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ResourceUpdate"];
+                "application/json": {
+                    name: string;
+                    config: components["schemas"]["SiteSettings"];
+                    revision: number;
+                };
             };
         };
         responses: {
@@ -6202,7 +6302,9 @@ export interface operations {
     };
     get_sites_id_logs: {
         parameters: {
-            query?: never;
+            query?: {
+                kind?: "access" | "error";
+            };
             header?: never;
             path: {
                 id: string;
@@ -6313,6 +6415,106 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_sites_id_configuration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        current: string;
+                        managed: string;
+                        drift: boolean;
+                        history: {
+                            revision: string;
+                            content: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_sites_id_directories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        directories: string[];
                     };
                 };
             };

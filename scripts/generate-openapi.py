@@ -104,7 +104,7 @@ add('/sites/delete-tasks/{id}','get','读取批量删除逐站结果及失败原
 add('/sites/{id}/settings','post','提交配置候选；revision 冲突返回409，实际应用成功后更新元数据',obj({'taskId':string}),ref('ResourceUpdate'),status='202')
 add('/site-categories','get','网站共享分类',obj({'rows':{'type':'array','items':string}}))
 add('/site-categories','post','新增、改名、删除网站分类；删除后归默认分类',body=obj({'old':string,'name':string,'remove':{'type':'boolean'}},[]))
-for view in ['traffic','logs','security','process-logs']:add('/sites/{id}/'+view,'get','读取网站'+view)
+for view in ['traffic','logs','security','process-logs','configuration','directories']:add('/sites/{id}/'+view,'get','读取网站'+view)
 add('/settings/runtime','get','读取 root 管理的面板运行配置')
 add('/settings/runtime','put','暂存访问设置；120 秒重新连接确认，否则回退',body=config)
 add('/runtime/confirm','post','使用一次性确认凭证提交重新连接结果',body=obj({'token':string}),public=True)
@@ -228,5 +228,16 @@ for path in ['/backups/download','/backups/upload']:
  paths['/api/v1'+path][method].setdefault('parameters',[]).extend([{'name':'file','in':'query','required':True,'schema':string},{'name':'backupId','in':'query','schema':string}])
 paths['/api/v1/backups/download']['get']['responses']['200']['content']={'application/octet-stream':{'schema':{'type':'string','format':'binary'}}}
 
+# Website settings use structured policies; general site fields remain compatible.
+schemas['SiteBinding']=obj({'host':string,'port':{'type':'integer','minimum':1,'maximum':65535},'directory':string},['host'])
+schemas['SiteRedirect']=obj({'path':string,'target':string,'code':{'type':'integer','enum':[301,302,307,308]},'exact':{'type':'boolean'}})
+schemas['SiteAccess']=obj({'path':string,'username':string,'password':{'type':'string','description':'新密码提交明文，经服务端哈希后入队；读取返回遮盖值，原样提交保留密码'}})
+site_settings=obj({'domains':{'type':'string','description':'空白分隔；域名、泛域名、IP、自定义 HTTP 端口；HTTPS 在证书设置管理'},'subdirectoryBindings':{'type':'array','items':ref('SiteBinding'),'maxItems':32},'accessRules':{'type':'object','additionalProperties':ref('SiteAccess')},'denyPaths':string,'denyExtensions':string,'allowAddresses':string,'denyAddresses':string,'limitEnabled':{'type':'boolean'},'maxConnections':{'type':'integer'},'perIPConnections':{'type':'integer'},'rateKB':{'type':'integer'},'redirects':{'type':'array','items':ref('SiteRedirect')},'hotlinkEnabled':{'type':'boolean'},'hotlinkStatus':{'type':'integer','enum':[403,404]},'redirect404Target':string,'hotlinkDomains':string,'hotlinkExtensions':string,'hotlinkAllowEmpty':{'type':'boolean'},'gzipEnabled':{'type':'boolean'},'gzipLevel':{'type':'integer','minimum':1,'maximum':9},'cacheEnabled':{'type':'boolean'},'cacheExtensions':string,'cacheSeconds':{'type':'integer'},'responseHeaders':{'type':'object','additionalProperties':string},'corsEnabled':{'type':'boolean'},'corsOrigin':string,'corsMethods':string,'corsHeaders':string,'corsCredentials':{'type':'boolean'},'clientAuthEnabled':{'type':'boolean'},'clientCA':{'type':'string','maxLength':65536,'description':'仅客户端公共 CA 证书，不提交私钥'},'accessLogDisabled':{'type':'boolean'},'phpIsolation':{'type':'boolean'}},[])
+site_settings['additionalProperties']=True
+schemas['SiteSettings']=site_settings
+paths['/api/v1/sites/{id}/settings']['post']['requestBody']['content']['application/json']['schema']=obj({'name':string,'config':ref('SiteSettings'),'revision':{'type':'integer'}})
+paths['/api/v1/sites/{id}/logs']['get'].setdefault('parameters',[]).append({'name':'kind','in':'query','schema':{'type':'string','enum':['access','error'],'default':'access'}})
+paths['/api/v1/sites/{id}/configuration']['get']['responses']['200']['content']['application/json']['schema']=obj({'current':string,'managed':string,'drift':{'type':'boolean'},'history':{'type':'array','items':obj({'revision':string,'content':string})}})
+paths['/api/v1/sites/{id}/directories']['get']['responses']['200']['content']['application/json']['schema']=obj({'directories':{'type':'array','items':string}})
 spec = {"openapi":"3.0.3","info":{"title":"OpsView API","version":json.loads((root / "web/package.json").read_text())["version"]},"paths":paths,"components":{"schemas":schemas,"securitySchemes":{"session":{"type":"apiKey","in":"cookie","name":"opsview_session","description":"HTTPS 会话，Secure Cookie"},"httpSession":{"type":"apiKey","in":"cookie","name":"opsview_session_http","description":"HTTP 会话，与 HTTPS Cookie 分离以兼容关闭 SSL"}}}}
 (root/'server/internal/api/openapi.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n')

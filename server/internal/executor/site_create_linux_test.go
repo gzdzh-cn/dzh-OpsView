@@ -326,6 +326,8 @@ func TestLinuxWebsiteCreation(t *testing.T) {
 		t.Fatal("deleted managed process still active")
 	}
 	t.Log("PASS real Nginx/PHP/systemd: /www/wwwroot, protection, isolated process, rollback and expiry")
+	testWebsiteSettings(t, e, inst)
+
 }
 func cleanupSiteUnit(t *testing.T, unit string) {
 	t.Helper()

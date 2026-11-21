@@ -39,6 +39,11 @@ func pathContains(parent, child string) bool {
 }
 func (e *Engine) filePrivatePaths() []string {
 	paths := []string{filepath.Join(e.Root, "nginx-recovery"), filepath.Join(e.Root, "client-auth"), filepath.Join(e.Root, "jobs"), filepath.Join(e.Root, "firewall-admin"), filepath.Join(e.Root, "firewall"), e.firewallModePath(), e.sshPendingPath(), e.sshServicePath(), filepath.Join(e.Root, "ssh-managed-users.json"), e.pendingPath(), filepath.Join(e.Root, "ssh-conflict.conf"), filepath.Join(e.Root, "state"), filepath.Join(e.Root, "executor.key"), filepath.Join(e.Root, "backup.key"), filepath.Join(e.Root, "file-manager"), filepath.Join(filepath.Dir(e.Root), "panel"), "/var/lib/opsview/panel", "/run/opsview", "/var/run/docker.sock", "/etc/opsview/trust", "/etc/opsview/trust.d"}
+	// Website credentials are consumed by Nginx, never by general file APIs.
+	for _, name := range []string{"auth", "cert"} {
+		matches, _ := filepath.Glob(filepath.Join(e.Root, "sites", "*", name))
+		paths = append(paths, matches...)
+	}
 	if e.socketPath != "" {
 		paths = append(paths, e.socketPath)
 	}

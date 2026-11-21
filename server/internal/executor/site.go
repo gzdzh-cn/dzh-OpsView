@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,9 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if err != nil {
 		return nil, err
 	}
+	if _, err := logic.SiteBindings(r.Config, inst.Config.Int("port")); err != nil {
+		return nil, err
+	}
 	if inst.Config.String("software") != "nginx" {
 		return nil, errors.New("关联实例必须为 Nginx")
 	}
@@ -112,6 +116,34 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		r.Config["upstream"] = "http://127.0.0.1:" + strconv.Itoa(app.Config.Int("port"))
 	}
 
+	if action == "directories" {
+		root, er := e.trustedSiteRoot(r)
+		if er != nil {
+			return nil, er
+		}
+		scoped, er := os.OpenRoot(root)
+		if er != nil {
+			return nil, er
+		}
+		defer scoped.Close()
+		f, er := scoped.Open(".")
+		if er != nil {
+			return nil, er
+		}
+		defer f.Close()
+		entries, er := f.ReadDir(-1)
+		if er != nil {
+			return nil, er
+		}
+		rows := []string{}
+		for _, entry := range entries {
+			if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+				rows = append(rows, entry.Name())
+			}
+		}
+		sort.Strings(rows)
+		return model.Config{"directories": rows}, nil
+	}
 	if action == "configuration" {
 		current, err := os.ReadFile(confpath)
 		if err != nil {
@@ -144,7 +176,11 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		return model.Config{"content": text}, er
 	}
 	if action == "logs" {
-		text, err := tail(filepath.Join(e.Root, "sites", r.ID, "logs", "access.json"), 200)
+		filename := "access.json"
+		if op.Params.String("kind") == "error" {
+			filename = "error.log"
+		}
+		text, err := tail(filepath.Join(e.Root, "sites", r.ID, "logs", filename), 200)
 		return model.Config{"content": text}, err
 	}
 	if action != "apply" && action != "renew" && action != "certificate" {
@@ -161,9 +197,11 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		if other.Kind != "site" || other.ID == r.ID || other.Config.String("instanceId") != inst.ID {
 			continue
 		}
-		for _, domain := range strings.Fields(r.Config.String("domains")) {
-			for _, existing := range strings.Fields(other.Config.String("domains")) {
-				if strings.EqualFold(domain, existing) {
+		bindings, _ := logic.SiteBindings(r.Config, inst.Config.Int("port"))
+		existingBindings, _ := logic.SiteBindings(other.Config, inst.Config.Int("port"))
+		for _, domain := range bindings {
+			for _, existing := range existingBindings {
+				if strings.EqualFold(domain.Host, existing.Host) && (domain.Port == existing.Port || (r.Config.Bool("tls") && other.Config.Bool("tls"))) {
 					return nil, errors.New("域名已被同一入口中的另一个站点绑定")
 				}
 			}
@@ -180,6 +218,14 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	}
 	if err = prepareSiteRunningDirectory(siteDocumentRoot(r, base), r.Config.String("runningDirectory")); err != nil {
 		return nil, err
+	}
+	bindings, _ := logic.SiteBindings(r.Config, inst.Config.Int("port"))
+	for _, binding := range bindings {
+		if binding.Directory != "" {
+			if err = prepareSiteRunningDirectory(siteDocumentRoot(r, base), binding.Directory); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err = os.MkdirAll(base+"/acme/.well-known/acme-challenge", 0755); err != nil {
 		return nil, err
@@ -301,8 +347,8 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		if err != nil {
 			return nil, err
 		}
-		for _, d := range strings.Fields(r.Config.String("domains")) {
-			if err = leaf.VerifyHostname(d); err != nil {
+		for _, d := range logic.SiteDomainNames(r.Config) {
+			if err = leaf.VerifyHostname(strings.Replace(d, "*.", "opsview-certificate-check.", 1)); err != nil {
 				return nil, errors.New("证书未覆盖站点域名")
 			}
 		}
@@ -322,6 +368,9 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 			return nil, errors.New("ACME HTTP-01 需要站点入口监听 80 端口")
 		}
 		r.Config["probeToken"] = security.ID()
+		if err = prepareSiteAccess(r, base); err != nil {
+			return nil, err
+		}
 		candidate := e.renderSite(r, inst, base)
 		if err = e.applyNginx(ctx, inst, confpath, []byte(candidate), old, log); err != nil {
 			return nil, err
@@ -394,6 +443,9 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 		}()
 	}
 	r.Config["probeToken"] = security.ID()
+	if err = prepareSiteAccess(r, base); err != nil {
+		return nil, err
+	}
 	candidate := []byte(e.renderSite(r, inst, base))
 	if err = e.applyNginx(ctx, inst, confpath, candidate, old, log); err != nil {
 		return nil, err
@@ -450,47 +502,83 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	}
 	return model.Config{"configHash": r.Config["configHash"], "documentRoot": siteDocumentRoot(r, base), "runningRoot": r.Config["runningRoot"], "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}, nil
 }
-func (e *Engine) renderSite(r, inst model.Resource, base string) string {
-	domains := strings.Join(strings.Fields(r.Config.String("domains")), " ")
-	conf := fmt.Sprintf("server {\n listen %d;\n server_name %s;\n location ^~ /.well-known/acme-challenge/ { root %s/acme; }\n", inst.Config.Int("port"), domains, base)
+func (e *Engine) renderSiteServer(r, inst model.Resource, base string, tlsOnly bool) string {
+	hostnames := strings.Fields(r.Config.String("domains"))
+	for i, h := range hostnames {
+		if net.ParseIP(h) != nil && strings.Contains(h, ":") {
+			hostnames[i] = "[" + h + "]"
+		}
+	}
+	domains := strings.Join(hostnames, " ")
+	listen := fmt.Sprintf(" listen %d;\n", inst.Config.Int("port"))
+	if tlsOnly {
+		listen = ""
+	}
+	if !tlsOnly {
+		for _, host := range strings.Fields(domains) {
+			if net.ParseIP(strings.Trim(host, "[]")) != nil && strings.Contains(host, ":") {
+				listen += fmt.Sprintf(" listen [::]:%d;\n", inst.Config.Int("port"))
+				break
+			}
+		}
+	}
+	conf := fmt.Sprintf("server {\n%s server_name %s;\n location ^~ /.well-known/acme-challenge/ { auth_basic off; allow all; root %s/acme; }\n", listen, domains, base)
 
-	conf += " access_log " + base + "/logs/access.json opsview_json;\n error_log " + base + "/logs/error.log warn;\n"
+	if r.Config.Bool("accessLogDisabled") {
+		conf += " access_log off;\n"
+	} else {
+		conf += " access_log " + base + "/logs/access.json opsview_json;\n"
+	}
+	conf += " error_log " + base + "/logs/error.log warn;\n"
 	conf += r.Config.String("advanced") + "\n"
-	conf += siteSecurityConfig(r)
+	conf += siteSecurityConfig(r) + siteSettingsServer(r)
 	if token := r.Config.String("probeToken"); token != "" {
-		conf += fmt.Sprintf(" location = /.opsview-health-%s { add_header X-OpsView-Revision %s always; return 204; }\n", token, token)
+		conf += fmt.Sprintf(" location = /.opsview-health-%s { auth_basic off; allow all; add_header X-OpsView-Revision %s always; return 204; }\n", token, token)
 	}
 	if r.Config.Bool("tls") {
 		conf += fmt.Sprintf(" listen 443 ssl;\n ssl_certificate %s/cert/fullchain.pem;\n ssl_certificate_key %s/cert/key.pem;\n ssl_protocols TLSv1.2 TLSv1.3;\n", base, base)
+		if r.Config.Bool("clientAuthEnabled") {
+			conf += " ssl_client_certificate " + filepath.Join(base, "auth", r.Config.String("probeToken"), "client-ca.pem") + ";\n ssl_verify_client optional;\n ssl_verify_depth 3;\n"
+		}
+		for _, host := range hostnames {
+			if strings.Contains(host, ":") {
+				conf += " listen [::]:443 ssl;\n"
+				break
+			}
+		}
 
 	}
 
 	redirect := ""
-	if r.Config.Bool("tls") && r.Config.Bool("redirectHTTPS") {
+	if r.Config.Bool("redirectHTTPS") && (r.Config.Bool("tls") || r.Config.Bool("_hasTLS")) {
 		redirect = "  if ($scheme = http) { return 301 https://$host$request_uri; }\n"
 	}
 	if siteUnavailable(r) {
 		return conf + " location / { return 403; }\n}\n"
 	}
+	if r.Config.String("type") == "php" || r.Config.String("type") == "static" {
+		_, locations := renderProxyRoutes(r, redirect)
+		conf += locations
+	}
 	if r.Config.String("type") == "php" {
-		if _, er := os.Stat(filepath.Join(siteRunningRoot(r, base), "404.html")); er == nil {
+		if _, er := os.Stat(filepath.Join(siteRunningRoot(r, base), "404.html")); er == nil && r.Config.String("redirect404Target") == "" {
 			conf += siteErrorPage(siteRunningRoot(r, base))
 		}
-		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / { " + redirect + siteTryFiles(r) + " }\n location ~ \\.php$ { " + redirect + "try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
+		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n" + siteDefaultLocation(r, redirect+siteTryFiles(r)) + " location ~ \\.php$ { " + redirect + "try_files $uri =404; fastcgi_pass unix:" + base + "/run/php.sock; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; include " + filepath.Join(e.Root, "instances", inst.ID, "runtime", "conf", "fastcgi_params") + "; }\n"
 		return conf + "}\n"
 	}
 	if r.Config.String("type") == "proxy" || r.Config.String("type") == "app" || r.Config.String("type") == "managed" {
 		if routes, _ := logic.SiteProxyRoutes(r.Config); len(routes) > 0 {
-			upstreams, locations := renderProxyRoutes(r, redirect)
-			return upstreams + conf + locations + "}\n"
+			_, locations := renderProxyRoutes(r, redirect)
+			return conf + locations + "}\n"
 		}
-		conf += " location / {\n" + redirect + "  proxy_pass " + siteUpstream(r) + ";\n  proxy_http_version 1.1;\n  proxy_set_header Host " + siteProxyHost(r) + ";\n  proxy_set_header Upgrade $http_upgrade;\n  proxy_set_header Connection $opsview_connection;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n }\n"
+		conf += siteDefaultLocation(r, redirect+"  proxy_pass "+siteUpstream(r)+";\n  proxy_http_version 1.1;\n  proxy_set_header Host "+siteProxyHost(r)+";\n  proxy_set_header Upgrade $http_upgrade;\n  proxy_set_header Connection $opsview_connection;\n  proxy_set_header X-Real-IP $remote_addr;\n  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n  proxy_set_header X-Forwarded-Proto $scheme;\n")
 	} else {
 		conf += " location ~* \\.(?:php[0-9]?|phtml|phar)(?:/|$) { return 403; }\n"
-		if _, er := os.Stat(filepath.Join(siteRunningRoot(r, base), "404.html")); er == nil {
+		if _, er := os.Stat(filepath.Join(siteRunningRoot(r, base), "404.html")); er == nil && r.Config.String("redirect404Target") == "" {
 			conf += siteErrorPage(siteRunningRoot(r, base))
 		}
-		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n location / {\n" + redirect + " " + siteTryFiles(r) + " }\n"
+		conf += " root " + siteRunningRoot(r, base) + ";\n index " + siteIndex(r) + ";\n" + siteDefaultLocation(r, redirect+" "+siteTryFiles(r))
 	}
 	return conf + "}\n"
 }
@@ -537,8 +625,14 @@ func probeNginx(ctx context.Context, inst model.Resource, config []byte) error {
 	if len(marker) < 2 || len(domains) < 2 {
 		return errors.New("候选配置缺少健康检查标记")
 	}
-	domain := strings.Fields(string(domains[1]))[0]
+	domain := strings.Trim(strings.Fields(string(domains[1]))[0], "[]")
 	port, scheme := inst.Config.Int("port"), "http"
+	if match := regexp.MustCompile(`listen ([0-9]+);`).FindSubmatch(config); len(match) > 1 {
+		port, _ = strconv.Atoi(string(match[1]))
+	}
+	if strings.HasPrefix(domain, "*.") {
+		domain = "opsview-probe." + strings.TrimPrefix(domain, "*.")
+	}
 	if strings.Contains(string(config), "listen 443 ssl;") {
 		port, scheme = 443, "https"
 	}
@@ -657,12 +751,15 @@ func (e *Engine) issueCertificateProvider(ctx context.Context, r model.Resource,
 		return err
 	}
 	profile := ""
-	for _, host := range strings.Fields(r.Config.String("domains")) {
+	for _, host := range logic.SiteDomainNames(r.Config) {
+		if strings.HasPrefix(host, "*.") {
+			return errors.New("HTTP-01 不支持泛域名，请上传覆盖泛域名的证书")
+		}
 		if net.ParseIP(host) != nil {
 			profile = "shortlived"
 		}
 	}
-	result, err := client.Certificate.Obtain(certificate.ObtainRequest{Domains: strings.Fields(r.Config.String("domains")), Bundle: true, Profile: profile})
+	result, err := client.Certificate.Obtain(certificate.ObtainRequest{Domains: logic.SiteDomainNames(r.Config), Bundle: true, Profile: profile})
 	if err != nil {
 		return err
 	}

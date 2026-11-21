@@ -16,7 +16,7 @@ function targets(value: string) {
     <el-form-item label="路径前缀">
       <el-input v-model="rule.path" placeholder="/ 或 /api/" />
     </el-form-item>
-    <el-form-item label="上游地址（每行一个）">
+    <el-form-item label="上游地址">
       <el-input
         :model-value="(rule.targets || []).join('\n')"
         type="textarea"
@@ -30,13 +30,13 @@ function targets(value: string) {
     </el-form-item>
     <el-form-item label="WebSocket"><el-switch v-model="rule.websocket" /></el-form-item>
     <div class="route-timeouts">
-      <el-form-item label="连接超时（秒）">
+      <el-form-item label="连接超时">
         <el-input-number v-model="rule.connectTimeout" :min="1" :max="3600" />
       </el-form-item>
-      <el-form-item label="读取超时（秒）">
+      <el-form-item label="读取超时">
         <el-input-number v-model="rule.readTimeout" :min="1" :max="3600" />
       </el-form-item>
-      <el-form-item label="发送超时（秒）">
+      <el-form-item label="发送超时">
         <el-input-number v-model="rule.sendTimeout" :min="1" :max="3600" />
       </el-form-item>
     </div>

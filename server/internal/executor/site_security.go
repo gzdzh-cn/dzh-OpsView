@@ -29,12 +29,6 @@ func siteSecurityConfig(r model.Resource) string {
 	if r.Config.String("type") == "php" || r.Config.String("type") == "static" {
 		s += " location ~ /\\.(?!well-known/) { deny all; }\n location ~* \\.(?:sql|bak|old|orig|ini|log)$ { deny all; }\n"
 	}
-	if r.Config.Bool("securityHeaders") {
-		s += " add_header X-Content-Type-Options nosniff always;\n add_header Referrer-Policy strict-origin-when-cross-origin always;\n"
-	}
-	if r.Config.Bool("denyFrames") {
-		s += " add_header X-Frame-Options SAMEORIGIN always;\n"
-	}
 	if r.Config.String("type") == "php" && r.Config.Bool("denyUploadPHP") {
 		s += " location ~* ^/(?:uploads?|storage)/.*\\.php(?:/|$) { deny all; }\n"
 	}
