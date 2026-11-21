@@ -79,7 +79,13 @@ jobs:
           done
       - run: make api check
       - name: Verify uninstall on a disposable systemd host
-        run: bash scripts/test-uninstall.sh
+        run: |
+          # Acceptance fixtures may change without moving the immutable product tag.
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          for fixture in scripts/test-uninstall.sh scripts/uninstall.Dockerfile server/internal/maintenance/uninstall_linux_test.go; do
+            git show "$GITHUB_SHA:$fixture" > "$fixture"
+          done
+          bash scripts/test-uninstall.sh
       - run: ./scripts/test-installer.sh
       - run: ./scripts/test-files-linux.sh
       - name: Verify real SSH login and UFW rollback in isolated Linux

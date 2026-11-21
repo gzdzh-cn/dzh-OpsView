@@ -42,6 +42,14 @@ func TestLinuxPanelUninstall(t *testing.T) {
 		defer cancel()
 		b, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
 		if err != nil {
+			if name == "/usr/sbin/mysqld" {
+				// This is the freshly initialized, password-free disposable fixture.
+				// Never inspect panel credentials or production database logs.
+				t.Logf("disposable mysql initialization: %s", b)
+				if detail, readErr := os.ReadFile(uninstallManaged + "/instances/mysql-check/logs/mysql.log"); readErr == nil {
+					t.Logf("disposable mysql fixture log: %s", detail)
+				}
+			}
 			if name == "docker" || name == "systemctl" || name == "python3" {
 				// These commands only touch the disposable fixture and never
 				// receive generated administrator credentials.
