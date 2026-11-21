@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import AppDialog from './AppDialog.vue'
+import SiteRuntimeFields from './SiteRuntimeFields.vue'
+const runtimeFields = ref<InstanceType<typeof SiteRuntimeFields>>()
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { randomID, randomBytes } from '../lib/browser'
 import {
@@ -203,6 +205,8 @@ watch(
           autoStart: true,
           port: 3000,
           user: 'isolated',
+          runtimeIsolation: true,
+          releasePort: false,
           arguments: '[]',
           environment: '{}',
           ...props.initial,
@@ -300,6 +304,9 @@ async function save() {
       delete config.phpInstanceId
       config.rewriteTemplate = 'none'
     }
+    const headers = runtimeFields.value?.headers() || {}
+    if (config.type === 'managed' && config.adoptDirectory && !config.permissionPreview)
+      throw new Error('请先检查并确认目录权限调整')
     let result: Config
     if (saved.value) {
       const current = panel.resources.find((r) => r.id === saved.value?.id) || saved.value
@@ -307,10 +314,14 @@ async function save() {
       signal.throwIfAborted()
       if (progress && ['queued', 'running', 'succeeded'].includes(progress.state)) result = progress
       else
-        result = await post('/sites/' + saved.value.id + '/provision', {
-          name: name.value,
-          config,
-          revision: current.revision,
+        result = await api('/sites/' + saved.value.id + '/provision', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            name: name.value,
+            config,
+            revision: current.revision,
+          }),
         })
     } else {
       if (!requestId.value) setSiteCreationRequest(randomID())
@@ -319,14 +330,20 @@ async function save() {
       if (existing) result = existing
       else {
         try {
-          result = await post('/sites', {
-            requestId: requestId.value,
-            name: name.value,
-            config,
-            ...(database.value.instanceId ? { database: database.value } : {}),
-            ...(certificateMode.value === 'upload'
-              ? { certificate: certificate.value, privateKey: privateKey.value }
-              : {}),
+          result = await api('/sites', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              requestId: requestId.value,
+              name: name.value,
+              config,
+              ...(props.initial.type !== 'managed' && database.value.instanceId
+                ? { database: database.value }
+                : {}),
+              ...(props.initial.type !== 'managed' && certificateMode.value === 'upload'
+                ? { certificate: certificate.value, privateKey: privateKey.value }
+                : {}),
+            }),
           })
         } catch (e) {
           signal.throwIfAborted()
@@ -343,6 +360,7 @@ async function save() {
   } catch (e) {
     if (!isAbort(e)) error.value = errorText(e)
   } finally {
+    runtimeFields.value?.clearCredentials()
     if (!signal.aborted) busy.value = false
   }
 }
@@ -411,7 +429,7 @@ async function save() {
           默认 {{ siteDirectory }}/域名，可修改项目文件夹名称。已有非空目录需确认纳管。
         </small>
         <el-checkbox v-if="!editing" v-model="form.adoptDirectory">
-          使用已有目录（保留文件，仅调整根目录所有者供运行用户使用）
+          使用已有目录（托管应用需预检并确认递归权限调整）
         </el-checkbox>
       </el-form-item>
       <template v-if="['proxy', 'app'].includes(form.type)">
@@ -430,16 +448,7 @@ async function save() {
         <el-form-item label="启动参数">
           <el-input v-model="form.arguments" placeholder='JSON 数组，例如 ["server.js"]' />
         </el-form-item>
-        <el-form-item label="运行端口" required>
-          <el-input-number v-model="form.port" :min="1024" :max="65535" />
-          <small>由 Nginx 转发至本机此端口，无需对公网放行应用端口。</small>
-        </el-form-item>
-        <el-form-item label="运行用户">
-          <el-select v-model="form.user">
-            <el-option label="独立站点用户（自动创建）" value="isolated" />
-            <el-option label="www-data" value="www-data" />
-          </el-select>
-        </el-form-item>
+        <SiteRuntimeFields ref="runtimeFields" v-model="form" :site="editing" />
         <el-form-item label="开机启动"><el-switch v-model="form.autoStart" /></el-form-item>
       </template>
       <el-form-item v-if="form.type === 'php'" label="PHP 版本" required>
@@ -465,7 +474,7 @@ async function save() {
           前往安装 PHP
         </el-link>
       </el-form-item>
-      <el-form-item label="SSL 证书">
+      <el-form-item v-if="editing || initial.type !== 'managed'" label="SSL 证书">
         <el-select v-model="certificateMode">
           <el-option
             :label="editing?.config.tls ? '保留当前证书' : '暂不部署（建站后可申请免费证书）'"
@@ -474,7 +483,7 @@ async function save() {
           <el-option label="上传证书" value="upload" />
         </el-select>
       </el-form-item>
-      <template v-if="certificateMode === 'upload'">
+      <template v-if="certificateMode === 'upload' && (editing || initial.type !== 'managed')">
         <el-form-item label="PEM 证书链">
           <el-input v-model="certificate" type="textarea" :rows="3" />
         </el-form-item>
@@ -482,7 +491,7 @@ async function save() {
           <el-input v-model="privateKey" type="textarea" :rows="3" />
         </el-form-item>
       </template>
-      <el-form-item v-if="!saved" label="数据库">
+      <el-form-item v-if="!saved && initial.type !== 'managed'" label="数据库">
         <el-select
           v-model="database.instanceId"
           placeholder="不创建"
@@ -511,7 +520,7 @@ async function save() {
           />
         </el-select>
       </el-form-item>
-      <template v-if="database.instanceId && !saved">
+      <template v-if="database.instanceId && !saved && initial.type !== 'managed'">
         <el-form-item label="数据库名" required>
           <el-input v-model="database.name" autocomplete="off" />
         </el-form-item>

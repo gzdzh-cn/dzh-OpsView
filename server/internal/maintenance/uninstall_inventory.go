@@ -518,7 +518,7 @@ func (u *uninstaller) build(ctx context.Context) (*uninstallPlan, error) {
 	if err = u.restorePaths(); err != nil {
 		return nil, err
 	}
-	for _, name := range []string{"backups", "downloads", "catalog", "file-manager", "jobs", "client-auth", "panel-acme", "nginx-recovery", "firewall", "firewall-admin"} {
+	for _, name := range []string{"backups", "downloads", "catalog", "file-manager", "jobs", "client-auth", "panel-acme", "nginx-recovery", "firewall", "firewall-admin", "site-users"} {
 		u.candidates = append(u.candidates, uninstallManaged+"/"+name)
 	}
 	for _, name := range []string{"backup.key", "panel-acme.json", "ssh-service.json", "ssh-managed-users.json", "ssh-conflict.conf"} {

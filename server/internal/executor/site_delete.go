@@ -90,7 +90,11 @@ func (e *Engine) inspectSiteDeletion(r model.Resource) (model.Config, error) {
 			}
 		}
 	}
-	return model.Config{"directory": root, "directoryReason": reason, "identity": identity, "configHash": confHash, "legacyUnits": legacyUnits, "phase": phase, "recoveryOptions": recoveryOptions}, nil
+	userPolicy := "已有或共享用户不随站点删除"
+	if r.Config.String("user") == "isolated" || r.Config.String("user") == "" {
+		userPolicy = "保留独立用户；文件彻底清理后检查依赖再清理"
+	}
+	return model.Config{"directory": root, "directoryReason": reason, "identity": identity, "configHash": confHash, "legacyUnits": legacyUnits, "phase": phase, "recoveryOptions": recoveryOptions, "runtimeUser": r.Config.String("runtimeUser"), "userPolicy": userPolicy, "firewallPolicy": "仅清理本项目创建且无其他依赖的端口规则"}, nil
 }
 
 // Only an exact unit generated for this site and its registered PHP instance can
@@ -370,8 +374,16 @@ func (e *Engine) deleteSite(ctx context.Context, op model.Operation, log func(st
 			return result, err
 		}
 	}
+	if r.Config.String("type") == "managed" {
+		if err = e.syncSitePort(ctx, r, true); err != nil {
+			return result, err
+		}
+	}
 	e.fileMu.Lock()
 	defer e.fileMu.Unlock()
+	if err = e.retainSiteAccount(r, inspection.String("directory")); err != nil {
+		return result, err
+	}
 	for _, entry := range []struct {
 		key, path string
 		enabled   bool

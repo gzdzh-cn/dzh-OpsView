@@ -40,6 +40,13 @@ func (c *Controller) verifyIdentity(r *http.Request, password, code string) bool
 	return ok
 }
 func publicResourceConfig(r model.Resource) model.Config {
+	if r.Kind == "site" {
+		out := security.Redact(r.Config)
+		delete(out, "siteRootApproval")
+		delete(out, "permissionPreview")
+		delete(out, "runtimeTransaction")
+		return out
+	}
 	if r.Kind == "notification-channel" {
 		return model.Config{"type": r.Config["type"], "enabled": r.Config["enabled"]}
 	}

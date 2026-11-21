@@ -841,6 +841,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sites/runtime-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 可用运行用户、实际主组及账号来源；排除面板账号和 UID 0 别名，no-store */
+        get: operations["get_sites_runtime_users"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sites/runtime-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 只读检查权限、链接、硬链接及挂载边界；现有站点绑定修订，no-store */
+        post: operations["post_sites_runtime_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sites/delete-preview": {
         parameters: {
             query?: never;
@@ -2938,9 +2972,7 @@ export interface components {
             /** @description 会话内随机幂等创建请求标识 */
             requestId?: string;
             name: string;
-            config: {
-                [key: string]: unknown;
-            };
+            config: components["schemas"]["SiteSettings"];
             certificate?: string;
             privateKey?: string;
             database?: {
@@ -2956,6 +2988,21 @@ export interface components {
             siteId: string;
             databaseId: string;
             taskId: string;
+        };
+        SiteRuntimeUser: {
+            name: string;
+            uid: string;
+            gid: string;
+            group: string;
+            source: string;
+            shared: boolean;
+        };
+        SiteRuntimePreview: {
+            fingerprint: string;
+            path: string;
+            entries: number;
+            changes: string;
+            confirmedRequired: boolean;
         };
         SiteDeleteItem: {
             id: string;
@@ -3276,6 +3323,22 @@ export interface components {
             clientCA: string;
             accessLogDisabled: boolean;
             phpIsolation: boolean;
+            /** @description isolated、www-data、经运行用户能力接口验证的已有账号或 root；禁止其他 UID 0 别名 */
+            user?: string;
+            /** @description 新托管项目强制启用；旧项目经预览确认后整改，禁止普通保存关闭 */
+            runtimeIsolation?: boolean;
+            /**
+             * @description 仅放行本机 TCP；不启用防火墙，不修改云安全组或监听地址
+             * @default false
+             */
+            releasePort: boolean;
+            /** @description 只读权限预检指纹，变化后必须重新确认 */
+            permissionPreview?: string;
+            readonly runtimeUser?: string;
+            readonly runtimeGroup?: string;
+            readonly runtimeUID?: string;
+            readonly runtimeGID?: string;
+            readonly runtimeIsolationApplied?: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -5797,6 +5860,10 @@ export interface operations {
             query?: never;
             header: {
                 "X-CSRF-Token": string;
+                /** @description root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文 */
+                "X-OpsView-Password"?: string;
+                /** @description 管理员已启用 TOTP 时必须填写 */
+                "X-OpsView-TOTP"?: string;
             };
             path?: never;
             cookie?: never;
@@ -5846,6 +5913,10 @@ export interface operations {
             query?: never;
             header: {
                 "X-CSRF-Token": string;
+                /** @description root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文 */
+                "X-OpsView-Password"?: string;
+                /** @description 管理员已启用 TOTP 时必须填写 */
+                "X-OpsView-TOTP"?: string;
             };
             path: {
                 id: string;
@@ -5914,6 +5985,108 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_sites_runtime_users: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        users: components["schemas"]["SiteRuntimeUser"][];
+                        default: string;
+                        notice: string;
+                    };
+                };
+            };
+            /** @description 校验失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 未登录 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资源冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_sites_runtime_preview: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    id?: string;
+                    revision?: number;
+                    config: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteRuntimePreview"];
                 };
             };
             /** @description 校验失败 */
@@ -6101,6 +6274,10 @@ export interface operations {
             query?: never;
             header: {
                 "X-CSRF-Token": string;
+                /** @description root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文 */
+                "X-OpsView-Password"?: string;
+                /** @description 管理员已启用 TOTP 时必须填写 */
+                "X-OpsView-TOTP"?: string;
             };
             path: {
                 id: string;

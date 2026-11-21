@@ -71,6 +71,8 @@ func (c *Controller) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/passkeys/login-begin", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-begin"); c.passkeys(w, r) })
 	mux.HandleFunc("POST /api/v1/auth/passkeys/login-finish", func(w http.ResponseWriter, r *http.Request) { r.SetPathValue("step", "login-finish"); c.passkeys(w, r) })
 	routes := map[string]http.HandlerFunc{
+		"GET /api/v1/sites/runtime-users":          c.siteRuntimeUsers,
+		"POST /api/v1/sites/runtime-preview":       c.siteRuntimePreview,
 		"GET /api/v1/sites/provisions/{requestId}": c.siteProvisionStatus,
 		"POST /api/v1/sites/delete-preview":        c.siteDeletePreview,
 		"POST /api/v1/sites/delete":                c.submitSiteDelete,
@@ -266,6 +268,9 @@ func (c *Controller) createResource(w http.ResponseWriter, r *http.Request) {
 		if res.Config.String("rootDirectory") == "" && res.Config.String("type") != "proxy" {
 			res.Config["rootDirectory"] = filepath.Join(c.panelPreferences().String("siteDirectory"), filepath.Base(logic.DefaultSiteRoot(res.Config.String("domains"))))
 		}
+		if !c.prepareSiteRuntime(w, r, &res, nil) {
+			return
+		}
 	}
 	if res.Kind == "backup" {
 		if res.Config.String("storageDirectory") == "" {
@@ -419,6 +424,14 @@ func (c *Controller) updateResource(w http.ResponseWriter, r *http.Request) {
 		b.Config = candidate.Config
 	}
 	security.PreserveMasked(b.Config, res.Config)
+	if res.Kind == "site" {
+		candidate := res
+		candidate.Config = b.Config
+		if !c.prepareSiteRuntime(w, r, &candidate, res.Config) {
+			return
+		}
+		b.Config = candidate.Config
+	}
 
 	res.Name = b.Name
 	res.Config = b.Config

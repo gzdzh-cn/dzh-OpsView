@@ -207,6 +207,12 @@ async function remove() {
           <span>移入文件回收站</span>
         </div>
       </template>
+      <div v-if="row.inspection?.userPolicy" class="form-help">
+        运行用户：{{ row.inspection.runtimeUser || '未登记' }}；{{ row.inspection.userPolicy }}
+      </div>
+      <div v-if="row.inspection?.firewallPolicy" class="form-help">
+        {{ row.inspection.firewallPolicy }}
+      </div>
       <div v-if="row.services?.length" class="form-help">
         停止并移除：{{ row.services.join('、') }}
       </div>

@@ -37,7 +37,9 @@ func (s *Store) CreateSiteProvision(site *model.Resource, db *model.Resource, re
 		}
 	}
 	insert := func(r *model.Resource) error {
-		r.ID = security.ID()
+		if r.ID == "" {
+			r.ID = security.ID()
+		}
 		r.Revision = 1
 		r.Status = "pending"
 		r.CreatedAt = Now()

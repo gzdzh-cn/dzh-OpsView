@@ -19,7 +19,7 @@ func (e *Engine) panelConfigurationSnapshot(ctx context.Context) (model.Config, 
 	defer e.siteMu.Unlock()
 	files := map[string]string{}
 	var total int64
-	for _, kind := range []string{"instances", "sites"} {
+	for _, kind := range []string{"instances", "sites", "site-users"} {
 		base := filepath.Join(e.Root, kind)
 		root, err := os.OpenRoot(base)
 		if os.IsNotExist(err) {
@@ -49,7 +49,7 @@ func (e *Engine) panelConfigurationSnapshot(ctx context.Context) (model.Config, 
 				return nil
 			}
 			ext := filepath.Ext(name)
-			if ext != ".conf" && ext != ".ini" {
+			if ext != ".conf" && ext != ".ini" && !(kind == "site-users" && ext == ".json") {
 				return nil
 			}
 			info, err := d.Info()

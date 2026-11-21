@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpsView API",
-    "version": "0.1.3"
+    "version": "0.1.4"
   },
   "paths": {
     "/api/v1/health": {
@@ -562,6 +562,24 @@
           {
             "name": "X-OpsView-Password",
             "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文"
+          },
+          {
+            "name": "X-OpsView-TOTP",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "管理员已启用 TOTP 时必须填写"
+          },
+          {
+            "name": "X-OpsView-Password",
+            "in": "header",
             "required": false,
             "schema": {
               "type": "string"
@@ -646,6 +664,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-OpsView-Password",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文"
+          },
+          {
+            "name": "X-OpsView-TOTP",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "管理员已启用 TOTP 时必须填写"
           },
           {
             "name": "X-OpsView-Password",
@@ -3206,6 +3242,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-OpsView-Password",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文"
+          },
+          {
+            "name": "X-OpsView-TOTP",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "管理员已启用 TOTP 时必须填写"
           }
         ],
         "requestBody": {
@@ -3276,6 +3330,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-OpsView-Password",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文"
+          },
+          {
+            "name": "X-OpsView-TOTP",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "管理员已启用 TOTP 时必须填写"
           }
         ],
         "requestBody": {
@@ -3342,6 +3414,144 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/sites/runtime-users": {
+      "get": {
+        "operationId": "get_sites_runtime_users",
+        "summary": "可用运行用户、实际主组及账号来源；排除面板账号和 UID 0 别名，no-store",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SiteRuntimeUser"
+                      }
+                    },
+                    "default": {
+                      "type": "string"
+                    },
+                    "notice": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "users",
+                    "default",
+                    "notice"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        }
+      }
+    },
+    "/api/v1/sites/runtime-preview": {
+      "post": {
+        "operationId": "post_sites_runtime_preview",
+        "summary": "只读检查权限、链接、硬链接及挂载边界；现有站点绑定修订，no-store",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "httpSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRuntimePreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "409": {
+            "description": "资源冲突"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "config"
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/sites/delete-preview": {
@@ -3622,6 +3832,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-OpsView-Password",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "root 新建或运行配置改变时重新验证当前管理员；不进入任务参数或审计正文"
+          },
+          {
+            "name": "X-OpsView-TOTP",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "description": "管理员已启用 TOTP 时必须填写"
           }
         ],
         "requestBody": {
@@ -13559,8 +13787,7 @@
             "type": "string"
           },
           "config": {
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/components/schemas/SiteSettings"
           },
           "certificate": {
             "type": "string",
@@ -13623,6 +13850,64 @@
           "siteId",
           "databaseId",
           "taskId"
+        ]
+      },
+      "SiteRuntimeUser": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          },
+          "gid": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "uid",
+          "gid",
+          "group",
+          "source",
+          "shared"
+        ]
+      },
+      "SiteRuntimePreview": {
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "integer"
+          },
+          "changes": {
+            "type": "string"
+          },
+          "confirmedRequired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "path",
+          "entries",
+          "changes",
+          "confirmedRequired"
         ]
       },
       "SiteDeleteItem": {
@@ -14767,6 +15052,43 @@
           },
           "phpIsolation": {
             "type": "boolean"
+          },
+          "user": {
+            "type": "string",
+            "description": "isolated、www-data、经运行用户能力接口验证的已有账号或 root；禁止其他 UID 0 别名"
+          },
+          "runtimeIsolation": {
+            "type": "boolean",
+            "description": "新托管项目强制启用；旧项目经预览确认后整改，禁止普通保存关闭"
+          },
+          "releasePort": {
+            "type": "boolean",
+            "default": false,
+            "description": "仅放行本机 TCP；不启用防火墙，不修改云安全组或监听地址"
+          },
+          "permissionPreview": {
+            "type": "string",
+            "description": "只读权限预检指纹，变化后必须重新确认"
+          },
+          "runtimeUser": {
+            "type": "string",
+            "readOnly": true
+          },
+          "runtimeGroup": {
+            "type": "string",
+            "readOnly": true
+          },
+          "runtimeUID": {
+            "type": "string",
+            "readOnly": true
+          },
+          "runtimeGID": {
+            "type": "string",
+            "readOnly": true
+          },
+          "runtimeIsolationApplied": {
+            "type": "boolean",
+            "readOnly": true
           }
         },
         "required": [

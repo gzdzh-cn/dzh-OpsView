@@ -186,6 +186,15 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 	if action != "apply" && action != "renew" && action != "certificate" {
 		return nil, errors.New("网站操作无效")
 	}
+	if r.Config.String("type") == "managed" {
+		if _, er := e.load(r.ID); er != nil {
+			r.Config["runtimeIsolation"] = true
+		}
+		if r.Config.Bool("runtimeIsolation") {
+			e.fileMu.Lock()
+			defer e.fileMu.Unlock()
+		}
+	}
 
 	if inst.Config.String("mode") == "docker" && r.Config.String("rootDirectory") != "" {
 		return nil, errors.New("历史容器 Nginx 未挂载 /www/wwwroot，请使用原生 Nginx 创建新站点")
@@ -494,13 +503,46 @@ func (e *Engine) site(ctx context.Context, op model.Operation, log func(string))
 			}
 		}
 	}
+	if r.Config.String("type") == "managed" {
+		prior, priorErr := e.load(r.ID)
+		defer func() {
+			if retErr != nil {
+				recovery, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				var rollback error
+				if priorErr == nil {
+					rollback = e.syncSitePort(recovery, prior, false)
+				} else {
+					rollback = e.syncSitePort(recovery, r, true)
+				}
+				if rollback != nil {
+					retErr = errors.Join(retErr, fmt.Errorf("端口规则回退待核对：%w", rollback))
+				}
+			}
+		}()
+		if err = e.syncSitePort(ctx, r, false); err != nil {
+			return nil, fmt.Errorf("项目端口步骤未完成：%w", err)
+		}
+	}
+	delete(r.Config, "permissionPreview")
 	if err = e.save(r); err != nil {
 		return nil, err
+	}
+	if r.Config.String("type") == "managed" {
+		if err = e.commitSiteRuntime(r.ID); err != nil {
+			log("运行配置已持久化，事务提交标记待执行器恢复时核对")
+		}
 	}
 	if siteUnavailable(r) {
 		e.stopSiteProcesses(ctx, r)
 	}
-	return model.Config{"configHash": r.Config["configHash"], "documentRoot": siteDocumentRoot(r, base), "runningRoot": r.Config["runningRoot"], "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}, nil
+	result = model.Config{"configHash": r.Config["configHash"], "documentRoot": siteDocumentRoot(r, base), "runningRoot": r.Config["runningRoot"], "tls": r.Config.Bool("tls"), "certificateExpires": r.Config["certificateExpires"], "certificateNotBefore": r.Config["certificateNotBefore"], "certificateProvider": r.Config["certificateProvider"], "expirySuspended": r.Config["expirySuspended"], "disabled": r.Config["disabled"], "runtimeStatus": r.Status}
+	for _, k := range logic.SitePrivateFields() {
+		if k != "siteRootApproval" {
+			result[k] = r.Config[k]
+		}
+	}
+	return result, nil
 }
 func (e *Engine) renderSiteServer(r, inst model.Resource, base string, tlsOnly bool) string {
 	hostnames := strings.Fields(r.Config.String("domains"))

@@ -45,7 +45,7 @@ func (e *Engine) app(ctx context.Context, op model.Operation, log func(string)) 
 	}
 	if action == "apply" {
 		u, err := user.Lookup(r.Config.String("user"))
-		if err != nil || u.Uid == "0" || u.Username == "opsview" {
+		if err != nil || (u.Uid == "0" && (r.Kind != "site-process" || !r.Config.Bool("runtimeIsolation") || r.Config.String("siteRootApproval") != logic.SiteRootDigest(model.Resource{ID: strings.TrimPrefix(r.ID, "web-"), Config: r.Config}))) || strings.HasPrefix(u.Username, "opsview") {
 			return nil, errors.New("运行用户不存在或为 root/面板账户")
 		}
 		if err = os.MkdirAll(base, 0755); err != nil {
@@ -120,9 +120,16 @@ func (e *Engine) app(ctx context.Context, op model.Operation, log func(string)) 
 		if err = security.WriteAtomic(envPath, []byte(b.String()), 0600); err != nil {
 			return nil, err
 		}
-		body := fmt.Sprintf("User=%s\nWorkingDirectory=%s\nEnvironmentFile=%s\nExecStart=%s\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=true\nReadWritePaths=%s\n", r.Config.String("user"), base, envPath, strings.Join(parts, " "), base)
-		if err = run(ctx, log, "", nil, nil, "chown", "--no-dereference", r.Config.String("user"), base); err != nil {
+		body := fmt.Sprintf("User=%s\nGroup=%s\nSupplementaryGroups=\nWorkingDirectory=%s\nEnvironmentFile=%s\nExecStart=%s\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=true\nReadWritePaths=%s\n", r.Config.String("user"), u.Gid, strings.ReplaceAll(base, "%", "%%"), strings.ReplaceAll(envPath, "%", "%%"), strings.Join(parts, " "), unitQuote(base))
+		sandbox, err := e.siteSandbox(ctx, r)
+		if err != nil {
 			return nil, err
+		}
+		body += sandbox
+		if !r.Config.Bool("runtimeIsolation") {
+			if err = run(ctx, log, "", nil, nil, "chown", "--no-dereference", r.Config.String("user"), base); err != nil {
+				return nil, err
+			}
 		}
 		if err = installUnit(ctx, r, body, log); err != nil {
 			return nil, err

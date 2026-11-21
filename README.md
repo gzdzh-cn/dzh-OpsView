@@ -6,7 +6,7 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **v0.1.3**，已设为 GitHub 最新正式 Release；下方默认命令无需指定版本即可安装。本版汇总 rc.31 的功能与修复，包含 `ov uninstall`。已验证范围及仍受环境限制的项目见 [验收记录](docs/acceptance.md) 和 [发布说明](docs/releases/v0.1.3.md)。
+当前版本为 **v0.1.4**，已设为 GitHub 最新正式 Release；下方默认命令无需指定版本即可安装。本版完善其他项目的运行用户、目录权限、运行隔离、端口放行及账号回收生命周期；旧项目通过手动检查与整改生效。已验证范围及仍受环境限制的项目见 [验收记录](docs/acceptance.md) 和 [发布说明](docs/releases/v0.1.4.md)。
 
 本轮增加概览右上角主题下拉（跟随系统、亮色、黑色），亮色侧栏采用浅灰蓝背景。设置点击当前值行内保存，复杂认证就地展开，隐藏面板名称、侧栏标题及界面设置标签；修正告警子标签布局。登录仅在密码验证后按需显示验证码。新安装生成随机安全入口；`ov` 使用双列菜单，支持入口开关、轮换及脱敏登录信息。
 
@@ -50,9 +50,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 固定安装本版（root 执行；通常直接使用上面的最新版命令）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3/install.sh; fi && bash install_opsview.sh --version v0.1.3
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.4/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.4/install.sh; fi && bash install_opsview.sh --version v0.1.4
 # 已安装面板：
-ov update --version v0.1.3
+ov update --version v0.1.4
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
@@ -192,3 +192,8 @@ rc.8 的 Nginx 新增 48 组合引用独立软件 Release `software-44268894751`
 ## rc.31 终端完整卸载
 
 新增 `ov uninstall` 和菜单 **18. 卸载 OpsView**，核对实际清单后仅输入小写 `y` 执行。移除面板与受管软件程序，停止受管服务；源码、网站文件和完整数据库数据保留。面板密钥、凭据和本地备份会删除，执行前自行保存必要信息。只在隔离环境验收卸载，不在生产更新时执行卸载。范围、限制和失败续处理见 [卸载说明](docs/uninstall.md)。
+
+
+## v0.1.4 其他项目运行用户与回收
+
+独立用户、可验证的已有账号及受限 root，默认递归权限整理和运行限制；其他项目创建隐藏 SSL/数据库，端口放行默认关闭。保留文件/回收项时保留原所有者，彻底清理后检查全部依赖再清理面板专属账号。旧项目仅手动整改，升级不修改业务权限。详见 [运行用户与隔离说明](docs/website-management.md#v014-运行用户权限与生命周期) 及 [v0.1.4 发布说明](docs/releases/v0.1.4.md)。

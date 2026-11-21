@@ -18,14 +18,14 @@ deploy_preflight() {
 
 ensure_dependencies() {
   local tool missing=false
-  for tool in curl ss getent useradd groupadd runuser flock; do
+  for tool in curl ss getent useradd groupadd runuser flock getfacl setfacl unshare; do
     command -v "$tool" >/dev/null || missing=true
   done
   [ -s /etc/ssl/certs/ca-certificates.crt ] || missing=true
   if [ "$missing" = true ]; then
     echo '正在安装基础依赖（curl、CA 证书、账户及端口检查工具）…'
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl iproute2 passwd util-linux
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl iproute2 passwd util-linux acl
   fi
 }
 

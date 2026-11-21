@@ -115,7 +115,9 @@ test('invalid site never becomes a deployed resource', async ({ page }) => {
     .getByRole('textbox', { name: '绑定域名', exact: true })
     .fill('example.com;include /etc/passwd')
   await page.getByRole('button', { name: '创建', exact: true }).click()
-  await expect(page.locator('.el-dialog .el-alert')).toBeVisible()
+  await expect(
+    dialog.getByRole('alert').filter({ hasText: '请填写域名以生成项目文件夹' }),
+  ).toBeVisible()
   await expect(page.locator('.el-dialog')).toBeVisible()
   expectFixedOverlay(geometry, await overlayGeometry(dialog))
   await expect(dialog.getByRole('button', { name: '创建', exact: true })).toBeInViewport()
@@ -3693,4 +3695,70 @@ test('website policy changes keep the revision and stay in the current menu afte
   })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('aside .active')).toHaveText('流量限制')
+})
+
+test('managed project runtime users keep compact geometry and do not submit credentials in config', async ({
+  page,
+}) => {
+  let submitted: any
+  let headers: Record<string, string> = {}
+  await page.route('**/api/v1/resources', (r) => r.fulfill({ json: [nginxFixture] }))
+  await page.route('**/api/v1/site-categories', (r) => r.fulfill({ json: { rows: ['默认分类'] } }))
+  await page.route('**/api/v1/sites/runtime-users', (r) =>
+    r.fulfill({
+      json: {
+        users: [
+          { name: 'www-data', group: 'www-data', uid: '33', gid: '33' },
+          { name: 'root', group: 'root', uid: '0', gid: '0' },
+          { name: 'deploy', group: 'developers', uid: '1001', gid: '1002' },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/v1/sites', (r) => {
+    submitted = r.request().postDataJSON()
+    headers = r.request().headers()
+    return r.fulfill({ status: 202, json: { siteId: 'managed-new', taskId: 'managed-task' } })
+  })
+  await page.route('**/api/v1/tasks/managed-task', (r) =>
+    r.fulfill({ json: { id: 'managed-task', state: 'succeeded' } }),
+  )
+  await page.goto('/sites')
+  await page.getByRole('tab', { name: '其他项目', exact: true }).click()
+  await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  const geometry = await overlayGeometry(dialog)
+  await expect(
+    dialog.locator('.el-form-item__label').filter({ hasText: /^SSL 证书$/ }),
+  ).toHaveCount(0)
+  await expect(dialog.locator('.el-form-item__label').filter({ hasText: /^数据库$/ })).toHaveCount(
+    0,
+  )
+  await expect(dialog.getByRole('checkbox', { name: '放行端口', exact: true })).not.toBeChecked()
+  await dialog.getByRole('textbox', { name: '绑定域名', exact: true }).fill('runtime.example.test')
+  await dialog
+    .locator('.el-form-item')
+    .filter({ has: page.locator('.el-form-item__label').filter({ hasText: /^执行文件$/ }) })
+    .getByRole('textbox')
+    .fill('/usr/bin/python3')
+  await dialog.getByRole('combobox', { name: '运行用户', exact: true }).click()
+  await page.getByRole('option', { name: 'root · root', exact: true }).click()
+  await expectFixedOverlay(geometry, await overlayGeometry(dialog))
+  await dialog
+    .locator('label.el-checkbox')
+    .filter({ hasText: '确认以 root 运行，并保留目录及 systemd 限制' })
+    .click()
+  await dialog
+    .locator('.el-form-item')
+    .filter({ has: page.locator('.el-form-item__label').filter({ hasText: /^管理员密码$/ }) })
+    .getByRole('textbox')
+    .fill('temporary-admin-verification')
+  await dialog.getByRole('button', { name: '创建', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(submitted.config.user).toBe('root')
+  expect(submitted.config.runtimeIsolation).toBe(true)
+  expect(submitted.database).toBeUndefined()
+  expect(submitted.certificate).toBeUndefined()
+  expect(JSON.stringify(submitted)).not.toContain('temporary-admin-verification')
+  expect(headers['x-opsview-password']).toBe('temporary-admin-verification')
 })

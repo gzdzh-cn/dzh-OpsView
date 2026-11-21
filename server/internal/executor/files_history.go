@@ -75,7 +75,11 @@ func (e *Engine) retainTextRevision(path, revision string) error {
 		return err
 	}
 	now := time.Now().UTC()
-	index[id] = trashEntry{ID: id, Original: path, Stored: filepath.Join(dir, id), DeletedAt: now, ExpiresAt: now.Add(30 * 24 * time.Hour)}
+	account, err := e.accountForPath(path)
+	if err != nil {
+		return err
+	}
+	index[id] = trashEntry{ID: id, Original: path, Stored: filepath.Join(dir, id), DeletedAt: now, ExpiresAt: now.Add(30 * 24 * time.Hour), Account: account, UID: uid, GID: gid}
 	if err = e.writeFileMeta("trash", index); err != nil {
 		return err
 	}

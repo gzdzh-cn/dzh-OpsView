@@ -130,6 +130,9 @@ func (c *Controller) createSite(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	if !c.prepareSiteRuntime(w, r, &site, nil) {
+		return
+	}
 	if err := c.validate(&site); err != nil {
 		fail(w, 400, err.Error())
 		return
@@ -183,8 +186,12 @@ func (c *Controller) retrySite(w http.ResponseWriter, r *http.Request) {
 			candidate.Config[key] = site.Config[key]
 		}
 		security.PreserveMasked(candidate.Config, site.Config)
+		old := site.Config
 		site.Name = candidate.Name
 		site.Config = candidate.Config
+		if !c.prepareSiteRuntime(w, r, &site, old) {
+			return
+		}
 		if err = c.validate(&site); err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -244,6 +251,9 @@ func (c *Controller) saveSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	site.Name = p.Name
 	site.Config = p.Config
+	if !c.prepareSiteRuntime(w, r, &site, old) {
+		return
+	}
 	if err = c.validate(&site); err != nil {
 		fail(w, 400, err.Error())
 		return

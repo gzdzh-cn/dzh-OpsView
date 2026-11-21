@@ -11,6 +11,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePanel } from '../stores/panel'
 import { action, api, post, errorText, size, date, type Resource, type Config } from '../lib/api'
 import SiteCreate from '../components/SiteCreate.vue'
+import SiteRuntimeFields from '../components/SiteRuntimeFields.vue'
+const runtimeFields = ref<InstanceType<typeof SiteRuntimeFields>>()
 import SiteDelete from '../components/SiteDelete.vue'
 import { Refresh } from '@element-plus/icons-vue'
 import SiteTools from '../components/SiteTools.vue'
@@ -269,10 +271,14 @@ async function save(): Promise<boolean> {
   try {
     saving.value = true
     error.value = ''
-    const queued = await post('/sites/' + id + '/settings', {
-      name: draftName.value,
-      config: draft.value,
-      revision: selected.value.revision,
+    const queued = await api('/sites/' + id + '/settings', {
+      method: 'POST',
+      headers: runtimeFields.value?.headers() || {},
+      body: JSON.stringify({
+        name: draftName.value,
+        config: draft.value,
+        revision: selected.value.revision,
+      }),
     })
     const task = await observeSiteTask(queued.taskId, reads.signal)
     if (task.state !== 'succeeded') throw new Error(task.error || '应用未完成，草稿已保留')
@@ -291,6 +297,7 @@ async function save(): Promise<boolean> {
     if (!isAbort(e)) error.value = errorText(e)
     return false
   } finally {
+    runtimeFields.value?.clearCredentials()
     saving.value = false
   }
 }
@@ -755,15 +762,7 @@ async function loadLogs() {
               <el-form-item label="启动参数">
                 <el-input v-model="draft.arguments" placeholder="JSON 数组" />
               </el-form-item>
-              <el-form-item label="运行端口">
-                <el-input-number v-model="draft.port" :min="1024" :max="65535" />
-              </el-form-item>
-              <el-form-item label="运行用户">
-                <el-select v-model="draft.user">
-                  <el-option label="独立站点用户" value="isolated" />
-                  <el-option label="www-data" value="www-data" />
-                </el-select>
-              </el-form-item>
+              <SiteRuntimeFields ref="runtimeFields" v-model="draft" :site="selected" />
               <el-form-item label="环境变量">
                 <el-input
                   v-model="draft.environment"

@@ -65,8 +65,11 @@ func ValidateSiteCreate(c model.Config) error {
 	if !strings.HasPrefix(exe, "/") || path.Clean(exe) != exe || strings.ContainsAny(exe, "\x00\r\n\t \"'`$;%\\") {
 		return errors.New("执行文件须为不含特殊字符的绝对路径")
 	}
-	if c.String("user") != "" && c.String("user") != "isolated" && c.String("user") != "www-data" {
-		return errors.New("运行用户仅支持独立站点用户或 www-data")
+	if value := c.String("user"); value != "" && !regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`).MatchString(value) {
+		return errors.New("运行用户名格式无效")
+	}
+	if c.String("user") == "root" && !c.Bool("runtimeIsolation") {
+		return errors.New("root 项目必须启用运行限制")
 	}
 	var args []string
 	if raw := c.String("arguments"); raw != "" {

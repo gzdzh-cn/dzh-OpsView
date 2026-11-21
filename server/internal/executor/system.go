@@ -17,6 +17,12 @@ import (
 )
 
 func (e *Engine) system(ctx context.Context, op model.Operation, log func(string)) (model.Config, error) {
+	if op.Name == "system.site-runtime-users" {
+		return e.siteRuntimeUsers()
+	}
+	if op.Name == "system.site-runtime-preview" {
+		return e.siteRuntimePreview(ctx, op.Resource)
+	}
 	if strings.HasPrefix(op.Name, "system.ssh-") {
 		return e.sshOperation(ctx, op, log)
 	}

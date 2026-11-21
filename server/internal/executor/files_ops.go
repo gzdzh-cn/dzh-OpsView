@@ -22,6 +22,9 @@ type trashEntry struct {
 	Stored    string    `json:"stored"`
 	DeletedAt time.Time `json:"deletedAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	Account   string    `json:"account,omitempty"`
+	UID       int       `json:"uid,omitempty"`
+	GID       int       `json:"gid,omitempty"`
 }
 
 func (e *Engine) trashIndex() (map[string]trashEntry, error) {
@@ -81,7 +84,8 @@ func (e *Engine) trashFile(path string) (trashEntry, error) {
 	if hasNestedMount(f.path) {
 		return item, errors.New("路径包含挂载点，请先单独处理挂载目录")
 	}
-	if _, err = f.root.Lstat(f.name); err != nil {
+	st, err := f.root.Lstat(f.name)
+	if err != nil {
 		return item, err
 	}
 	dir, err := e.trashDirectory(f.path)
@@ -96,6 +100,11 @@ func (e *Engine) trashFile(path string) (trashEntry, error) {
 	id := security.ID()
 	now := time.Now().UTC()
 	item = trashEntry{ID: id, Original: f.path, Stored: filepath.Join(dir, id), DeletedAt: now, ExpiresAt: now.Add(30 * 24 * time.Hour)}
+	item.UID, item.GID, _ = fileOwner(st)
+	item.Account, err = e.accountForPath(f.path)
+	if err != nil {
+		return item, err
+	}
 	index, err := e.trashIndex()
 	if err != nil {
 		return item, err
@@ -168,6 +177,11 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 			if _, er = f.root.Lstat(f.name); !os.IsNotExist(er) {
 				return nil, errors.New("恢复位置已存在，请选择新的完整路径")
 			}
+			if item.Account != "" {
+				if er = e.retainRestoredAccount(item.Account, target); er != nil {
+					return nil, er
+				}
+			}
 			source, er := os.OpenRoot(filepath.Dir(item.Stored))
 			if er != nil {
 				return nil, er
@@ -181,7 +195,15 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 		}
 		delete(index, item.ID)
 	}
-	return model.Config{"paths": paths}, e.writeFileMeta("trash", index)
+	if err = e.writeFileMeta("trash", index); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err = e.cleanupSiteAccounts(ctx); err != nil {
+		return model.Config{"paths": paths, "accountCleanupPending": true}, err
+	}
+	return model.Config{"paths": paths}, nil
 }
 func removeTrashEntry(item trashEntry) error {
 	if filepath.Base(filepath.Dir(item.Stored)) != ".opsview-trash" || filepath.Base(item.Stored) != item.ID {
@@ -215,6 +237,9 @@ func (e *Engine) expireFileTrash(ctx context.Context) {
 				_ = e.writeFileMeta("trash", index)
 			}
 			e.cleanupExpiredUploads()
+			cleanup, cancel := context.WithTimeout(ctx, 30*time.Second)
+			_ = e.cleanupSiteAccounts(cleanup)
+			cancel()
 			e.fileMu.Unlock()
 		}
 	}

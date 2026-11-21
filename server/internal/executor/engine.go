@@ -34,6 +34,7 @@ type Engine struct {
 	fileMu                sync.Mutex
 	mu                    sync.Mutex
 	siteMu                sync.Mutex
+	siteUsersMu           sync.Mutex
 	runtimeMu             sync.Mutex
 	firewallMu            sync.Mutex
 	firewallClient        *hostfirewall.Client
@@ -109,6 +110,9 @@ func (e *Engine) Serve(ctx context.Context, socket string) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	e.cancel = cancel
 	defer cancel()
+	if err = e.recoverSiteRuntimes(); err != nil {
+		return err
+	}
 	if err = e.recoverNginxReplacements(runCtx); err != nil {
 		return err
 	}
