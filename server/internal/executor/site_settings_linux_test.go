@@ -58,11 +58,11 @@ func testWebsiteSettings(t *testing.T, e *Engine, inst model.Resource) {
 	if _, err = e.Execute(ctx, model.Operation{Name: "site.apply", Resource: r}, func(s string) { t.Log(s) }); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
+	defer func() {
 		if _, err := e.Execute(context.Background(), model.Operation{Name: "site.delete", Resource: r}, func(string) {}); err != nil {
 			t.Error(err)
 		}
-	})
+	}()
 	request := func(host, path string, port int, password, ref string) (int, string, http.Header) {
 		t.Helper()
 		req, _ := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://127.0.0.1:%d%s", port, path), nil)

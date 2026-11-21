@@ -63,6 +63,9 @@ func (e *Engine) switchNginx(ctx context.Context, source model.Resource, p model
 		sites[i].Config = cloneConfig(sites[i].Config)
 		sites[i].Config["instanceId"] = target.ID
 		sites[i].Config["probeToken"] = security.ID()
+		if err := prepareSiteAccess(sites[i], filepath.Join(e.Root, "sites", sites[i].ID)); err != nil {
+			return nil, err
+		}
 		candidate := e.renderSite(sites[i], target, filepath.Join(e.Root, "sites", sites[i].ID))
 		path := filepath.Join(targetBase, "conf", "sites", sites[i].ID+".conf")
 		if _, er := os.Stat(path); er == nil {

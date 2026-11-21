@@ -3532,6 +3532,11 @@ test('website domain bindings apply multiline additions, retain failed drafts an
   await expect(link).toHaveAttribute('href', 'http://api.domain.test:8081/')
   await expect(link).toHaveAttribute('target', '_blank')
   await expect(input).toHaveValue('')
+  fail = true
+  await input.fill('pending.domain.test')
+  await dialog.getByRole('button', { name: '添加域名', exact: true }).click()
+  await expect(dialog).toContainText('Nginx 配置未通过')
+  fail = false
   await dialog
     .getByRole('row')
     .filter({ has: page.getByRole('link', { name: 'www.domain.test', exact: true }) })
@@ -3543,7 +3548,9 @@ test('website domain bindings apply multiline additions, retain failed drafts an
     .click()
   await expect(dialog.getByRole('link', { name: 'www.domain.test', exact: true })).toHaveCount(0)
   await expect(dialog).toBeVisible()
-  expect(posts).toBe(3)
+  expect(site.config.domains.split(/\s+/)).toEqual(['domain.test', 'api.domain.test:8081'])
+  await expect(input).toHaveValue('pending.domain.test')
+  expect(posts).toBe(4)
 })
 
 for (const mode of ['light', 'dark']) {
