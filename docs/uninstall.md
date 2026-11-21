@@ -49,6 +49,7 @@
 ## 开发验证
 
 ```bash
+make assets
 cd server
 go test -race ./internal/maintenance ./internal/security ./internal/executor
 go vet ./internal/maintenance ./internal/security ./internal/executor
