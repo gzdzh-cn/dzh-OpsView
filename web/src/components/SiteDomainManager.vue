@@ -84,11 +84,11 @@ async function remove(keys: string[]) {
       cancelButtonText: '取消',
     })
     if (props.child)
-      config.value.subdirectoryBindings = (config.value.subdirectoryBindings || []).filter(
+      config.value.subdirectoryBindings = (props.committed.subdirectoryBindings || []).filter(
         (_: Config, i: number) => !keys.includes(String(i)),
       )
     else
-      config.value.domains = String(config.value.domains || '')
+      config.value.domains = String(props.committed.domains || '')
         .split(/\s+/)
         .filter((v) => v && !keys.includes(v))
         .join('\n')
