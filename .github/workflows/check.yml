@@ -1,7 +1,7 @@
 name: OpsView checks
 on:
   push:
-    branches: ['**']
+    branches-ignore: ['codex/verify-public/**']
   pull_request:
 permissions:
   contents: read

@@ -27,7 +27,10 @@ scheme = 'https'
 
 def report_failure(kind, error, tb):
     location = ' -> '.join(f'{Path(f.filename).name}:{f.lineno}' for f in traceback.extract_tb(tb))
-    print(f'::error::Published install verification {kind.__name__} at {location}', flush=True)
+    detail = ''
+    if isinstance(error, urllib.error.HTTPError):
+        detail = f' (HTTP {error.code}, remaining={error.headers.get("X-RateLimit-Remaining", "unknown")})'
+    print(f'::error::Published install verification {kind.__name__}{detail} at {location}', flush=True)
     sys.__excepthook__(kind, error, tb)
 sys.excepthook = report_failure
 
