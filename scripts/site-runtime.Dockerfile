@@ -6,5 +6,6 @@ RUN if [ -n "$APT_MIRROR" ]; then sed -i -E "s|https?://[^ ]+/ubuntu(-ports)?/?|
     && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
        systemd systemd-sysv dbus ca-certificates curl iproute2 passwd util-linux python3 acl nodejs \
     && rm -rf /var/lib/apt/lists/*
+RUN install -d -m 0755 /www/wwwroot
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
