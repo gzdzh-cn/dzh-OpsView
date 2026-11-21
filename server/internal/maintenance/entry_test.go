@@ -77,7 +77,7 @@ func TestEntranceRotationAndDisabledOutput(t *testing.T) {
 	output.Reset()
 	r.menuColumns()
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != 9 || !strings.HasPrefix(lines[0], "0. 退出") || !strings.Contains(lines[0], "9. ") || !strings.Contains(lines[8], "17. 关闭安全入口") {
+	if len(lines) != 10 || !strings.HasPrefix(lines[0], "0. 退出") || !strings.Contains(lines[0], "10. ") || !strings.Contains(lines[7], "17. 关闭安全入口") || !strings.Contains(lines[8], "18. 卸载 OpsView") {
 		t.Fatal("invalid two-column ordering")
 	}
 }

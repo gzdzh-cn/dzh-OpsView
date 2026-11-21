@@ -52,6 +52,12 @@ func OpenVault(path string) (*Vault, error) {
 	if e != nil {
 		return nil, e
 	}
+	return VaultFromKey(b)
+}
+
+// VaultFromKey opens an existing key without creating or modifying any files.
+// Maintenance preflight uses this instead of OpenVault, which initializes missing keys.
+func VaultFromKey(b []byte) (*Vault, error) {
 	if len(b) != 32 {
 		return nil, errors.New("invalid encryption key")
 	}

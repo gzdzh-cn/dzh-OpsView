@@ -78,6 +78,8 @@ jobs:
             sleep $((attempt * 3))
           done
       - run: make api check
+      - name: Verify uninstall on a disposable systemd host
+        run: bash scripts/test-uninstall.sh
       - run: ./scripts/test-installer.sh
       - run: ./scripts/test-files-linux.sh
       - name: Verify real SSH login and UFW rollback in isolated Linux

@@ -81,3 +81,15 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
       - run: ./scripts/test-sites-linux.sh
+
+  uninstall:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Verify uninstall on a disposable systemd host
+        run: bash scripts/test-uninstall.sh

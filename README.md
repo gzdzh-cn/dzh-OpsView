@@ -6,7 +6,7 @@
 
 使用 GoFrame 2、Vue 3、TypeScript 和 Vite 构建的中文单机服务器运维面板。面板服务与特权执行器分离，元数据存放 SQLite，前端随 Go 二进制发布。
 
-当前版本为 **0.1.3-rc.30 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
+当前版本为 **0.1.3-rc.31 预发布测试版**。主要菜单和服务器操作已实现；生产验收尚未完成，具体测试证据及限制见 [验收记录](docs/acceptance.md)。
 
 本轮增加概览右上角主题下拉（跟随系统、亮色、黑色），亮色侧栏采用浅灰蓝背景。设置点击当前值行内保存，复杂认证就地展开，隐藏面板名称、侧栏标题及界面设置标签；修正告警子标签布局。登录仅在密码验证后按需显示验证码。新安装生成随机安全入口；`ov` 使用双列菜单，支持入口开关、轮换及脱敏登录信息。
 
@@ -50,9 +50,9 @@ if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.s
 安装本次测试版（root 执行）：
 
 ```bash
-if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.30/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.30/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.30
+if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 -o install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.31/install.sh; else wget -O install_opsview.sh https://github.com/gzdzh-cn/dzh-OpsView/releases/download/v0.1.3-rc.31/install.sh; fi && bash install_opsview.sh --version v0.1.3-rc.31
 # 已安装面板：
-ov update --version v0.1.3-rc.30
+ov update --version v0.1.3-rc.31
 ```
 
 成功后终端显示实际 HTTPS 地址、随机用户名和随机强密码，可直接登录；密码仅显示一次，不保存明文。输入 `ov` 打开中文维护菜单，忘记密码使用 `ov password`。安装脚本需要联网访问 GitHub 和发行版软件源。GitHub 无法连接时可以使用下方离线传包方式。
@@ -79,6 +79,12 @@ sudo bash opsview-linux-amd64/deploy/install.sh
 面板使用独立 HTTPS 端口 **18790**，首次生成自签名证书。需要时放行此端口并配置云厂商安全组，然后使用终端显示的随机账号直接登录。`ov info` 查看地址和用户名，`ov info --public-host panel.example.com` 修正访问地址，`ov port` 修改端口。可以在“面板设置”上传受信任的面板证书。
 
 安装过程创建 `opsview-panel.service` 与 `opsview-executor.service`。面板以 `opsview` 用户运行，执行器以 root 运行，二者仅通过 `/run/opsview/executor.sock` 通信。完整目录、升级、备份和故障恢复步骤见 [运维手册](docs/operations.md)。
+
+## 卸载
+
+本版新增 `sudo ov uninstall`，也可选择 `ov` 菜单 **18. 卸载 OpsView**。先显示清理与保留清单，只有输入小写 `y` 才执行，不支持 `--yes` 跳过确认。
+
+卸载会停止网站、数据库和计划，删除面板及受管软件程序、面板数据与密钥、本地备份和安装缓存；保留源码、网站文件、数据库数据及 Docker 数据卷。其他容器、Docker 引擎、系统依赖和 SSH 配置保留。数据保留不等于自动恢复，详见 [卸载与数据保留](docs/uninstall.md)。
 
 ## 已提供的功能
 
@@ -182,3 +188,7 @@ rc.8 的 Nginx 新增 48 组合引用独立软件 Release `software-44268894751`
 刷新与搜索相邻，删除工具栏项目计数；网站设置采用固定头尾与独立滚动导航。域名支持多行添加、独立绑定列表及新标签访问。新增结构化子目录绑定、访问限制、流量限制、重定向、防盗链、压缩/缓存/响应头/CORS、客户端证书认证；保留原有运行环境、SSL、统计及备份。实现范围和验证记录见 [网站设置说明](docs/website-settings-rc30.md)。
 
 升级前执行 `ov backup`，再执行 `ov update --version v0.1.3-rc.30`。无新增数据库迁移，保持 schema 6；回退必须恢复同次更新的程序、元数据、运行配置及单元。付费内核防篡改、专业恶意代码扫描、WebDAV/配额和 Tomcat/Composer 独立工具链不作为已实现功能提供。
+
+## rc.31 终端完整卸载
+
+新增 `ov uninstall` 和菜单 **18. 卸载 OpsView**，核对实际清单后仅输入小写 `y` 执行。移除面板与受管软件程序，停止受管服务；源码、网站文件和完整数据库数据保留。面板密钥、凭据和本地备份会删除，执行前自行保存必要信息。只在隔离环境验收卸载，不在生产更新时执行卸载。范围、限制和失败续处理见 [卸载说明](docs/uninstall.md)。

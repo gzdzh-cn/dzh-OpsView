@@ -26,8 +26,8 @@ import (
 	"time"
 )
 
-var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off", "entry on", "entry off"}
-var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板", "关闭 SSL 证书（切换 HTTP）", "开启安全入口（重新生成）", "关闭安全入口"}
+var Commands = []string{"status", "start", "stop", "restart", "username", "password", "port", "info", "recover-access", "reset-2fa", "logs", "backup", "diagnose", "update", "ssl off", "entry on", "entry off", "uninstall"}
+var labels = []string{"查看服务状态", "启动面板服务", "停止面板服务", "重启面板服务", "修改管理员用户名", "修改或重置密码", "修改面板端口", "查看登录链接和用户名", "清除面板 IP 访问限制", "关闭双因素认证", "查看服务日志", "备份面板配置", "导出诊断信息", "更新面板", "关闭 SSL 证书（切换 HTTP）", "开启安全入口（重新生成）", "关闭安全入口", "卸载 OpsView"}
 
 const panelUnit = "opsview-panel.service"
 const executorUnit = "opsview-executor.service"
@@ -79,12 +79,17 @@ func Run(args []string) error {
 		r.help()
 		return nil
 	}
-	return r.command(args)
+	err = r.command(args)
+	if errors.Is(err, errUninstalled) {
+		return nil
+	}
+	return err
 }
 func (r *Runner) help() {
 	fmt.Fprintf(r.Out, "OpsView v%s 终端管理\n用法：ov <命令>\n", version.Current)
 	r.menuColumns()
 	fmt.Fprintln(r.Out, "命令："+strings.Join(Commands, " | "))
+	fmt.Fprintln(r.Out, "卸载面板及受管软件：ov uninstall（仅输入小写 y 确认；保留源码、网站文件和数据库数据）")
 	fmt.Fprintln(r.Out, "    init             显式初始化随机管理员（仅未初始化时）\n密码输入：ov password [--generate | --stdin]\n端口修改：ov port <端口> [--source IP/CIDR] [--yes]\n地址修正：ov info --public-host <域名或IPv4>\n版本更新：ov update [--version <版本号>]\n安全入口：ov entry on|off（on 每次重新生成；reset 兼容关闭）\n防火墙事务：ov firewall status|rollback [--yes]\n网页入口：ov panel on|off\n高级安全：ov security status|recover [--yes]\n备份恢复：ov restore --file <.ovp> [--switch --yes]")
 }
 func (r *Runner) line(prompt string) (string, error) {
@@ -131,6 +136,12 @@ func (r *Runner) menu() error {
 			continue
 		}
 		if e = r.command(strings.Fields(Commands[n-1])); e != nil {
+			if errors.Is(e, errUninstalled) {
+				return nil
+			}
+			if Commands[n-1] == "uninstall" {
+				return e
+			}
 			if errors.Is(e, io.EOF) {
 				return nil
 			}
@@ -173,6 +184,8 @@ func (r *Runner) command(args []string) error {
 		defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	}
 	switch command {
+	case "uninstall":
+		return r.uninstall(args)
 	case "panel":
 		return r.panel(args)
 	case "security":
