@@ -42,7 +42,7 @@ func TestLinuxPanelUninstall(t *testing.T) {
 		defer cancel()
 		b, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
 		if err != nil {
-			if name == "/usr/sbin/mysqld" {
+			if filepath.Base(name) == "mysqld" {
 				// This is the freshly initialized, password-free disposable fixture.
 				// Never inspect panel credentials or production database logs.
 				t.Logf("disposable mysql initialization: %s", b)
@@ -124,8 +124,14 @@ func TestLinuxPanelUninstall(t *testing.T) {
 		return base
 	}
 	mysqlBase := uninstallManaged + "/instances/mysql-check"
-	addDB("mysql-check", "mysql", "/usr/sbin/mysqld", "ExecStart="+mysqlBase+"/runtime/bin/mysqld --no-defaults --datadir="+mysqlBase+"/data --socket="+mysqlBase+"/data/mysql.sock --port=13316 --bind-address=127.0.0.1 --mysqlx=OFF --log-error="+mysqlBase+"/logs/mysql.log")
-	command("/usr/sbin/mysqld", "--no-defaults", "--initialize-insecure", "--user=ovdb", "--datadir="+mysqlBase+"/data", "--log-error="+mysqlBase+"/logs/mysql.log")
+	// Use a fixture executable outside the distribution path: host AppArmor
+	// profiles for /usr/sbin/mysqld can attach inside privileged CI containers.
+	// Keep vendor resources explicit and preserve this external test executable
+	// for the retained-data restart after uninstall.
+	const mysqlExecutable = "/opt/opsview-uninstall-fixture/mysqld"
+	command("install", "-D", "-m", "0755", "/usr/sbin/mysqld", mysqlExecutable)
+	addDB("mysql-check", "mysql", mysqlExecutable, "ExecStart="+mysqlBase+"/runtime/bin/mysqld --no-defaults --basedir=/usr --datadir="+mysqlBase+"/data --socket="+mysqlBase+"/data/mysql.sock --port=13316 --bind-address=127.0.0.1 --mysqlx=OFF --log-error="+mysqlBase+"/logs/mysql.log")
+	command(mysqlExecutable, "--no-defaults", "--basedir=/usr", "--initialize-insecure", "--user=ovdb", "--datadir="+mysqlBase+"/data", "--log-error="+mysqlBase+"/logs/mysql.log")
 	pgBase := uninstallManaged + "/instances/pg-check"
 	addDB("pg-check", "postgresql", "/usr/lib/postgresql/16/bin/postgres", "ExecStart="+pgBase+"/runtime/bin/postgres -D "+pgBase+"/data -h 127.0.0.1 -p 13432 -k "+pgBase+"/data")
 	command("runuser", "-u", "ovdb", "--", "/usr/lib/postgresql/16/bin/initdb", "-D", pgBase+"/data", "-U", "postgres", "--auth=trust")
@@ -280,7 +286,7 @@ print('PTY uninstall succeeded')
 	// original data directories. Successful queries prove the retained data can
 	// be used after all OpsView configuration and encryption keys are gone.
 	for _, entry := range []struct{ name, exec string }{
-		{"mysql", "/usr/sbin/mysqld --no-defaults --datadir=" + mysqlBase + "/data --socket=" + mysqlBase + "/data/mysql.sock --port=13316 --bind-address=127.0.0.1 --mysqlx=OFF --log-error=" + mysqlBase + "/data/restore.log"},
+		{"mysql", mysqlExecutable + " --no-defaults --basedir=/usr --datadir=" + mysqlBase + "/data --socket=" + mysqlBase + "/data/mysql.sock --port=13316 --bind-address=127.0.0.1 --mysqlx=OFF --log-error=" + mysqlBase + "/data/restore.log"},
 		{"pg", "/usr/lib/postgresql/16/bin/postgres -D " + pgBase + "/data -h 127.0.0.1 -p 13432 -k " + pgBase + "/data"},
 		{"redis", "/usr/bin/redis-server --bind 127.0.0.1 --port 13679 --dir " + redisBase + "/data --appendonly yes"},
 	} {
