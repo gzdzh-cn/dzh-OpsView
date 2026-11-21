@@ -86,6 +86,7 @@ const clipboard = ref<{ paths: string[]; action: 'copy' | 'move' }>(),
   resultTitle = ref('文件任务结果'),
   resultJSON = computed(() => (taskResult.value ? JSON.stringify(taskResult.value, null, 2) : ''))
 const trashOpen = ref(false),
+  trashBusy = ref(false),
   trash = ref<Config[]>([]),
   uploadInput = ref<HTMLInputElement>(),
   uploadBusy = ref(false),
@@ -637,6 +638,7 @@ async function loadTrash() {
   }
 }
 async function trashAction(action: string, row?: Config) {
+  if (trashBusy.value) return
   try {
     let target = ''
     if (action === 'restore') {
@@ -652,12 +654,25 @@ async function trashAction(action: string, row?: Config) {
         '永久删除',
         { type: 'warning', confirmButtonText: '永久删除', cancelButtonText: '取消' },
       )
-    await op('trash', { trashAction: action, id: row?.id, target, confirmed: true })
+    trashBusy.value = true
+    let result = await op('trash', { trashAction: action, id: row?.id, target, confirmed: true })
+    if (result.id && result.state)
+      result = (await awaitTask(result.id, '回收站清理', [], false)) || {}
+    if (!alive) return
+    const retained = (result.accounts || []).filter((a: Config) => a.phase !== 'deleted')
+    if (retained.length)
+      ElMessage.warning(
+        '文件已处理，保留运行用户：' +
+          retained.map((a: Config) => a.name + '（' + (a.reason || '待核对依赖') + '）').join('；'),
+      )
+    else if (result.accountCleanupPending) ElMessage.warning('文件已处理，账号清理待后台重试')
     if (action === 'restore') invalidateSizes([target])
     await loadTrash()
     await load()
   } catch (e) {
     showError(e)
+  } finally {
+    trashBusy.value = false
   }
 }
 async function uploadFiles(event: Event) {
@@ -1413,8 +1428,11 @@ onUnmounted(() => {
   <AppDialog v-model="trashOpen" title="文件回收站" width="85%">
     <div class="page-toolbar">
       <p>默认保留 30 天，恢复时不会覆盖已有文件。</p>
-      <el-button type="danger" @click="trashAction('empty')">清空回收站</el-button>
+      <el-button type="danger" :loading="trashBusy" @click="trashAction('empty')">
+        清空回收站
+      </el-button>
     </div>
+    <p v-if="trashBusy" class="form-help">正在处理回收站及运行用户依赖，进度可在任务中心查看。</p>
     <DataList state-key="Files-1" :rows="trash" searchable>
       <el-table-column prop="original" label="原路径" min-width="260" show-overflow-tooltip />
       <el-table-column label="删除时间" min-width="170">
@@ -1425,8 +1443,12 @@ onUnmounted(() => {
       </el-table-column>
       <el-table-column label="操作" width="180">
         <template #default="{ row }">
-          <el-button link type="primary" @click="trashAction('restore', row)">恢复</el-button>
-          <el-button link type="danger" @click="trashAction('purge', row)">永久删除</el-button>
+          <el-button link type="primary" :disabled="trashBusy" @click="trashAction('restore', row)">
+            恢复
+          </el-button>
+          <el-button link type="danger" :disabled="trashBusy" @click="trashAction('purge', row)">
+            永久删除
+          </el-button>
         </template>
       </el-table-column>
     </DataList>

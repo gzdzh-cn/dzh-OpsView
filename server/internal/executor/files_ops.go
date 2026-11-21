@@ -121,6 +121,9 @@ func (e *Engine) trashFile(path string) (trashEntry, error) {
 	return item, nil
 }
 func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
+	return e.fileTrashContext(context.Background(), p)
+}
+func (e *Engine) fileTrashContext(parent context.Context, p model.Config) (model.Config, error) {
 	index, err := e.trashIndex()
 	if err != nil {
 		return nil, err
@@ -133,6 +136,7 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 		return model.Config{"items": items}, nil
 	}
 	paths := []string{}
+	accounts := map[string]bool{}
 	if p.String("action") == "empty" {
 		if !p.Bool("confirmed") {
 			return nil, errors.New("永久清空需要明确确认")
@@ -141,6 +145,9 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 			paths = append(paths, item.Original)
 			if err = removeTrashEntry(item); err != nil {
 				return nil, err
+			}
+			if item.Account != "" {
+				accounts[item.Account] = true
 			}
 			delete(index, id)
 		}
@@ -157,6 +164,9 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 			}
 			if err = removeTrashEntry(item); err != nil {
 				return nil, err
+			}
+			if item.Account != "" {
+				accounts[item.Account] = true
 			}
 		case "restore":
 			target := item.Original
@@ -198,12 +208,32 @@ func (e *Engine) fileTrash(p model.Config) (model.Config, error) {
 	if err = e.writeFileMeta("trash", index); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	result := model.Config{"paths": paths}
+	if len(accounts) == 0 {
+		return result, nil
+	}
+	ctx, cancel := context.WithTimeout(parent, 3*time.Minute)
 	defer cancel()
 	if err = e.cleanupSiteAccounts(ctx); err != nil {
 		return model.Config{"paths": paths, "accountCleanupPending": true}, err
 	}
-	return model.Config{"paths": paths}, nil
+	e.siteUsersMu.Lock()
+	registry, err := e.readSiteAccounts()
+	e.siteUsersMu.Unlock()
+	if err != nil {
+		return result, err
+	}
+	outcomes := []model.Config{}
+	for name := range accounts {
+		if a := registry.Accounts[name]; a != nil {
+			outcomes = append(outcomes, model.Config{"name": name, "group": a.Group, "phase": a.Phase, "reason": a.Reason})
+			if strings.Contains(a.Reason, "待重试") {
+				result["accountCleanupPending"] = true
+			}
+		}
+	}
+	result["accounts"] = outcomes
+	return result, nil
 }
 func removeTrashEntry(item trashEntry) error {
 	if filepath.Base(filepath.Dir(item.Stored)) != ".opsview-trash" || filepath.Base(item.Stored) != item.ID {
@@ -237,7 +267,7 @@ func (e *Engine) expireFileTrash(ctx context.Context) {
 				_ = e.writeFileMeta("trash", index)
 			}
 			e.cleanupExpiredUploads()
-			cleanup, cancel := context.WithTimeout(ctx, 30*time.Second)
+			cleanup, cancel := context.WithTimeout(ctx, 3*time.Minute)
 			_ = e.cleanupSiteAccounts(cleanup)
 			cancel()
 			e.fileMu.Unlock()
@@ -666,7 +696,7 @@ func (e *Engine) serverFiles(ctx context.Context, op model.Operation, log func(s
 		})
 		return model.Config{"size": bytes, "count": count}, err
 	case "trash":
-		return e.fileTrash(p)
+		return e.fileTrashContext(ctx, p)
 	case "copy", "move", "rename", "permissions", "delete":
 		return e.fileBatch(ctx, action, p, log)
 	case "compress", "extract":

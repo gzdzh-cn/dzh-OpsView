@@ -24,7 +24,7 @@ func TestLinuxSiteRuntimePolicy(t *testing.T) {
 	}
 	oldMask := syscall.Umask(0027)
 	defer syscall.Umask(oldMask)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 	base := "/var/lib/opsview-runtime-" + security.ID()
 	e := &Engine{Root: base}

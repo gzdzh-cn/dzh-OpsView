@@ -4800,7 +4800,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description 耗时文件操作已排队 */
+            /** @description 耗时文件操作（含回收站永久删除/清空和账号依赖清理）已排队；使用 Task.id 查询 /files/tasks/{id}，结果 accounts 返回账号/组保留原因，accountCleanupPending 表示需要后台重试 */
             202: {
                 headers: {
                     [name: string]: unknown;

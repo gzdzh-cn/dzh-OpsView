@@ -3762,3 +3762,67 @@ test('managed project runtime users keep compact geometry and do not submit cred
   expect(JSON.stringify(submitted)).not.toContain('temporary-admin-verification')
   expect(headers['x-opsview-password']).toBe('temporary-admin-verification')
 })
+
+test('trash cleanup observes the real task and explains retained runtime accounts', async ({
+  page,
+}) => {
+  let finished = false,
+    submitted = 0
+  const row = {
+    id: 'trash-project',
+    original: '/www/wwwroot/removed-project',
+    deletedAt: '2026-11-22T00:00:00Z',
+    expiresAt: '2026-12-22T00:00:00Z',
+  }
+  await page.route('**/api/v1/files', async (route) => {
+    const p = route.request().postDataJSON()
+    if (p.action === 'list') return route.fulfill({ json: { path: '/', items: [], total: 0 } })
+    if (p.action === 'trash' && p.trashAction === 'list')
+      return route.fulfill({ json: { items: finished ? [] : [row] } })
+    if (p.action === 'trash' && p.trashAction === 'purge') {
+      submitted++
+      expect(p.confirmed).toBe(true)
+      return route.fulfill({ status: 202, json: { id: 'trash-cleanup', state: 'queued' } })
+    }
+    return route.fulfill({ json: {} })
+  })
+  await page.route('**/api/v1/files/tasks/trash-cleanup', (route) =>
+    route.fulfill({
+      json: finished
+        ? {
+            state: 'succeeded',
+            result: {
+              paths: [row.original],
+              accounts: [
+                {
+                  name: 'ovs_retained',
+                  group: 'ovs_retained',
+                  phase: 'active',
+                  reason: '账号仍有外部服务依赖',
+                },
+              ],
+            },
+          }
+        : { state: 'running' },
+    }),
+  )
+  await page.locator('.sidebar a[href="/files"]').click()
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('menuitem', { name: '回收站', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '文件回收站', exact: true })
+  await dialog.getByRole('button', { name: '永久删除', exact: true }).click()
+  await page
+    .locator('.el-message-box')
+    .getByRole('button', { name: '永久删除', exact: true })
+    .click()
+  await expect(dialog).toContainText('正在处理回收站及运行用户依赖')
+  await expect(dialog.getByRole('button', { name: '永久删除', exact: true })).toBeDisabled()
+  expect(submitted).toBe(1)
+  finished = true
+  await expect(
+    page.getByText('文件已处理，保留运行用户：ovs_retained（账号仍有外部服务依赖）', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(dialog).not.toContainText(row.original)
+})

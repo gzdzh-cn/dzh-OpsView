@@ -34,7 +34,7 @@ func (c *Controller) files(w http.ResponseWriter, r *http.Request) {
 	if action == "trash" {
 		p["action"] = p.String("trashAction")
 	}
-	async := action == "copy" || action == "move" || action == "compress" || action == "extract" || action == "search" || action == "size" || (action == "permissions" && p.Bool("recursive"))
+	async := action == "copy" || action == "move" || action == "compress" || action == "extract" || action == "search" || action == "size" || (action == "permissions" && p.Bool("recursive")) || (action == "trash" && (p.String("action") == "purge" || p.String("action") == "empty"))
 	if async {
 		op.Resource = model.Resource{ID: "files-host", Name: "服务器文件", Kind: "system"}
 		task, err := c.App.Store.Enqueue(op)
