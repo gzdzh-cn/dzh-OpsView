@@ -20,6 +20,7 @@ if os.environ.get('GITHUB_ACTIONS') != 'true' or os.geteuid() != 0:
 assert not Path('/opt/opsview').exists() and not Path('/var/lib/opsview').exists()
 tag = os.environ['RELEASE_TAG']
 assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?', tag)
+stable = '-' not in tag
 base = 'https://github.com/gzdzh-cn/dzh-OpsView/releases/download/' + tag
 port = 18790
 scheme = 'https'
@@ -67,7 +68,7 @@ with tempfile.TemporaryDirectory() as folder:
     sums=download(base+'/SHA256SUMS').decode()
     records=[line.split()[0] for line in sums.splitlines() if line.split()[-1]=='install.sh']
     assert len(records)==1
-    url = base+'/install.sh' if '-' in tag else 'https://github.com/gzdzh-cn/dzh-OpsView/releases/latest/download/install.sh'
+    url = 'https://github.com/gzdzh-cn/dzh-OpsView/releases/latest/download/install.sh' if stable else base+'/install.sh'
     for attempt in range(8):
         installer = download(url)
         if hashlib.sha256(installer).hexdigest()==records[0]:
@@ -76,7 +77,12 @@ with tempfile.TemporaryDirectory() as folder:
     else:
         raise AssertionError('public installer checksum does not match this release')
     script=Path(folder)/'install.sh';script.write_bytes(installer)
-    output=run(['bash',script,'--version',tag,'--public-host','panel.example.com'])
+    if stable:
+        latest=json.loads(download('https://api.github.com/repos/gzdzh-cn/dzh-OpsView/releases/latest'))
+        assert latest['tag_name']==tag and not latest['draft'] and not latest['prerelease']
+    # Stable releases must exercise the documented command without a version.
+    version_args=[] if stable else ['--version',tag]
+    output=run(['bash',script,*version_args,'--public-host','panel.example.com'])
     username=re.search(r'用户名：(ov_[a-f0-9]{12})',output).group(1)
     password=re.search(r'密码：([A-Za-z0-9_-]{32})',output).group(1)
     entry = json.loads(Path('/etc/opsview/panel.json').read_text())['entry']
@@ -97,7 +103,8 @@ with tempfile.TemporaryDirectory() as folder:
     confirm_access(output)
     del output
     login()
-    run(['ov','update','--version',tag])
+    run(['ov','update',*version_args])
+    assert run(['opsview','version']).strip()==tag.removeprefix('v')
     assert json.loads(Path('/etc/opsview/panel.json').read_text())['entry'] == entry
     assert json.loads(Path('/etc/opsview/panel.json').read_text())['port']==port
     assert json.loads(Path('/etc/opsview/panel.json').read_text())['protocol']=='http'
@@ -106,3 +113,5 @@ with tempfile.TemporaryDirectory() as folder:
         assert password not in log.read_text()
     assert password not in run(['journalctl','-u','opsview-panel','-u','opsview-executor','--no-pager'])
     print('PASS: public release installer checksum, all eight stages, random login, ov, HTTP and changed-port network update')
+    if stable:
+        print('PASS: GitHub latest is this stable release; installation and ov update without --version install the expected version')
