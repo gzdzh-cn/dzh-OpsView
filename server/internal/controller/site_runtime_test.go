@@ -7,8 +7,10 @@ import (
 	"net/http/httptest"
 	"opsview/internal/logic"
 	"opsview/internal/model"
+	"opsview/internal/security"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSiteRootAuthorizationAndStableID(t *testing.T) {
@@ -97,5 +99,33 @@ func TestNewManagedSiteDefaultsAndMetadataOwnership(t *testing.T) {
 	site, _ := c.App.Store.Resource(out.String("siteId"))
 	if !site.Config.Bool("runtimeIsolation") || site.Config.String("runtimeUser") != "" || site.Config.Bool("runtimeIsolationApplied") {
 		t.Fatal(site.Config)
+	}
+}
+
+func TestSiteRootRequiresEnabledTOTP(t *testing.T) {
+	c, h := testController(t)
+	setupAndLogin(t, h)
+	a, err := c.currentAdmin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.TOTP = security.NewTOTP()
+	if err = c.App.Store.Set("admin", a); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"", "invalid", security.TOTP(a.TOTP, time.Now())} {
+		r := model.Resource{ID: "totp-root", Kind: "site", Config: model.Config{"type": "managed", "user": "root", "executable": "/usr/bin/python3", "runtimeIsolation": true}}
+		req := httptest.NewRequest("POST", "/api/v1/sites", nil)
+		req.Header.Set("X-OpsView-Password", "test-long-password-123")
+		req.Header.Set("X-OpsView-TOTP", code)
+		w := httptest.NewRecorder()
+		ok := c.prepareSiteRuntime(w, req, &r, nil)
+		if code == "" || code == "invalid" {
+			if ok || w.Code != 403 || r.Config.String("siteRootApproval") != "" {
+				t.Fatal("missing/invalid OTP approved root execution")
+			}
+		} else if !ok || r.Config.String("siteRootApproval") != logic.SiteRootDigest(r) {
+			t.Fatal("valid OTP did not approve the bound root configuration", w.Code)
+		}
 	}
 }

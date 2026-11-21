@@ -10,12 +10,11 @@ if sudo env GITHUB_ACTIONS=true OPSVIEW_SITE_SMOKE=true OPSVIEW_RUNTIME_SMOKE=tr
 python3 - <<'PYTHON'
 from pathlib import Path
 lines = Path('dist/tests/sites-acceptance.log').read_text(errors='replace').splitlines()
-failures = set()
 for i, line in enumerate(lines):
-    if '--- FAIL:' in line or '.go:' in line and not any(x in line for x in ('Created symlink', 'Removed "')):
-        failures.update(range(max(0, i - 2), min(len(lines), i + 2)))
-detail = '\n'.join(lines[i] for i in sorted(failures))[-14000:]
-detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-print(f'::error title=Website acceptance failure::{detail}')
+    if '--- FAIL:' not in line:
+        continue
+    detail = '\n'.join(lines[max(0, i - 8):i + 2])[-3000:]
+    detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    print(f'::error title=Website acceptance failure::{detail}')
 PYTHON
 exit 1

@@ -95,6 +95,21 @@ func TestLinuxSiteRuntimePolicy(t *testing.T) {
 			if err = e.commitSiteRuntime(id); err != nil {
 				t.Fatal(err)
 			}
+			if mode == "isolated" {
+				registry, er := e.readSiteAccounts()
+				if er != nil {
+					t.Fatal(er)
+				}
+				account := registry.Accounts[r.Config.String("runtimeUser")]
+				account.Phase = "creating"
+				if er = e.writeSiteAccounts(registry); er != nil {
+					t.Fatal(er)
+				}
+				resumed, er := e.ensureSiteAccount(ctx, r, func(s string) { t.Log(s) })
+				if er != nil || resumed.Uid != account.UID || resumed.Gid != account.GID {
+					t.Fatal("interrupted account creation changed identity", er)
+				}
+			}
 			var checks map[string]any
 			b, err := os.ReadFile(dir + "/checks.json")
 			if err != nil {
