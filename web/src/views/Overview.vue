@@ -180,7 +180,7 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <LoadingContent :busy="panel.pending.overview">
+  <LoadingContent :busy="panel.pending.overview" :ready="panel.hasData.overview">
     <div class="metrics-grid">
       <article v-for="card in cards" :key="card.title" class="metric-card">
         <div class="metric-title">

@@ -1,5 +1,15 @@
 <script setup lang="ts">
-defineProps<{ title?: string; count?: number; busy?: boolean; error?: string }>()
+import LoadingContent from './LoadingContent.vue'
+withDefaults(
+  defineProps<{
+    title?: string
+    count?: number
+    busy?: boolean
+    error?: string
+    ready?: boolean
+  }>(),
+  { ready: true },
+)
 defineEmits(['retry'])
 </script>
 <template>
@@ -15,7 +25,8 @@ defineEmits(['retry'])
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="list-error">
       <template #default><el-button link @click="$emit('retry')">重新加载</el-button></template>
     </el-alert>
-    <div v-loading="busy" class="list-panel-body"><slot /></div>
+    <slot name="navigation" />
+    <LoadingContent :busy="busy" :ready="ready" class="list-panel-body"><slot /></LoadingContent>
     <slot name="footer" />
   </section>
 </template>

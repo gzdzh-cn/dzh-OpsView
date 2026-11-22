@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingContent from './LoadingContent.vue'
 import DialogActions from './DialogActions.vue'
 import AppDialog from './AppDialog.vue'
 import { ref, watch, onBeforeUnmount } from 'vue'
@@ -13,7 +14,7 @@ const count = ref(16),
   rows = ref<Config[]>([]),
   cursor = ref('0'),
   started = ref(false),
-  busy = ref(false),
+  busy = ref(true),
   error = ref(''),
   open = ref(false),
   current = ref<Config>({}),
@@ -63,14 +64,17 @@ async function scan(reset = true) {
 }
 watch(
   () => props.instance.id,
-  async () => {
-    try {
-      const result = await request('databases', {})
-      count.value = Math.min(65536, result.count)
-    } catch (e) {
-      error.value = errorText(e)
-    }
-    await scan()
+  () => {
+    const instance = props.instance.id
+    count.value = 16
+    void request('databases', {})
+      .then((result) => {
+        if (props.instance.id === instance) count.value = Math.min(65536, result.count)
+      })
+      .catch((e) => {
+        if (props.instance.id === instance) error.value = errorText(e)
+      })
+    void scan()
   },
   { immediate: true },
 )
@@ -204,39 +208,45 @@ async function download() {
     </div>
     <el-button type="primary" @click="create">添加键</el-button>
   </div>
-  <el-alert v-if="error" :title="error" type="error" :closable="false" />
-  <el-table :data="rows" v-loading="busy">
-    <el-table-column prop="name" label="键名" min-width="220" show-overflow-tooltip>
-      <template #default="{ row }">{{ row.binary ? 'Base64: ' + row.key : row.name }}</template>
-    </el-table-column>
-    <el-table-column prop="type" label="类型" width="110" />
-    <el-table-column label="大小/元素数量" width="160">
-      <template #default="{ row }">
-        {{ row.length }} {{ row.type === 'string' ? '字节' : '项' }}
-      </template>
-    </el-table-column>
-    <el-table-column label="TTL" width="140">
-      <template #default="{ row }">
-        {{
-          row.ttlMillis === -1
-            ? '永久'
-            : row.ttlMillis < 0
-              ? '已过期'
-              : Math.ceil(row.ttlMillis / 1000) + ' 秒'
-        }}
-      </template>
-    </el-table-column>
-    <el-table-column label="操作" width="100">
-      <template #default="{ row }"><el-button link @click="inspect(row)">管理</el-button></template>
-    </el-table-column>
-  </el-table>
-  <div class="list-pagination">
-    <small>已加载 {{ rows.length }} 个键 · 扫描期间数据可能变化</small>
-    <el-button v-if="started && cursor !== '0'" :loading="busy" @click="scan(false)">
-      加载更多
-    </el-button>
-    <small v-else-if="started">本轮扫描完成</small>
-  </div>
+  <el-alert v-if="error" :title="error" type="error" :closable="false">
+    <el-button link @click="scan()">重试</el-button>
+  </el-alert>
+  <LoadingContent :busy="busy && !started" :ready="started">
+    <el-table :data="rows">
+      <el-table-column prop="name" label="键名" min-width="220" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.binary ? 'Base64: ' + row.key : row.name }}</template>
+      </el-table-column>
+      <el-table-column prop="type" label="类型" width="110" />
+      <el-table-column label="大小/元素数量" width="160">
+        <template #default="{ row }">
+          {{ row.length }} {{ row.type === 'string' ? '字节' : '项' }}
+        </template>
+      </el-table-column>
+      <el-table-column label="TTL" width="140">
+        <template #default="{ row }">
+          {{
+            row.ttlMillis === -1
+              ? '永久'
+              : row.ttlMillis < 0
+                ? '已过期'
+                : Math.ceil(row.ttlMillis / 1000) + ' 秒'
+          }}
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="100">
+        <template #default="{ row }">
+          <el-button link @click="inspect(row)">管理</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <div class="list-pagination">
+      <small>已加载 {{ rows.length }} 个键 · 扫描期间数据可能变化</small>
+      <el-button v-if="started && cursor !== '0'" :loading="busy" @click="scan(false)">
+        加载更多
+      </el-button>
+      <small v-else-if="started">本轮扫描完成</small>
+    </div>
+  </LoadingContent>
   <AppDialog
     v-model="open"
     :title="current.key ? 'Redis 键管理' : '添加 Redis 键'"

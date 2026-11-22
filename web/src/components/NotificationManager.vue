@@ -144,7 +144,7 @@ async function test(row: Resource) {
     <el-alert v-if="active.error.value" :title="active.error.value" type="error" :closable="false">
       <el-button link @click="active.load(true)">重试</el-button>
     </el-alert>
-    <LoadingContent :busy="active.busy.value">
+    <LoadingContent :busy="active.busy.value" :ready="active.hasData.value">
       <DataList
         v-if="tab !== 'records'"
         :rows="active.data.value"

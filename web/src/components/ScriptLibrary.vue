@@ -8,7 +8,7 @@ import DataList from './DataList.vue'
 import AppDialog from './AppDialog.vue'
 import LoadingContent from './LoadingContent.vue'
 import ScheduleEditor from './ScheduleEditor.vue'
-const { data, busy, error, load } = usePageQuery<Resource[]>('/scripts', [])
+const { data, busy, error, load, hasData } = usePageQuery<Resource[]>('/scripts', [])
 const history = ref<Config[]>([]),
   version = ref<number>()
 async function loadVersion(n: number) {
@@ -150,7 +150,7 @@ async function importScript() {
     <el-alert v-if="error" :title="error" type="error" :closable="false">
       <el-button link @click="load(true)">重试</el-button>
     </el-alert>
-    <LoadingContent :busy="busy">
+    <LoadingContent :busy="busy" :ready="hasData">
       <DataList :rows="data" state-key="script-library" searchable>
         <el-table-column prop="name" label="脚本名称" min-width="160" />
         <el-table-column label="类型">

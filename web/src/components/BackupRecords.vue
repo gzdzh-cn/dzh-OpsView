@@ -11,6 +11,7 @@ const props = defineProps<{ panelOnly?: boolean }>(),
   panel = usePanel(),
   rows = ref<Config[]>([]),
   busy = ref(true),
+  hasData = ref(false),
   error = ref(''),
   detail = ref<Config>(),
   open = ref(false),
@@ -21,6 +22,14 @@ const props = defineProps<{ panelOnly?: boolean }>(),
   backupId = ref(''),
   request = ref<XMLHttpRequest>()
 let sequence = 0
+const backupKinds: Record<string, string> = {
+  panel: '面板',
+  site: '网站',
+  database: '数据库',
+  directory: '目录',
+  instance: '实例',
+  app: '应用',
+}
 const reads = new AbortController()
 onBeforeUnmount(() => {
   sequence++
@@ -29,11 +38,12 @@ onBeforeUnmount(() => {
 })
 async function load() {
   const seq = ++sequence
-  busy.value = rows.value.length === 0
+  busy.value = !hasData.value
   error.value = ''
   try {
     const metadata = await api<Config[]>('/settings/backups', { signal: reads.signal })
     if (seq !== sequence) return
+    hasData.value = true
     rows.value = metadata.map((r) => ({
       ...r,
       file: r.name,
@@ -182,6 +192,10 @@ async function restore() {
 function selected(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0]
 }
+function cancelUpload() {
+  request.value?.abort()
+  upload.value = false
+}
 async function send() {
   if (!file.value || uploading.value) return
   uploading.value = true
@@ -229,11 +243,15 @@ async function send() {
         <el-button @click="load">刷新记录</el-button>
       </div>
     </div>
-    <el-alert v-if="error" :title="error" type="warning" :closable="false" />
-    <LoadingContent :busy="busy">
+    <el-alert v-if="error" :title="error" type="warning" :closable="false">
+      <el-button link @click="load">重试</el-button>
+    </el-alert>
+    <LoadingContent :busy="busy" :ready="hasData">
       <DataList :rows="rows" state-key="backup-records" searchable>
         <el-table-column prop="targetName" label="对象" min-width="130" />
-        <el-table-column label="类型" width="100"><template #default="{row}">{{ ({panel:'面板',site:'网站',database:'数据库',directory:'目录',instance:'实例',app:'应用'} as Record<string,string>)[row.kind] || row.kind }}</template></el-table-column>
+        <el-table-column label="类型" width="100">
+          <template #default="{ row }">{{ backupKinds[row.kind] || row.kind }}</template>
+        </el-table-column>
         <el-table-column label="备份文件" min-width="220">
           <template #default="{ row }">
             <a :href="row.url">{{ row.file }}</a>
@@ -307,11 +325,7 @@ async function send() {
     </el-form-item>
     <el-progress v-if="uploading" :percentage="progress" />
     <template #footer>
-      <el-button
-        @click="
-          request?.abort(); upload = false
-        "
-      >
+      <el-button @click="cancelUpload">
         {{ uploading ? '取消上传' : '取消' }}
       </el-button>
       <el-button type="primary" :disabled="!file" :loading="uploading" @click="send">

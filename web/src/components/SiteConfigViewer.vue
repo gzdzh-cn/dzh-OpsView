@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import LoadingContent from './LoadingContent.vue'
 import { usePageQuery } from '../composables/pageQuery'
 import CodeEditor from './CodeEditor.vue'
 import type { Config } from '../lib/api'
@@ -34,7 +35,9 @@ const content = computed(() =>
     </el-select>
     <el-button :loading="query.busy.value" @click="query.load(true)">刷新配置</el-button>
   </div>
-  <CodeEditor :key="revision" :model-value="content" readonly />
+  <LoadingContent :busy="query.busy.value" :ready="query.hasData.value">
+    <CodeEditor :key="revision" :model-value="content" readonly />
+  </LoadingContent>
   <el-form label-position="top">
     <el-form-item label="受控高级参数">
       <CodeEditor

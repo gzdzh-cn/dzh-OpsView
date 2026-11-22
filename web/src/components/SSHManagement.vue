@@ -11,11 +11,12 @@ import { post, errorText, type Config } from '../lib/api'
 const emit = defineEmits(['protection'])
 const tab = usePageState('ssh-tab', 'settings')
 const period = usePageState('ssh-period', '24h')
-const { data, busy: reading, error, load } = usePageQuery<Config>('/system/ssh', {})
+const { data, busy: reading, error, load, hasData } = usePageQuery<Config>('/system/ssh', {})
 const {
   data: logs,
   error: logsError,
   busy: logReading,
+  hasData: logsReady,
   load: loadLogs,
 } = usePageQuery<Config>(
   () => (tab.value === 'logs' ? '/system/ssh/logs?period=' + period.value : ''),
@@ -24,6 +25,7 @@ const {
 const {
   data: users,
   busy: userReading,
+  hasData: usersReady,
   error: usersError,
   load: loadUsers,
 } = usePageQuery<Config>(() => (tab.value === 'users' ? '/system/ssh/users' : ''), {})
@@ -210,7 +212,7 @@ async function confirmStop() {
         <el-radio-button value="logs">登录记录</el-radio-button>
       </el-radio-group>
       <div class="page-toolbar-left">
-        <el-tag :type="data.editable ? 'success' : 'info'">
+        <el-tag v-if="hasData" :type="data.editable ? 'success' : 'info'">
           {{
             data.service
               ? data.service.running
@@ -224,13 +226,11 @@ async function confirmStop() {
         <el-button :loading="reading" @click="load(true)">检查</el-button>
       </div>
     </div>
-    <LoadingContent :busy="reading">
-      <el-alert
-        v-if="error || data.reason"
-        :title="error || data.reason"
-        type="warning"
-        :closable="false"
-      />
+    <el-alert v-if="error" :title="error" type="error" :closable="false">
+      <el-button link @click="load(true)">重试</el-button>
+    </el-alert>
+    <LoadingContent :busy="reading" :ready="hasData">
+      <el-alert v-if="data.reason" :title="data.reason" type="warning" :closable="false" />
       <el-alert v-if="pending" type="warning" :closable="false" class="security-pending">
         <template #title>
           修改待确认 · {{ new Date(data.pending.deadline * 1000).toLocaleTimeString() }} 超时回退
@@ -341,7 +341,7 @@ async function confirmStop() {
         <el-alert v-if="usersError" :title="usersError" type="error" :closable="false">
           <el-button link @click="loadUsers(true)">重试</el-button>
         </el-alert>
-        <LoadingContent :busy="userReading">
+        <LoadingContent :busy="userReading" :ready="usersReady">
           <DataList :rows="users.rows || []" state-key="ssh-users" searchable>
             <el-table-column prop="username" label="用户名" min-width="120" />
             <el-table-column prop="uid" label="UID" width="80" />
@@ -425,7 +425,7 @@ async function confirmStop() {
         </div>
         <el-alert v-if="logsError" :title="logsError" type="error" :closable="false" />
         <p class="form-help">{{ logs.notice }}</p>
-        <LoadingContent :busy="logReading">
+        <LoadingContent :busy="logReading" :ready="logsReady">
           <DataList :rows="logs.rows || []" searchable state-key="ssh-logins">
             <el-table-column prop="status" label="结果" width="90" />
             <el-table-column prop="time" label="时间" min-width="190" />

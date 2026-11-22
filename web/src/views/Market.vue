@@ -399,10 +399,15 @@ async function importPackage() {
       <el-button link @click="pluginMarket?.load()">重试插件列表</el-button>
     </el-alert>
     <LoadingContent
+      :ready="
+        panel.hasData.catalog &&
+        panel.hasData.resources &&
+        (['all', 'runtime', 'installed'].includes(category) || !!pluginMarket?.hasData)
+      "
       :busy="
         panel.pending.catalog ||
         panel.pending.resources ||
-        (!['all', 'runtime', 'installed'].includes(category) && pluginMarket?.loading)
+        (!['all', 'runtime', 'installed'].includes(category) && (pluginMarket?.loading ?? true))
       "
     >
       <DataList

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, errorText, type Config, type Resource } from '../lib/api'
 import { usePageQuery } from '../composables/pageQuery'
+import LoadingContent from './LoadingContent.vue'
 import DialogActions from './DialogActions.vue'
 const props = defineProps<{ site: Resource }>()
 const rules = usePageQuery<Resource[]>('/notifications/rules', [])
@@ -73,7 +74,12 @@ async function remove(row: Resource) {
     :title="error || rules.error.value || channels.error.value"
     type="error"
     :closable="false"
-  />
+  >
+    <el-button v-if="rules.error.value" link @click="rules.load(true)">重试告警规则</el-button>
+    <el-button v-if="channels.error.value" link @click="channels.load(true)">
+      重试通知渠道
+    </el-button>
+  </el-alert>
   <template v-if="form">
     <el-form label-width="104px">
       <el-form-item label="告警类型">
@@ -95,7 +101,12 @@ async function remove(row: Resource) {
       </el-form-item>
       <el-form-item label="恢复通知"><el-switch v-model="form.recovery" /></el-form-item>
       <el-form-item label="通知渠道">
-        <el-select v-model="form.channels" multiple placeholder="选择已配置渠道">
+        <el-select
+          v-model="form.channels"
+          multiple
+          placeholder="选择已配置渠道"
+          :loading="channels.busy.value"
+        >
           <el-option
             v-for="item in channels.data.value"
             :key="item.id"
@@ -115,21 +126,23 @@ async function remove(row: Resource) {
       <el-button @click="edit()">添加网站告警</el-button>
       <el-button :loading="rules.busy.value" @click="rules.load(true)">刷新</el-button>
     </div>
-    <el-table :data="rows">
-      <el-table-column label="告警" prop="name" min-width="150" />
-      <el-table-column label="状态" width="80">
-        <template #default="{ row }">{{ row.config.enabled ? '开启' : '暂停' }}</template>
-      </el-table-column>
-      <el-table-column label="执行频率" width="100">
-        <template #default>每分钟</template>
-      </el-table-column>
-      <el-table-column label="操作" width="120">
-        <template #default="{ row }">
-          <el-button link @click="edit(row)">修改</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <LoadingContent :busy="rules.busy.value" :ready="rules.hasData.value">
+      <el-table :data="rows">
+        <el-table-column label="告警" prop="name" min-width="150" />
+        <el-table-column label="状态" width="80">
+          <template #default="{ row }">{{ row.config.enabled ? '开启' : '暂停' }}</template>
+        </el-table-column>
+        <el-table-column label="执行频率" width="100">
+          <template #default>每分钟</template>
+        </el-table-column>
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button link @click="edit(row)">修改</el-button>
+            <el-button link type="danger" @click="remove(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </LoadingContent>
     <p class="form-help">
       复用面板告警服务，每分钟评估；网站探测使用真实访问结果。通知渠道在面板设置中统一管理。
     </p>

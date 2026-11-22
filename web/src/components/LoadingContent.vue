@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ busy?: boolean }>()
+withDefaults(defineProps<{ busy?: boolean; ready?: boolean }>(), { ready: true })
 </script>
 <template>
   <div
@@ -8,6 +8,6 @@ defineProps<{ busy?: boolean }>()
     v-loading="busy"
     element-loading-text="正在加载…"
   >
-    <slot v-if="!busy" />
+    <slot v-if="!busy && ready" />
   </div>
 </template>

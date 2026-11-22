@@ -5,10 +5,11 @@ import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DataList from './DataList.vue'
 import { usePageState } from '../composables/pageState'
+import LoadingContent from './LoadingContent.vue'
 import { usePageQuery } from '../composables/pageQuery'
 import { useSecurityActions } from '../composables/securityActions'
 import { post, errorText, type Config } from '../lib/api'
-const { data, busy: reading, error, load } = usePageQuery<Config>('/system/firewall', {})
+const { data, busy: reading, error, load, hasData } = usePageQuery<Config>('/system/firewall', {})
 const { busy, taskId, run } = useSecurityActions(() => load(true), '/system/firewall/')
 const { busy: modeBusy, taskId: modeTaskId, run: modeRun } = useSecurityActions(() => load(true))
 const tab = usePageState('firewall-category', 'port')
@@ -343,16 +344,13 @@ function rowName(row: Config) {
 defineExpose({ openProtection })
 </script>
 <template>
-  <section
-    class="surface security-panel firewall-panel"
-    aria-label="系统防火墙"
-    v-loading="reading"
-  >
+  <section class="surface security-panel firewall-panel" aria-label="系统防火墙">
     <div class="page-toolbar">
       <div class="page-toolbar-left firewall-switches">
         <span>防火墙</span>
         <el-switch
           :model-value="Boolean(data.enabled)"
+          :loading="reading"
           :disabled="modeLocked"
           aria-label="防火墙开关"
           @change="openMode"
@@ -360,6 +358,7 @@ defineExpose({ openProtection })
         <span>禁 Ping</span>
         <el-switch
           :model-value="Boolean(data.pingBlocked)"
+          :loading="reading"
           :disabled="locked"
           aria-label="禁 Ping"
           @change="changePing"
@@ -423,7 +422,7 @@ defineExpose({ openProtection })
         v-for="(label, kind) in kinds"
         :key="kind"
         :name="kind"
-        :label="`${label}：${count(kind)}`"
+        :label="`${label}：${hasData ? count(kind) : '—'}`"
       />
     </el-tabs>
     <div class="page-toolbar">
@@ -465,138 +464,140 @@ defineExpose({ openProtection })
         </el-button>
       </div>
     </div>
-    <DataList
-      :key="tab"
-      :rows="rows"
-      searchable
-      :state-key="`firewall-${tab}`"
-      row-key="id"
-      @selection-change="selected = $event"
-    >
-      <el-table-column
-        type="selection"
-        width="42"
-        :selectable="(row: Config) => row.editable && !locked"
-      />
-      <el-table-column
-        v-if="tab === 'port' || tab === 'forward'"
-        prop="protocol"
-        label="协议"
-        width="85"
-      />
-      <el-table-column
-        v-if="tab === 'port' || tab === 'forward'"
-        :label="tab === 'forward' ? '入口端口' : '端口'"
-        min-width="130"
+    <LoadingContent :busy="reading" :ready="hasData">
+      <DataList
+        :key="tab"
+        :rows="rows"
+        searchable
+        :state-key="`firewall-${tab}`"
+        row-key="id"
+        @selection-change="selected = $event"
       >
-        <template #default="{ row }">
-          {{ row.ports }}
-          <el-tag size="small" type="info">
-            {{ row.family === 'ipv6' ? 'IPv6' : row.family === 'dual' ? '双栈' : 'IPv4' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'port'" label="监听状态" width="105">
-        <template #default="{ row }">
-          <el-tag :type="row.listening ? 'success' : 'info'" size="small">
-            {{ row.listening ? '已监听' : '未监听' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'ip'" label="IP/CIDR" min-width="190" show-overflow-tooltip>
-        <template #default="{ row }">
-          {{ row.direction === 'out' ? row.destination : row.source }}
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'region'" label="国家/地区" min-width="180">
-        <template #default="{ row }">
-          {{ row.countries?.map((code: string) => countryNames.of(code) || code).join('、') }}
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'region'" label="作用端口" min-width="120">
-        <template #default="{ row }">{{ row.ports || '全部端口' }}</template>
-      </el-table-column>
-      <el-table-column v-if="tab !== 'forward'" label="策略" width="80">
-        <template #default="{ row }">
-          <el-tag :type="row.action === 'allow' ? 'success' : 'danger'" size="small">
-            {{ actionLabels[row.action] || row.action }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'port' || tab === 'ip'" label="方向" width="80">
-        <template #default="{ row }">{{ row.direction === 'out' ? '出站' : '入站' }}</template>
-      </el-table-column>
-      <el-table-column
-        v-if="tab === 'port' || tab === 'forward'"
-        label="来源 / 目标"
-        min-width="170"
-        show-overflow-tooltip
-      >
-        <template #default="{ row }">
-          {{ row.source === 'any' ? '所有 IP' : row.source
-          }}{{ row.destination !== 'any' ? ` → ${row.destination}` : '' }}
-        </template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'forward'" label="目标地址" min-width="150">
-        <template #default="{ row }">{{ row.target || '本机' }}</template>
-      </el-table-column>
-      <el-table-column v-if="tab === 'forward'" prop="targetPorts" label="目标端口" width="120" />
-      <el-table-column v-if="data.backend === 'firewalld'" prop="zone" label="区域" width="100" />
-      <el-table-column prop="note" label="备注" min-width="140" show-overflow-tooltip />
-      <el-table-column v-if="tab === 'region'" label="数据更新时间" min-width="170">
-        <template #default="{ row }">
-          {{ row.dataUpdatedAt ? new Date(row.dataUpdatedAt).toLocaleString() : '—' }}
-        </template>
-      </el-table-column>
-      <el-table-column v-else label="时间" min-width="160">
-        <template #default="{ row }">
-          {{ row.createdAt ? new Date(row.createdAt).toLocaleString() : '—' }}
-        </template>
-      </el-table-column>
-      <el-table-column type="expand" width="32">
-        <template #default="{ row }">
-          <p>{{ row.reason || '原始系统规则' }}</p>
-          <pre class="log-box">{{ row.raw || 'OpsView 受管扩展' }}</pre>
-          <small>
-            运行：{{ row.runtime ? '存在' : '未生效' }} · 持久化：{{
-              row.permanent ? '已保存' : '未保存'
-            }}
-          </small>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="145" fixed="right">
-        <template #default="{ row }">
-          <el-tooltip
-            v-if="!data.enabled || row.runtime === false || row.permanent === false"
-            :content="
-              !data.enabled || row.runtime === false
-                ? '保存规则未生效'
-                : '仅运行配置，重载后可能丢失'
-            "
-          >
-            <el-tag size="small" type="warning">
-              {{ !data.enabled || row.runtime === false ? '未生效' : '临时' }}
+        <el-table-column
+          type="selection"
+          width="42"
+          :selectable="(row: Config) => row.editable && !locked"
+        />
+        <el-table-column
+          v-if="tab === 'port' || tab === 'forward'"
+          prop="protocol"
+          label="协议"
+          width="85"
+        />
+        <el-table-column
+          v-if="tab === 'port' || tab === 'forward'"
+          :label="tab === 'forward' ? '入口端口' : '端口'"
+          min-width="130"
+        >
+          <template #default="{ row }">
+            {{ row.ports }}
+            <el-tag size="small" type="info">
+              {{ row.family === 'ipv6' ? 'IPv6' : row.family === 'dual' ? '双栈' : 'IPv4' }}
             </el-tag>
-          </el-tooltip>
-          <el-tooltip :content="row.reason || '修改规则'" :disabled="row.editable">
-            <span>
-              <el-button
-                link
-                type="primary"
-                :disabled="locked || !row.editable"
-                @click="openEdit(row)"
-              >
-                修改
-              </el-button>
-            </span>
-          </el-tooltip>
-          <el-button link type="danger" :disabled="locked || !row.editable" @click="remove(row)">
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </DataList>
-    <details class="firewall-access">
+          </template>
+        </el-table-column>
+        <el-table-column v-if="tab === 'port'" label="监听状态" width="105">
+          <template #default="{ row }">
+            <el-tag :type="row.listening ? 'success' : 'info'" size="small">
+              {{ row.listening ? '已监听' : '未监听' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="tab === 'ip'" label="IP/CIDR" min-width="190" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.direction === 'out' ? row.destination : row.source }}
+          </template>
+        </el-table-column>
+        <el-table-column v-if="tab === 'region'" label="国家/地区" min-width="180">
+          <template #default="{ row }">
+            {{ row.countries?.map((code: string) => countryNames.of(code) || code).join('、') }}
+          </template>
+        </el-table-column>
+        <el-table-column v-if="tab === 'region'" label="作用端口" min-width="120">
+          <template #default="{ row }">{{ row.ports || '全部端口' }}</template>
+        </el-table-column>
+        <el-table-column v-if="tab !== 'forward'" label="策略" width="80">
+          <template #default="{ row }">
+            <el-tag :type="row.action === 'allow' ? 'success' : 'danger'" size="small">
+              {{ actionLabels[row.action] || row.action }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="tab === 'port' || tab === 'ip'" label="方向" width="80">
+          <template #default="{ row }">{{ row.direction === 'out' ? '出站' : '入站' }}</template>
+        </el-table-column>
+        <el-table-column
+          v-if="tab === 'port' || tab === 'forward'"
+          label="来源 / 目标"
+          min-width="170"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            {{ row.source === 'any' ? '所有 IP' : row.source
+            }}{{ row.destination !== 'any' ? ` → ${row.destination}` : '' }}
+          </template>
+        </el-table-column>
+        <el-table-column v-if="tab === 'forward'" label="目标地址" min-width="150">
+          <template #default="{ row }">{{ row.target || '本机' }}</template>
+        </el-table-column>
+        <el-table-column v-if="tab === 'forward'" prop="targetPorts" label="目标端口" width="120" />
+        <el-table-column v-if="data.backend === 'firewalld'" prop="zone" label="区域" width="100" />
+        <el-table-column prop="note" label="备注" min-width="140" show-overflow-tooltip />
+        <el-table-column v-if="tab === 'region'" label="数据更新时间" min-width="170">
+          <template #default="{ row }">
+            {{ row.dataUpdatedAt ? new Date(row.dataUpdatedAt).toLocaleString() : '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column v-else label="时间" min-width="160">
+          <template #default="{ row }">
+            {{ row.createdAt ? new Date(row.createdAt).toLocaleString() : '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column type="expand" width="32">
+          <template #default="{ row }">
+            <p>{{ row.reason || '原始系统规则' }}</p>
+            <pre class="log-box">{{ row.raw || 'OpsView 受管扩展' }}</pre>
+            <small>
+              运行：{{ row.runtime ? '存在' : '未生效' }} · 持久化：{{
+                row.permanent ? '已保存' : '未保存'
+              }}
+            </small>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="145" fixed="right">
+          <template #default="{ row }">
+            <el-tooltip
+              v-if="!data.enabled || row.runtime === false || row.permanent === false"
+              :content="
+                !data.enabled || row.runtime === false
+                  ? '保存规则未生效'
+                  : '仅运行配置，重载后可能丢失'
+              "
+            >
+              <el-tag size="small" type="warning">
+                {{ !data.enabled || row.runtime === false ? '未生效' : '临时' }}
+              </el-tag>
+            </el-tooltip>
+            <el-tooltip :content="row.reason || '修改规则'" :disabled="row.editable">
+              <span>
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="locked || !row.editable"
+                  @click="openEdit(row)"
+                >
+                  修改
+                </el-button>
+              </span>
+            </el-tooltip>
+            <el-button link type="danger" :disabled="locked || !row.editable" @click="remove(row)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </DataList>
+    </LoadingContent>
+    <details v-if="hasData" class="firewall-access">
       <summary>管理来源保护</summary>
       <el-input
         v-model="source"

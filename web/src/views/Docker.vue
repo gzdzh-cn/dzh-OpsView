@@ -15,12 +15,14 @@ const tab = usePageState('tab', 'containers')
 const {
   data: engine,
   busy: engineBusy,
+  hasData: engineReady,
   error: engineError,
   load: checkEngine,
 } = usePageQuery<any>('/docker/status', null, 30000)
 const {
   data: result,
   busy,
+  hasData: itemsReady,
   error,
   load: loadItems,
 } = usePageQuery<any>(
@@ -140,15 +142,12 @@ async function install() {
     <el-tab-pane label="Compose 项目" name="compose" />
     <el-tab-pane label="应用模板" name="templates" />
   </el-tabs>
-  <LoadingContent :busy="engineBusy">
-    <el-alert
-      v-if="engineError && engine?.status === 'ready'"
-      :title="engineError"
-      type="error"
-      :closable="false"
-    >
+  <section v-if="engineError" class="surface">
+    <el-alert :title="engineError" type="error" :closable="false">
       <el-button link @click="inspect">重试检测</el-button>
     </el-alert>
+  </section>
+  <LoadingContent :busy="engineBusy" :ready="engineReady">
     <section v-if="!engine || engine.status !== 'ready'" class="surface engine-message">
       <h3>{{ engineError || engine?.reason || '正在检测 Docker 引擎…' }}</h3>
       <p v-if="engine?.status === 'incompatible'">面板支持 API 1.41–1.47，请手动配置兼容引擎。</p>
@@ -188,7 +187,7 @@ async function install() {
         </div>
       </div>
       <div v-if="error" class="notice warn" style="margin: 0 20px 20px">{{ error }}</div>
-      <LoadingContent :busy="busy">
+      <LoadingContent :busy="busy" :ready="itemsReady">
         <DataList
           :key="'Docker-1' + ':' + tab"
           :state-key="'Docker-1' + ':' + tab"

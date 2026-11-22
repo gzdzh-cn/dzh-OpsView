@@ -135,7 +135,7 @@ async function cancelInstall(id: string) {
         />
       </el-select>
     </div>
-    <LoadingContent :busy="panel.pending.tasks">
+    <LoadingContent :busy="panel.pending.tasks" :ready="panel.hasData.tasks">
       <DataList
         state-key="Tasks-1"
         v-if="tasks.length"

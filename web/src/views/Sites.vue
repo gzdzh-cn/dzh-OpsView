@@ -360,7 +360,7 @@ async function loadLogs() {
     <el-tab-pane label="反向代理" name="proxy" />
     <el-tab-pane label="其他项目" name="other" />
   </el-tabs>
-  <LoadingContent :busy="panel.pending.resources">
+  <LoadingContent :busy="panel.pending.resources" :ready="panel.hasData.resources">
     <div v-if="!nginx.length" class="surface nginx-required">
       <h2>安装 Nginx，开始管理网站</h2>
       <p>网站需要受管的 Nginx 入口。已有外部服务请先检查端口与配置冲突。</p>

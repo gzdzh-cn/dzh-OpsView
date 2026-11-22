@@ -19,6 +19,7 @@ function copyToken() {
 const mode = defineModel<string>({ default: '' }),
   rows = ref<Config[]>([]),
   busy = ref(false),
+  hasData = ref(false),
   error = ref(''),
   reason = ref(''),
   token = ref(''),
@@ -46,6 +47,7 @@ async function load() {
     const data = await api(path)
     if (seq !== sequence) return
     rows.value = mode.value === 'passkeys' ? data.rows : data
+    hasData.value = true
     reason.value = data.reason || ''
   } catch (e) {
     if (seq === sequence) error.value = errorText(e)
@@ -64,10 +66,11 @@ watch(
     token.value = ''
     cert.value = undefined
     rows.value = []
+    hasData.value = false
     if (v && !['certificate'].includes(v)) void load()
     else busy.value = false
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 )
 onBeforeUnmount(() => {
   sequence++
@@ -185,7 +188,9 @@ function download(value: string, filename: string) {
     destroy-on-close
   >
     <div class="dialog-stack">
-      <el-alert v-if="error" :title="error" type="error" :closable="false" />
+      <el-alert v-if="error" :title="error" type="error" :closable="false">
+        <el-button v-if="mode !== 'certificate'" link @click="load">重试</el-button>
+      </el-alert>
       <template v-if="mode === 'certificate'">
         <el-alert
           title="客户端私钥仅本次提供。下载后妥善保存，浏览器需导入个人证书后再开启认证。可用 openssl pkcs12 -export 将证书及私钥转换为 PKCS#12。"
@@ -233,7 +238,7 @@ function download(value: string, filename: string) {
           <el-input :model-value="token" readonly aria-label="新授权令牌" />
           <el-button @click="copyToken">复制</el-button>
         </div>
-        <LoadingContent :busy="busy">
+        <LoadingContent :busy="busy" :ready="hasData">
           <DataList :rows="rows" :state-key="'security-' + mode">
             <el-table-column v-if="mode === 'sessions'" label="来源" min-width="170">
               <template #default="{ row }">

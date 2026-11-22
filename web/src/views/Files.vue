@@ -25,9 +25,10 @@ const route = useRoute(),
   hidden = usePageState('hidden', false),
   sort = usePageState('sort', 'name'),
   descending = usePageState('descending', false),
-  busy = ref(false),
+  busy = ref(true),
+  hasData = ref(false),
   error = ref(''),
-  readOnly = ref(false)
+  readOnly = ref(true)
 function savedRecent(): string[] {
   try {
     const value = JSON.parse(localStorage.getItem('opsview:file-recent') || '[]')
@@ -136,6 +137,7 @@ async function loadDirectory(target: string, targetPage: number, navigating = fa
       listing.signal,
     )
     if (!alive || id !== listSequence) return
+    hasData.value = true
     items.value = data.items
     total.value = data.total
     if (address.value === draft && (navigating || address.value === path.value))
@@ -930,157 +932,163 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <ListPanel :busy="busy" :error="error" @retry="load">
-    <div class="file-navigation">
-      <el-button :icon="ArrowLeft" :disabled="path === '/'" @click="navigate(parent(path))">
-        上级
-      </el-button>
-      <div class="file-address" :class="{ 'is-pending': address !== path }">
-        <el-input
-          v-if="addressEditing"
-          ref="addressInput"
-          v-model="address"
-          aria-label="服务器路径"
-          @blur="addressEditing = false"
-          @keydown.enter="submitOnEnter($event, () => navigate(address))"
-          @keydown.esc.prevent="addressEditing = false"
-        />
-        <div v-else class="file-address-display" @click.self="editAddress">
-          <nav aria-label="目录路径" class="file-breadcrumbs">
-            <button type="button" @click.stop="navigate('/')">根目录</button>
-            <template v-for="part in breadcrumb" :key="part.path">
-              <span aria-hidden="true">/</span>
-              <button type="button" @click.stop="navigate(part.path)">{{ part.name }}</button>
-            </template>
-          </nav>
-          <button
-            type="button"
-            class="file-address-edit"
-            aria-label="编辑服务器路径"
-            :title="address !== path ? '路径尚未跳转，点击编辑' : '编辑服务器路径'"
-            @click="editAddress"
-          >
-            <span v-if="address !== path" aria-label="路径尚未跳转">•</span>
-          </button>
+  <ListPanel :busy="busy && !hasData" :ready="hasData" :error="error" @retry="load">
+    <template #navigation>
+      <div class="file-navigation">
+        <el-button :icon="ArrowLeft" :disabled="path === '/'" @click="navigate(parent(path))">
+          上级
+        </el-button>
+        <div class="file-address" :class="{ 'is-pending': address !== path }">
+          <el-input
+            v-if="addressEditing"
+            ref="addressInput"
+            v-model="address"
+            aria-label="服务器路径"
+            @blur="addressEditing = false"
+            @keydown.enter="submitOnEnter($event, () => navigate(address))"
+            @keydown.esc.prevent="addressEditing = false"
+          />
+          <div v-else class="file-address-display" @click.self="editAddress">
+            <nav aria-label="目录路径" class="file-breadcrumbs">
+              <button type="button" @click.stop="navigate('/')">根目录</button>
+              <template v-for="part in breadcrumb" :key="part.path">
+                <span aria-hidden="true">/</span>
+                <button type="button" @click.stop="navigate(part.path)">{{ part.name }}</button>
+              </template>
+            </nav>
+            <button
+              type="button"
+              class="file-address-edit"
+              aria-label="编辑服务器路径"
+              :title="address !== path ? '路径尚未跳转，点击编辑' : '编辑服务器路径'"
+              @click="editAddress"
+            >
+              <span v-if="address !== path" aria-label="路径尚未跳转">•</span>
+            </button>
+          </div>
         </div>
+        <el-button @click="navigate(address)">前往</el-button>
+        <el-button :icon="RefreshRight" aria-label="刷新目录" title="刷新目录" @click="load" />
+        <el-dropdown @command="navigate">
+          <el-button>快捷目录</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="s in metadata.shortcuts || []"
+                :key="s.path"
+                :command="s.path"
+              >
+                {{ s.name }}
+              </el-dropdown-item>
+              <el-dropdown-item v-for="p in metadata.favorites || []" :key="p" :command="p">
+                ★ {{ p }}
+              </el-dropdown-item>
+              <el-dropdown-item v-for="p in recent.slice(0, 5)" :key="'recent' + p" :command="p">
+                最近 {{ p }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button v-if="metadata.favorites?.includes(path)" link @click="favorite(path, true)">
+          取消收藏
+        </el-button>
       </div>
-      <el-button @click="navigate(address)">前往</el-button>
-      <el-button :icon="RefreshRight" aria-label="刷新目录" title="刷新目录" @click="load" />
-      <el-dropdown @command="navigate">
-        <el-button>快捷目录</el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item v-for="s in metadata.shortcuts || []" :key="s.path" :command="s.path">
-              {{ s.name }}
-            </el-dropdown-item>
-            <el-dropdown-item v-for="p in metadata.favorites || []" :key="p" :command="p">
-              ★ {{ p }}
-            </el-dropdown-item>
-            <el-dropdown-item v-for="p in recent.slice(0, 5)" :key="'recent' + p" :command="p">
-              最近 {{ p }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <el-button v-if="metadata.favorites?.includes(path)" link @click="favorite(path, true)">
-        取消收藏
-      </el-button>
-    </div>
-    <div class="file-actions">
-      <el-button :disabled="readOnly || uploadBusy" type="primary" @click="uploadInput?.click()">
-        上传文件
-      </el-button>
-      <el-button :disabled="readOnly" @click="create(false)">新建文件</el-button>
-      <el-button :disabled="readOnly" @click="create(true)">新建目录</el-button>
-      <el-button :disabled="!selection.length || readOnly" @click="fileAction('copy')">
-        复制
-      </el-button>
-      <el-button :disabled="!selection.length || readOnly" @click="fileAction('cut')">
-        剪切
-      </el-button>
-      <el-button :disabled="!clipboard || readOnly || taskBusy" @click="paste">
-        粘贴 {{ clipboard?.paths.length || '' }}
-      </el-button>
-      <el-dropdown>
-        <el-button>更多操作</el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item :disabled="!selection.length || readOnly" @click="permissions()">
-              修改权限
-            </el-dropdown-item>
-            <el-dropdown-item
-              :disabled="!selection.length || readOnly || taskBusy"
-              @click="archive('compress')"
-            >
-              压缩
-            </el-dropdown-item>
-            <el-dropdown-item
-              :disabled="directorySizes[path]?.loading || readOnly"
-              @click="calculate()"
-            >
-              计算大小
-            </el-dropdown-item>
-            <el-dropdown-item @click="favorite(path)">收藏当前目录</el-dropdown-item>
-            <el-dropdown-item @click="loadTrash">回收站</el-dropdown-item>
-            <el-dropdown-item
-              :disabled="!selection.length || readOnly"
-              divided
-              @click="batch('delete')"
-            >
-              删除所选项目
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-    </div>
-    <input ref="uploadInput" type="file" multiple hidden @change="uploadFiles" />
-    <div v-if="uploadBusy || uploadPaused" class="file-toolbar-filter">
-      <span>{{ uploadName }}</span>
-      <el-progress :percentage="uploadProgress" style="width: 200px" />
-      <el-button v-if="uploadBusy" @click="pauseUpload">暂停</el-button>
-      <el-button @click="discardUpload">取消并清理</el-button>
-      <span v-if="uploadPaused">重新选择相同文件可续传</span>
-    </div>
-    <div v-if="taskBusy" class="file-toolbar-filter">
-      <span>任务执行中，可在任务中心查看进度</span>
-      <el-button @click="cancelTask">取消任务</el-button>
-    </div>
-    <div class="file-toolbar-filter">
-      <el-input
-        v-model="filter"
-        placeholder="搜索文件 / 目录"
-        clearable
-        @keyup.enter="
-          () => {
-            page = 1
-            load()
-          }
-        "
-      />
-      <el-button
-        @click="
-          () => {
-            page = 1
-            load()
-          }
-        "
-      >
-        搜索本目录
-      </el-button>
-      <el-button :disabled="taskBusy || readOnly" @click="search(false)">搜索子目录</el-button>
-      <el-button :disabled="taskBusy || readOnly" @click="search(true)">内容搜索</el-button>
-      <el-checkbox
-        v-model="hidden"
-        @change="
-          () => {
-            page = 1
-            load()
-          }
-        "
-      >
-        显示隐藏文件
-      </el-checkbox>
-    </div>
+      <div class="file-actions">
+        <el-button :disabled="readOnly || uploadBusy" type="primary" @click="uploadInput?.click()">
+          上传文件
+        </el-button>
+        <el-button :disabled="readOnly" @click="create(false)">新建文件</el-button>
+        <el-button :disabled="readOnly" @click="create(true)">新建目录</el-button>
+        <el-button :disabled="!selection.length || readOnly" @click="fileAction('copy')">
+          复制
+        </el-button>
+        <el-button :disabled="!selection.length || readOnly" @click="fileAction('cut')">
+          剪切
+        </el-button>
+        <el-button :disabled="!clipboard || readOnly || taskBusy" @click="paste">
+          粘贴 {{ clipboard?.paths.length || '' }}
+        </el-button>
+        <el-dropdown>
+          <el-button>更多操作</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item :disabled="!selection.length || readOnly" @click="permissions()">
+                修改权限
+              </el-dropdown-item>
+              <el-dropdown-item
+                :disabled="!selection.length || readOnly || taskBusy"
+                @click="archive('compress')"
+              >
+                压缩
+              </el-dropdown-item>
+              <el-dropdown-item
+                :disabled="directorySizes[path]?.loading || readOnly"
+                @click="calculate()"
+              >
+                计算大小
+              </el-dropdown-item>
+              <el-dropdown-item @click="favorite(path)">收藏当前目录</el-dropdown-item>
+              <el-dropdown-item @click="loadTrash">回收站</el-dropdown-item>
+              <el-dropdown-item
+                :disabled="!selection.length || readOnly"
+                divided
+                @click="batch('delete')"
+              >
+                删除所选项目
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+      <input ref="uploadInput" type="file" multiple hidden @change="uploadFiles" />
+      <div v-if="uploadBusy || uploadPaused" class="file-toolbar-filter">
+        <span>{{ uploadName }}</span>
+        <el-progress :percentage="uploadProgress" style="width: 200px" />
+        <el-button v-if="uploadBusy" @click="pauseUpload">暂停</el-button>
+        <el-button @click="discardUpload">取消并清理</el-button>
+        <span v-if="uploadPaused">重新选择相同文件可续传</span>
+      </div>
+      <div v-if="taskBusy" class="file-toolbar-filter">
+        <span>任务执行中，可在任务中心查看进度</span>
+        <el-button @click="cancelTask">取消任务</el-button>
+      </div>
+      <div class="file-toolbar-filter">
+        <el-input
+          v-model="filter"
+          placeholder="搜索文件 / 目录"
+          clearable
+          @keyup.enter="
+            () => {
+              page = 1
+              load()
+            }
+          "
+        />
+        <el-button
+          @click="
+            () => {
+              page = 1
+              load()
+            }
+          "
+        >
+          搜索本目录
+        </el-button>
+        <el-button :disabled="taskBusy || readOnly" @click="search(false)">搜索子目录</el-button>
+        <el-button :disabled="taskBusy || readOnly" @click="search(true)">内容搜索</el-button>
+        <el-checkbox
+          v-model="hidden"
+          @change="
+            () => {
+              page = 1
+              load()
+            }
+          "
+        >
+          显示隐藏文件
+        </el-checkbox>
+      </div>
+    </template>
     <div
       class="data-list"
       @contextmenu="backgroundContext"

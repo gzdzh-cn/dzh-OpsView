@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import { usePageState } from '../composables/pageState'
+import LoadingContent from '../components/LoadingContent.vue'
 import SettingRow from '../components/SettingRow.vue'
 import SecurityCredentials from '../components/SecurityCredentials.vue'
 import { identity } from '../lib/identity'
 import { applyAppearance } from '../lib/appearance'
-const NotificationManager = defineAsyncComponent(
-  () => import('../components/NotificationManager.vue'),
-)
-const BackupRecords = defineAsyncComponent(() => import('../components/BackupRecords.vue'))
+const NotificationManager = defineAsyncComponent({
+  loader: () => import('../components/NotificationManager.vue'),
+  loadingComponent: () => h(LoadingContent, { busy: true }),
+  delay: 0,
+})
+const BackupRecords = defineAsyncComponent({
+  loader: () => import('../components/BackupRecords.vue'),
+  loadingComponent: () => h(LoadingContent, { busy: true }),
+  delay: 0,
+})
 import {
   computed,
+  h,
   defineAsyncComponent,
   onMounted,
   onBeforeUnmount,
@@ -23,7 +31,9 @@ import { api, put, post, errorText, type Config } from '../lib/api'
 import { usePanel } from '../stores/panel'
 const reads = new AbortController()
 onBeforeUnmount(() => reads.abort())
-const settingsLoading = ref(true)
+const settingsLoading = ref(true),
+  settingsReady = ref(false),
+  settingsError = ref('')
 const certificateStatus = ref<Config>({})
 const panel = usePanel(),
   tab = usePageState('tab', 'common'),
@@ -45,6 +55,7 @@ const panel = usePanel(),
   runtimeError = ref(''),
   runtimeBusy = ref(false),
   runtimeLoading = ref(false),
+  runtimeReady = ref(false),
   savedRuntime = ref<Config>({}),
   pendingURL = ref(''),
   busy = ref(false),
@@ -431,13 +442,21 @@ const extraRows = computed(() => {
     rows.push(
       {
         label: '面板访问',
-        value: runtime.value.protocol + ' · ' + runtime.value.listenHost + ':' + runtime.value.port,
+        value: runtimeReady.value
+          ? runtime.value.protocol + ' · ' + runtime.value.listenHost + ':' + runtime.value.port
+          : runtimeError.value
+            ? '读取失败'
+            : '正在加载…',
         help: runtimeError.value || '公网地址、IPv4/IPv6、端口及协议；120 秒连接确认',
         mode: 'runtime',
       },
       {
         label: '安全入口',
-        value: runtime.value.entry || '未开启',
+        value: runtimeReady.value
+          ? runtime.value.entry || '未开启'
+          : runtimeError.value
+            ? '读取失败'
+            : '正在加载…',
         help: '8–64 位字母、数字、横线或下划线；留空关闭',
         mode: 'entry',
       },
@@ -455,7 +474,11 @@ const extraRows = computed(() => {
     rows.push(
       {
         label: '安全入口及来源',
-        value: runtime.value.entry || '未设置安全入口',
+        value: runtimeReady.value
+          ? runtime.value.entry || '未设置安全入口'
+          : runtimeError.value
+            ? '读取失败'
+            : '正在加载…',
         help: '安全入口、访问域名及 IP/CIDR 限制',
         mode: 'runtime',
       },
@@ -514,6 +537,7 @@ async function loadRuntime() {
       ...result.config,
       allowedCIDRs: result.config.allowedCIDRs ?? settings.value.allowedCIDRs ?? '',
     }
+    runtimeReady.value = true
     savedRuntime.value = structuredClone(toRaw(runtime.value))
     certificateStatus.value = result.certificate || {}
     acme.value.host = runtime.value.publicHost
@@ -622,19 +646,27 @@ onBeforeUnmount(cancelEdits)
 watch(tab, (value) => {
   cancelEdits()
   if (value === 'backup') void loadBackups()
-  if (['panel', 'security'].includes(value)) void loadRuntime()
+  if (['common', 'panel', 'security'].includes(value)) void loadRuntime()
 })
-onMounted(async () => {
+async function loadSettings() {
+  settingsLoading.value = !settingsReady.value
+  settingsError.value = ''
   try {
-    settings.value = { ...settings.value, ...(await api('/settings', { signal: reads.signal })) }
+    const result = await api('/settings', { signal: reads.signal })
+    if (reads.signal.aborted) return
+    settings.value = { ...settings.value, ...result }
+    settingsReady.value = true
     applyAppearance(settings.value)
-    if (tab.value === 'backup') await loadBackups()
-    if (['common', 'panel', 'security'].includes(tab.value)) await loadRuntime()
   } catch (e) {
-    if (!reads.signal.aborted) ElMessage.error(errorText(e))
+    if (!reads.signal.aborted) settingsError.value = errorText(e)
   } finally {
-    settingsLoading.value = false
+    if (!reads.signal.aborted) settingsLoading.value = false
   }
+}
+onMounted(() => {
+  void loadSettings()
+  if (tab.value === 'backup') void loadBackups()
+  if (['common', 'panel', 'security'].includes(tab.value)) void loadRuntime()
 })
 </script>
 <template>
@@ -655,364 +687,413 @@ onMounted(async () => {
     <a :href="accessConfirmURL()" target="_blank" rel="noopener">重新打开并确认</a>
   </el-alert>
   <NotificationManager v-if="tab === 'notifications'" />
-  <div v-else v-loading="settingsLoading" class="surface settings-surface">
-    <SettingRow
-      v-for="f in shownFields"
-      :id="'setting-' + f.key"
-      :key="f.key"
-      :label="f.label"
-      :value="valueLabel(f)"
-      :help="f.help"
-      :editing="editor && field?.key === f.key"
-      :busy="busy"
-      :disabled="settingsLoading || (editor && field?.key === f.key && !fieldReady)"
-      @edit="edit(f)"
-      @save="save"
-      @cancel="cancelEdits"
+  <template v-else>
+    <el-alert v-if="settingsError" :title="settingsError" type="error" :closable="false">
+      <el-button link @click="loadSettings">重试</el-button>
+    </el-alert>
+    <el-alert
+      v-if="runtimeError && ['common', 'panel', 'security'].includes(tab)"
+      :title="runtimeError"
+      type="error"
+      :closable="false"
     >
-      <template #editor>
-        <el-switch v-if="f.type === 'switch'" v-model="editValue" :disabled="busy || !fieldReady" />
-        <el-input-number
-          v-else-if="f.type === 'number'"
-          v-model="editValue"
-          :min="f.min"
-          :max="f.max"
-          :disabled="busy || !fieldReady"
-          @keydown.enter.prevent="save"
-          @keydown.esc="cancelEdits"
-        />
-        <el-select
-          v-else-if="f.type === 'select' || f.type === 'storage'"
-          v-model="editValue"
-          :disabled="busy || !fieldReady"
+      <el-button link @click="loadRuntime">重试访问设置</el-button>
+    </el-alert>
+    <LoadingContent :busy="settingsLoading" :ready="settingsReady">
+      <div class="surface settings-surface">
+        <SettingRow
+          v-for="f in shownFields"
+          :id="'setting-' + f.key"
+          :key="f.key"
+          :label="f.label"
+          :value="valueLabel(f)"
+          :help="f.help"
+          :editing="editor && field?.key === f.key"
+          :busy="busy"
+          :disabled="settingsLoading || (editor && field?.key === f.key && !fieldReady)"
+          @edit="edit(f)"
+          @save="save"
+          @cancel="cancelEdits"
         >
-          <template v-if="f.type === 'storage'">
-            <el-option label="仅本地" value="" />
-            <el-option
-              v-for="r in panel.resources.filter(
-                (r) => r.kind === 'backup' && r.config.destination === 's3',
-              )"
-              :key="r.id"
-              :value="r.id"
-              :label="r.name"
+          <template #editor>
+            <el-switch
+              v-if="f.type === 'switch'"
+              v-model="editValue"
+              :disabled="busy || !fieldReady"
+            />
+            <el-input-number
+              v-else-if="f.type === 'number'"
+              v-model="editValue"
+              :min="f.min"
+              :max="f.max"
+              :disabled="busy || !fieldReady"
+              @keydown.enter.prevent="save"
+              @keydown.esc="cancelEdits"
+            />
+            <el-select
+              v-else-if="f.type === 'select' || f.type === 'storage'"
+              v-model="editValue"
+              :disabled="busy || !fieldReady"
+            >
+              <template v-if="f.type === 'storage'">
+                <el-option label="仅本地" value="" />
+                <el-option
+                  v-for="r in panel.resources.filter(
+                    (r) => r.kind === 'backup' && r.config.destination === 's3',
+                  )"
+                  :key="r.id"
+                  :value="r.id"
+                  :label="r.name"
+                />
+              </template>
+              <el-option
+                v-else
+                v-for="o in f.options"
+                :key="o.value"
+                :value="o.value"
+                :label="o.label"
+              />
+            </el-select>
+            <span v-else-if="['basic', 'countries'].includes(f.type || '')">
+              {{ valueLabel(f) }}
+            </span>
+            <el-input
+              v-else
+              v-model="editValue"
+              :aria-label="f.label"
+              :disabled="busy || !fieldReady"
+              @keydown.enter.prevent="save"
+              @keydown.esc="cancelEdits"
             />
           </template>
-          <el-option
-            v-else
-            v-for="o in f.options"
-            :key="o.value"
-            :value="o.value"
-            :label="o.label"
-          />
-        </el-select>
-        <span v-else-if="['basic', 'countries'].includes(f.type || '')">{{ valueLabel(f) }}</span>
-        <el-input
-          v-else
-          v-model="editValue"
-          :aria-label="f.label"
-          :disabled="busy || !fieldReady"
-          @keydown.enter.prevent="save"
-          @keydown.esc="cancelEdits"
-        />
-      </template>
-      <template #details>
-        <div v-if="editor && field?.key === f.key" class="settings-inline-status">
-          <el-alert v-if="editError" :title="editError" type="error" :closable="false">
-            <el-button link :disabled="busy" @click="edit(f)">重新载入（放弃草稿）</el-button>
-          </el-alert>
-          <div v-if="['basic', 'countries'].includes(f.type || '')" class="settings-inline-details">
-            <el-form
-              v-if="field"
-              :disabled="busy || !fieldReady"
-              label-width="120px"
-              @submit.prevent="save"
+          <template #details>
+            <div v-if="editor && field?.key === f.key" class="settings-inline-status">
+              <el-alert v-if="editError" :title="editError" type="error" :closable="false">
+                <el-button link :disabled="busy" @click="edit(f)">重新载入（放弃草稿）</el-button>
+              </el-alert>
+              <div
+                v-if="['basic', 'countries'].includes(f.type || '')"
+                class="settings-inline-details"
+              >
+                <el-form
+                  v-if="field"
+                  :disabled="busy || !fieldReady"
+                  label-width="120px"
+                  @submit.prevent="save"
+                  @keydown.esc="cancelEdits"
+                >
+                  <el-form-item :label="field.label">
+                    <el-switch
+                      v-if="['switch', 'basic'].includes(field.type || '')"
+                      v-model="editValue"
+                    />
+                    <el-input
+                      v-else-if="field.type === 'countries'"
+                      v-model="countriesText"
+                      placeholder="如 CN JP，留空关闭"
+                    />
+                    <el-input v-else v-model="editValue" />
+                  </el-form-item>
+                  <p class="form-help">{{ field.help }}</p>
+                  <template v-if="field.type === 'basic'">
+                    <el-form-item label="BasicAuth 用户名">
+                      <el-input v-model="basicUsername" autocomplete="off" />
+                    </el-form-item>
+                    <el-form-item label="新密码">
+                      <el-input
+                        v-model="basicPassword"
+                        type="password"
+                        show-password
+                        autocomplete="new-password"
+                        placeholder="至少十二字节；留空保留"
+                      />
+                    </el-form-item>
+                  </template>
+                  <el-form-item v-if="field.type === 'countries'" label="未知地区">
+                    <el-select v-model="unknownCountry">
+                      <el-option value="deny" label="拒绝" />
+                      <el-option value="allow" label="允许" />
+                    </el-select>
+                  </el-form-item>
+                  <div v-if="field.type === 'countries'">
+                    <p class="form-help">
+                      IP 归属按地址分配数据判断。当前：{{ region.country || '未知' }}；更新：{{
+                        region.updatedAt || region.reason || '未下载'
+                      }}
+                    </p>
+                    <el-button @click="updateRegions">更新地区数据</el-button>
+                    <el-button @click="regionStatus">检查本地数据</el-button>
+                  </div>
+                </el-form>
+              </div>
+            </div>
+          </template>
+        </SettingRow>
+
+        <SettingRow
+          v-for="row in extraRows"
+          :key="row.label"
+          :readonly="!!row.link"
+          :label="row.label"
+          :value="row.value"
+          :help="row.help"
+          :editing="row.mode === 'entry' && mode === 'entry'"
+          :busy="runtimeBusy"
+          :disabled="
+            settingsLoading ||
+            runtimeLoading ||
+            (!runtimeReady && ['entry', 'runtime', 'certificate'].includes(row.mode || '')) ||
+            (!!runtimeError && row.mode === 'entry')
+          "
+          @edit="
+            row.mode ? openMode(row.mode) : row.security ? openSecurity(row.security) : undefined
+          "
+          @save="changeRuntime"
+          @cancel="cancelEdits"
+        >
+          <template #editor>
+            <el-input
+              v-model="runtime.entry"
+              aria-label="安全入口"
+              :disabled="runtimeBusy"
+              @keydown.enter.prevent="changeRuntime"
               @keydown.esc="cancelEdits"
+            />
+          </template>
+          <template #action>
+            <router-link v-if="row.link" :to="row.link">计划任务</router-link>
+            <el-button
+              v-else
+              link
+              type="primary"
+              :disabled="
+                settingsLoading ||
+                busy ||
+                runtimeBusy ||
+                ((runtimeLoading || !runtimeReady) &&
+                  ['entry', 'runtime', 'certificate'].includes(row.mode || ''))
+              "
+              @click="
+                row.mode
+                  ? mode === row.mode
+                    ? cancelEdits()
+                    : openMode(row.mode)
+                  : row.security
+                    ? securityMode === row.security
+                      ? cancelEdits()
+                      : openSecurity(row.security)
+                    : undefined
+              "
             >
-              <el-form-item :label="field.label">
-                <el-switch
-                  v-if="['switch', 'basic'].includes(field.type || '')"
-                  v-model="editValue"
-                />
-                <el-input
-                  v-else-if="field.type === 'countries'"
-                  v-model="countriesText"
-                  placeholder="如 CN JP，留空关闭"
-                />
-                <el-input v-else v-model="editValue" />
-              </el-form-item>
-              <p class="form-help">{{ field.help }}</p>
-              <template v-if="field.type === 'basic'">
-                <el-form-item label="BasicAuth 用户名">
-                  <el-input v-model="basicUsername" autocomplete="off" />
+              {{
+                (row.mode && mode === row.mode) || (row.security && securityMode === row.security)
+                  ? '收起'
+                  : '修改'
+              }}
+            </el-button>
+          </template>
+          <template #details>
+            <div
+              v-if="row.mode && mode === row.mode"
+              class="settings-inline-details"
+              :class="{ 'settings-entry-details': mode === 'entry' }"
+            >
+              <el-alert v-if="editError" :title="editError" type="error" :closable="false" />
+              <el-alert
+                v-if="runtimeError && ['runtime', 'entry'].includes(mode)"
+                :title="runtimeError"
+                type="error"
+                :closable="false"
+              />
+              <template v-if="mode === 'runtime'">
+                <el-form label-width="120px">
+                  <el-form-item label="公网地址">
+                    <el-input v-model="runtime.publicHost" placeholder="域名或公网 IP" />
+                  </el-form-item>
+                  <el-form-item label="监听地址">
+                    <el-select v-model="runtime.listenHost" allow-create filterable>
+                      <el-option value="0.0.0.0" label="全部 IPv4" />
+                      <el-option value="::" label="全部 IPv4/IPv6" />
+                      <el-option value="127.0.0.1" label="仅本机 IPv4" />
+                      <el-option value="::1" label="仅本机 IPv6" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="监听端口">
+                    <el-input-number v-model="runtime.port" :min="1" :max="65535" />
+                  </el-form-item>
+                  <el-form-item label="协议">
+                    <el-radio-group v-model="runtime.protocol">
+                      <el-radio value="https">HTTPS</el-radio>
+                      <el-radio value="http">HTTP（关闭 SSL）</el-radio>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item label="安全入口">
+                    <el-input
+                      v-model="runtime.entry"
+                      placeholder="8–64 位字母、数字、横线或下划线"
+                    />
+                  </el-form-item>
+                  <el-form-item label="访问域名">
+                    <el-input v-model="runtime.allowedHost" />
+                  </el-form-item>
+                  <el-form-item label="IP/CIDR 限制">
+                    <el-input v-model="runtime.allowedCIDRs" type="textarea" :rows="3" />
+                  </el-form-item>
+                </el-form>
+                <p class="form-help">
+                  域名变化可能使既有 Passkey 无法使用，请保留密码及本机恢复。HTTP 不支持
+                  Passkey、客户端证书及 API 凭据。
+                </p>
+                <div v-if="pendingURL" class="notice warn">
+                  <a :href="pendingURL" target="_blank" rel="noopener">
+                    打开新地址并确认（120 秒内）
+                  </a>
+                </div>
+              </template>
+              <template v-if="mode === 'certificate'">
+                <el-form label-width="120px">
+                  <el-form-item label="域名 / 公网 IP">
+                    <el-input v-model="acme.host" />
+                  </el-form-item>
+                  <el-form-item label="联系邮箱"><el-input v-model="acme.email" /></el-form-item>
+                  <el-form-item label="服务条款">
+                    <el-checkbox v-model="acme.acceptTerms">
+                      同意 Let's Encrypt 服务条款
+                    </el-checkbox>
+                  </el-form-item>
+                </el-form>
+                <el-button @click="issue">申请 / 续期</el-button>
+                <el-divider />
+                <el-form label-position="top">
+                  <el-form-item label="PEM 证书链">
+                    <el-input v-model="cert.certificate" type="textarea" :rows="5" />
+                  </el-form-item>
+                  <el-form-item label="PEM 私钥">
+                    <el-input v-model="cert.privateKey" type="textarea" :rows="5" />
+                  </el-form-item>
+                </el-form>
+                <p class="form-help">
+                  HTTP-01 需要公网 TCP 80 可达；失败保留原证书。关闭 HTTPS 暂停续期。
+                </p>
+              </template>
+              <el-form v-if="mode === 'username'" label-width="120px">
+                <el-form-item label="新用户名">
+                  <el-input v-model="username.username" />
+                </el-form-item>
+                <el-form-item label="当前密码">
+                  <el-input v-model="username.password" type="password" show-password />
+                </el-form-item>
+                <el-form-item v-if="panel.auth.twoFactorEnabled" label="验证码">
+                  <el-input v-model="username.code" maxlength="6" />
+                </el-form-item>
+              </el-form>
+              <el-form v-if="mode === 'password'" label-width="120px">
+                <el-form-item label="当前密码">
+                  <el-input v-model="password.current" type="password" show-password />
                 </el-form-item>
                 <el-form-item label="新密码">
                   <el-input
-                    v-model="basicPassword"
+                    v-model="password.password"
                     type="password"
                     show-password
                     autocomplete="new-password"
-                    placeholder="至少十二字节；留空保留"
                   />
                 </el-form-item>
-              </template>
-              <el-form-item v-if="field.type === 'countries'" label="未知地区">
-                <el-select v-model="unknownCountry">
-                  <el-option value="deny" label="拒绝" />
-                  <el-option value="allow" label="允许" />
-                </el-select>
-              </el-form-item>
-              <div v-if="field.type === 'countries'">
-                <p class="form-help">
-                  IP 归属按地址分配数据判断。当前：{{ region.country || '未知' }}；更新：{{
-                    region.updatedAt || region.reason || '未下载'
-                  }}
-                </p>
-                <el-button @click="updateRegions">更新地区数据</el-button>
-                <el-button @click="regionStatus">检查本地数据</el-button>
-              </div>
-            </el-form>
-          </div>
-        </div>
-      </template>
-    </SettingRow>
+                <el-form-item v-if="panel.auth.twoFactorEnabled" label="验证码">
+                  <el-input v-model="password.code" maxlength="6" />
+                </el-form-item>
+              </el-form>
+              <el-form v-if="mode === 'totp'" label-width="120px">
+                <el-form-item label="当前密码">
+                  <el-input v-model="twoFactor.password" type="password" show-password />
+                </el-form-item>
+                <el-form-item v-if="secret" label="验证器密钥">
+                  <el-input :model-value="secret" readonly />
+                </el-form-item>
+                <el-form-item v-if="secret || panel.auth.twoFactorEnabled" label="验证码">
+                  <el-input v-model="twoFactor.code" maxlength="6" />
+                </el-form-item>
+                <p class="form-help">确认后全部旧会话失效；请先在验证器保存密钥。</p>
+              </el-form>
 
-    <SettingRow
-      v-for="row in extraRows"
-      :key="row.label"
-      :readonly="!!row.link"
-      :label="row.label"
-      :value="row.value"
-      :help="row.help"
-      :editing="row.mode === 'entry' && mode === 'entry'"
-      :busy="runtimeBusy"
-      :disabled="settingsLoading || runtimeLoading || (!!runtimeError && row.mode === 'entry')"
-      @edit="row.mode ? openMode(row.mode) : row.security ? openSecurity(row.security) : undefined"
-      @save="changeRuntime"
-      @cancel="cancelEdits"
-    >
-      <template #editor>
-        <el-input
-          v-model="runtime.entry"
-          aria-label="安全入口"
-          :disabled="runtimeBusy"
-          @keydown.enter.prevent="changeRuntime"
-          @keydown.esc="cancelEdits"
-        />
-      </template>
-      <template #action>
-        <router-link v-if="row.link" :to="row.link">计划任务</router-link>
-        <el-button
-          v-else
-          link
-          type="primary"
-          :disabled="
-            settingsLoading ||
-            busy ||
-            runtimeBusy ||
-            (runtimeLoading && ['entry', 'runtime'].includes(row.mode || ''))
-          "
-          @click="
-            row.mode
-              ? mode === row.mode
-                ? cancelEdits()
-                : openMode(row.mode)
-              : row.security
-                ? securityMode === row.security
-                  ? cancelEdits()
-                  : openSecurity(row.security)
-                : undefined
-          "
-        >
-          {{
-            (row.mode && mode === row.mode) || (row.security && securityMode === row.security)
-              ? '收起'
-              : '修改'
-          }}
-        </el-button>
-      </template>
-      <template #details>
-        <div
-          v-if="row.mode && mode === row.mode"
-          class="settings-inline-details"
-          :class="{ 'settings-entry-details': mode === 'entry' }"
-        >
-          <el-alert v-if="editError" :title="editError" type="error" :closable="false" />
-          <el-alert
-            v-if="runtimeError && ['runtime', 'entry'].includes(mode)"
-            :title="runtimeError"
-            type="error"
-            :closable="false"
-          />
-          <template v-if="mode === 'runtime'">
-            <el-form label-width="120px">
-              <el-form-item label="公网地址">
-                <el-input v-model="runtime.publicHost" placeholder="域名或公网 IP" />
-              </el-form-item>
-              <el-form-item label="监听地址">
-                <el-select v-model="runtime.listenHost" allow-create filterable>
-                  <el-option value="0.0.0.0" label="全部 IPv4" />
-                  <el-option value="::" label="全部 IPv4/IPv6" />
-                  <el-option value="127.0.0.1" label="仅本机 IPv4" />
-                  <el-option value="::1" label="仅本机 IPv6" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="监听端口">
-                <el-input-number v-model="runtime.port" :min="1" :max="65535" />
-              </el-form-item>
-              <el-form-item label="协议">
-                <el-radio-group v-model="runtime.protocol">
-                  <el-radio value="https">HTTPS</el-radio>
-                  <el-radio value="http">HTTP（关闭 SSL）</el-radio>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item label="安全入口">
-                <el-input v-model="runtime.entry" placeholder="8–64 位字母、数字、横线或下划线" />
-              </el-form-item>
-              <el-form-item label="访问域名">
-                <el-input v-model="runtime.allowedHost" />
-              </el-form-item>
-              <el-form-item label="IP/CIDR 限制">
-                <el-input v-model="runtime.allowedCIDRs" type="textarea" :rows="3" />
-              </el-form-item>
-            </el-form>
-            <p class="form-help">
-              域名变化可能使既有 Passkey 无法使用，请保留密码及本机恢复。HTTP 不支持
-              Passkey、客户端证书及 API 凭据。
-            </p>
-            <div v-if="pendingURL" class="notice warn">
-              <a :href="pendingURL" target="_blank" rel="noopener">打开新地址并确认（120 秒内）</a>
-            </div>
-          </template>
-          <template v-if="mode === 'certificate'">
-            <el-form label-width="120px">
-              <el-form-item label="域名 / 公网 IP"><el-input v-model="acme.host" /></el-form-item>
-              <el-form-item label="联系邮箱"><el-input v-model="acme.email" /></el-form-item>
-              <el-form-item label="服务条款">
-                <el-checkbox v-model="acme.acceptTerms">同意 Let's Encrypt 服务条款</el-checkbox>
-              </el-form-item>
-            </el-form>
-            <el-button @click="issue">申请 / 续期</el-button>
-            <el-divider />
-            <el-form label-position="top">
-              <el-form-item label="PEM 证书链">
-                <el-input v-model="cert.certificate" type="textarea" :rows="5" />
-              </el-form-item>
-              <el-form-item label="PEM 私钥">
-                <el-input v-model="cert.privateKey" type="textarea" :rows="5" />
-              </el-form-item>
-            </el-form>
-            <p class="form-help">
-              HTTP-01 需要公网 TCP 80 可达；失败保留原证书。关闭 HTTPS 暂停续期。
-            </p>
-          </template>
-          <el-form v-if="mode === 'username'" label-width="120px">
-            <el-form-item label="新用户名"><el-input v-model="username.username" /></el-form-item>
-            <el-form-item label="当前密码">
-              <el-input v-model="username.password" type="password" show-password />
-            </el-form-item>
-            <el-form-item v-if="panel.auth.twoFactorEnabled" label="验证码">
-              <el-input v-model="username.code" maxlength="6" />
-            </el-form-item>
-          </el-form>
-          <el-form v-if="mode === 'password'" label-width="120px">
-            <el-form-item label="当前密码">
-              <el-input v-model="password.current" type="password" show-password />
-            </el-form-item>
-            <el-form-item label="新密码">
-              <el-input
-                v-model="password.password"
-                type="password"
-                show-password
-                autocomplete="new-password"
-              />
-            </el-form-item>
-            <el-form-item v-if="panel.auth.twoFactorEnabled" label="验证码">
-              <el-input v-model="password.code" maxlength="6" />
-            </el-form-item>
-          </el-form>
-          <el-form v-if="mode === 'totp'" label-width="120px">
-            <el-form-item label="当前密码">
-              <el-input v-model="twoFactor.password" type="password" show-password />
-            </el-form-item>
-            <el-form-item v-if="secret" label="验证器密钥">
-              <el-input :model-value="secret" readonly />
-            </el-form-item>
-            <el-form-item v-if="secret || panel.auth.twoFactorEnabled" label="验证码">
-              <el-input v-model="twoFactor.code" maxlength="6" />
-            </el-form-item>
-            <p class="form-help">确认后全部旧会话失效；请先在验证器保存密钥。</p>
-          </el-form>
-
-          <div
-            v-if="mode !== 'entry'"
-            class="settings-inline-actions"
-            :aria-busy="runtimeBusy"
-            :inert="runtimeBusy || undefined"
-          >
-            <el-button @click="mode = ''">取消</el-button>
-            <el-button
-              v-if="['runtime', 'entry'].includes(mode)"
-              type="primary"
-              :disabled="!!runtimeError"
-              @click="changeRuntime"
-            >
-              保存并重新连接
-            </el-button>
-            <el-button v-if="mode === 'certificate'" type="primary" @click="certificate">
-              验证并应用上传证书
-            </el-button>
-            <el-button v-if="mode === 'username'" type="primary" @click="changeUsername">
-              修改用户名并退出
-            </el-button>
-            <el-button v-if="mode === 'password'" type="primary" @click="changePassword">
-              修改密码并退出
-            </el-button>
-            <template v-if="mode === 'totp'">
-              <el-button
-                v-if="!secret && !panel.auth.twoFactorEnabled"
-                type="primary"
-                @click="totp('prepare')"
+              <div
+                v-if="mode !== 'entry'"
+                class="settings-inline-actions"
+                :aria-busy="runtimeBusy"
+                :inert="runtimeBusy || undefined"
               >
-                开始绑定
-              </el-button>
-              <el-button v-if="secret" type="primary" @click="totp('confirm')">确认开启</el-button>
-              <el-button v-if="panel.auth.twoFactorEnabled" type="danger" @click="totp('disable')">
-                关闭双因素认证
-              </el-button>
-            </template>
-          </div>
+                <el-button @click="mode = ''">取消</el-button>
+                <el-button
+                  v-if="['runtime', 'entry'].includes(mode)"
+                  type="primary"
+                  :disabled="!!runtimeError"
+                  @click="changeRuntime"
+                >
+                  保存并重新连接
+                </el-button>
+                <el-button v-if="mode === 'certificate'" type="primary" @click="certificate">
+                  验证并应用上传证书
+                </el-button>
+                <el-button v-if="mode === 'username'" type="primary" @click="changeUsername">
+                  修改用户名并退出
+                </el-button>
+                <el-button v-if="mode === 'password'" type="primary" @click="changePassword">
+                  修改密码并退出
+                </el-button>
+                <template v-if="mode === 'totp'">
+                  <el-button
+                    v-if="!secret && !panel.auth.twoFactorEnabled"
+                    type="primary"
+                    @click="totp('prepare')"
+                  >
+                    开始绑定
+                  </el-button>
+                  <el-button v-if="secret" type="primary" @click="totp('confirm')">
+                    确认开启
+                  </el-button>
+                  <el-button
+                    v-if="panel.auth.twoFactorEnabled"
+                    type="danger"
+                    @click="totp('disable')"
+                  >
+                    关闭双因素认证
+                  </el-button>
+                </template>
+              </div>
+            </div>
+            <SecurityCredentials
+              v-if="row.security && securityMode === row.security"
+              v-model="securityMode"
+              inline
+            />
+          </template>
+        </SettingRow>
+        <div v-if="pendingURL" class="notice warn">
+          <a :href="pendingURL" target="_blank" rel="noopener">打开新地址并确认（120 秒内）</a>
         </div>
-        <SecurityCredentials
-          v-if="row.security && securityMode === row.security"
-          v-model="securityMode"
-          inline
-        />
-      </template>
-    </SettingRow>
-    <div v-if="pendingURL" class="notice warn">
-      <a :href="pendingURL" target="_blank" rel="noopener">打开新地址并确认（120 秒内）</a>
-    </div>
-    <template v-if="tab === 'backup'">
-      <SettingRow
-        readonly
-        label="自动面板备份"
-        value="计划任务统一管理"
-        help="创建每日 03:00 加密备份；请避免重复计划"
-      >
-        <template #action>
-          <el-button link type="primary" @click="autoBackup">创建计划</el-button>
-          <router-link to="/backups">管理计划</router-link>
+        <template v-if="tab === 'backup'">
+          <SettingRow
+            readonly
+            label="自动面板备份"
+            value="计划任务统一管理"
+            help="创建每日 03:00 加密备份；请避免重复计划"
+          >
+            <template #action>
+              <el-button link type="primary" @click="autoBackup">创建计划</el-button>
+              <router-link to="/backups">管理计划</router-link>
+            </template>
+          </SettingRow>
+          <div class="page-toolbar">
+            <el-button type="primary" @click="backup">立即备份面板</el-button>
+            <router-link to="/backups?tab=records"><el-button>业务备份</el-button></router-link>
+          </div>
+          <BackupRecords panel-only />
+          <p class="form-help">
+            恢复需要原 master.key；业务 .ovb 需要执行器 backup.key。密钥不包含在备份包中，请通过 SSH
+            单独备份并离线保管。恢复计划默认暂停，API 和临时授权失效。
+          </p>
         </template>
-      </SettingRow>
-      <div class="page-toolbar">
-        <el-button type="primary" @click="backup">立即备份面板</el-button>
-        <router-link to="/backups?tab=records"><el-button>业务备份</el-button></router-link>
       </div>
-      <BackupRecords panel-only />
-      <p class="form-help">
-        恢复需要原 master.key；业务 .ovb 需要执行器 backup.key。密钥不包含在备份包中，请通过 SSH
-        单独备份并离线保管。恢复计划默认暂停，API 和临时授权失效。
-      </p>
-    </template>
-  </div>
+    </LoadingContent>
+  </template>
 </template>

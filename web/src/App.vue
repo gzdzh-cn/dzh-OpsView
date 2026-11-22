@@ -73,8 +73,14 @@ function refresh(force = false) {
   if (force) window.dispatchEvent(new Event('opsview:refresh-page'))
 }
 watch(
-  () => route.path,
+  [
+    () => route.path,
+    () => panel.auth.authenticated,
+    () => panel.auth.temporary,
+    () => panel.auth.passwordExpired,
+  ],
   () => refresh(),
+  { flush: 'sync' },
 )
 async function consumeConfirmation(name: string) {
   // Initial async navigation can finish after the confirmation response. Keep
@@ -88,7 +94,7 @@ async function consumeConfirmation(name: string) {
     hash: hash.size ? '#' + hash.toString() : '',
   })
 }
-async function ready() {
+async function ready(sessionVerified = false) {
   const confirmToken = new URLSearchParams(location.hash.slice(1)).get('runtime-confirm')
   if (confirmToken) {
     await post('/runtime/confirm', { token: confirmToken })
@@ -98,7 +104,7 @@ async function ready() {
   void api('/public/preferences')
     .then(applyAppearance)
     .catch(() => {})
-  await panel.session()
+  if (!sessionVerified) await panel.session()
   const preferenceToken = new URLSearchParams(location.hash.slice(1)).get('preference-confirm')
   if (preferenceToken && panel.auth.authenticated) {
     await post('/settings/confirm', { token: preferenceToken })
@@ -106,7 +112,6 @@ async function ready() {
   }
   fatal.value = ''
   if (panel.auth.authenticated && !panel.auth.temporary && !panel.auth.passwordExpired) {
-    refresh()
     void api('/settings')
       .then((prefs) => {
         setRefresh(prefs.refreshSeconds || 15)
@@ -166,7 +171,7 @@ onUnmounted(() => {
     <div class="brand-symbol">O</div>
     <span>正在连接 OpsView…</span>
   </div>
-  <Login v-else-if="!panel.auth.authenticated" :connection-error="fatal" @ready="ready" />
+  <Login v-else-if="!panel.auth.authenticated" :connection-error="fatal" @ready="ready(true)" />
   <TemporaryAccess v-else-if="panel.auth.temporary" />
   <PasswordRenewal v-else-if="panel.auth.passwordExpired" />
   <div v-else class="app-shell" :class="{ 'nav-open': collapsed }">
@@ -319,7 +324,9 @@ onUnmounted(() => {
           </span>
         </div>
         <router-view v-slot="{ Component }">
-          <PageContent :key="route.path"><component :is="Component" /></PageContent>
+          <PageContent :key="`${panel.sessionVersion}:${route.path}`">
+            <component :is="Component" />
+          </PageContent>
         </router-view>
       </main>
     </div>

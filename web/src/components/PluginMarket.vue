@@ -28,6 +28,7 @@ const {
   data: plugins,
   error,
   busy: loading,
+  hasData,
   load: loadPlugins,
 } = usePageQuery<any[]>('/plugins', [], 300000)
 const load = () => loadPlugins(true)
@@ -126,6 +127,7 @@ async function importPackage() {
 defineExpose({
   plugins,
   loading,
+  hasData,
   error,
   load,
   installed,
@@ -136,7 +138,14 @@ defineExpose({
 })
 </script>
 <template>
-  <ListPanel v-if="!headless" :count="rows.length" :busy="loading" :error="error" @retry="load">
+  <ListPanel
+    v-if="!headless"
+    :count="rows.length"
+    :busy="loading"
+    :ready="hasData"
+    :error="error"
+    @retry="load"
+  >
     <template #actions>
       <el-button @click="load">刷新</el-button>
       <el-button @click="importOpen = true">导入签名插件</el-button>

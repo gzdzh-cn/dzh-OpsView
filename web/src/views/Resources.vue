@@ -305,7 +305,7 @@ async function backupLogs(row: Resource) {
         </el-button>
       </div>
     </div>
-    <LoadingContent :busy="panel.pending.resources">
+    <LoadingContent :busy="panel.pending.resources" :ready="panel.hasData.resources">
       <DataList
         :key="'Resources-1' + ':' + props.kind"
         :state-key="'Resources-1' + ':' + props.kind"

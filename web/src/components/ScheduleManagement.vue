@@ -14,7 +14,7 @@ import StatusBadge from './StatusBadge.vue'
 import ScheduleHistory from './ScheduleHistory.vue'
 const panel = usePanel(),
   filter = usePageState('schedule-type', 'all')
-const { data, busy: reading, error, load } = usePageQuery<Config>('/schedules', { rows: [] })
+const { data, busy: reading, error, load, hasData } = usePageQuery<Config>('/schedules', { rows: [] })
 const category = usePageState('schedule-category', 'all')
 const categoryOpen=ref(false),categoryNames=ref<string[]>([]),newCategory=ref('')
 async function manageCategories(){try{categoryNames.value=await api('/schedule-categories');categoryOpen.value=true}catch(e){ElMessage.error(errorText(e))}}
@@ -320,7 +320,7 @@ function more(command: string) {
     <el-alert v-if="error" :title="error" type="error" :closable="false">
       <el-button link @click="load(true)">重试</el-button>
     </el-alert>
-    <LoadingContent :busy="reading || panel.pending.resources">
+    <LoadingContent :busy="reading || panel.pending.resources" :ready="hasData && panel.hasData.resources">
       <DataList :rows="rows" state-key="schedules" @selection-change="selected = $event">
         <el-table-column type="selection" width="40" />
         <el-table-column label="任务名称" min-width="160">
